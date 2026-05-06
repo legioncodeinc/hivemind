@@ -44,8 +44,16 @@ export default defineConfig({
         "src/shell/deeplake-shell.ts",
         // Skilify worker entry points: skilify-worker.ts parses cfg from
         // process.argv[2] at top level then runs main() which spawns
-        // detached subprocesses. Tested end-to-end via the matrix script
-        // in the PR description, not via vitest.
+        // detached subprocesses; spawn-skilify-worker.ts is the spawner.
+        // Both are excluded from vitest because they need a live Deeplake
+        // workspace + a real agent CLI to exercise meaningfully.
+        // Coverage on the SHIPPED bundle is enforced indirectly by
+        // claude-code/tests/skilify-bundle-scan.test.ts (asserts the
+        // skilify-worker.js bundle exists per agent and contains the
+        // required entry strings + agent labels). For full e2e in
+        // development, see the manual matrix script described in the
+        // PR description (lives at /tmp/skilify-e2e-matrix.mjs in the
+        // author's worktree, not committed).
         "src/skilify/skilify-worker.ts",
         "src/skilify/spawn-skilify-worker.ts",
       ],

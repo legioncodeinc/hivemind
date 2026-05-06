@@ -37,8 +37,10 @@ let errSpy: ReturnType<typeof vi.spyOn>;
 let exitSpy: ReturnType<typeof vi.spyOn>;
 let logged: string[] = [];
 let erred: string[] = [];
+let originalCwd: string;
 
 beforeEach(() => {
+  originalCwd = process.cwd();
   if (existsSync(CONFIG_PATH)) configBackup = readFileSync(CONFIG_PATH, "utf-8");
   else configBackup = null;
   try { rmSync(CONFIG_PATH); } catch { /* nothing */ }
@@ -49,6 +51,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Restore cwd before any temp-dir cleanup happens — some tests do
+  // `process.chdir(tempDir)` then `rmSync(tempDir)` later, leaving us in
+  // a stale cwd that breaks subsequent tests' relative-path operations.
+  try { process.chdir(originalCwd); } catch { /* nothing */ }
   if (configBackup !== null) { mkdirSync(STATE_DIR, { recursive: true }); writeFileSync(CONFIG_PATH, configBackup); }
   else try { rmSync(CONFIG_PATH); } catch { /* nothing */ }
   logSpy.mockRestore(); errSpy.mockRestore(); exitSpy.mockRestore();

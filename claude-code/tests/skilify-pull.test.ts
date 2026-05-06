@@ -10,6 +10,7 @@ import {
   readLocalVersion,
   decideAction,
   runPull,
+  isMissingTableError,
   type QueryFn,
 } from "../../src/skilify/pull.js";
 
@@ -33,7 +34,7 @@ describe("buildPullSql", () => {
     expect(sql).toMatch(/^SELECT /);
     expect(sql).not.toMatch(/WHERE/);
     expect(sql).toContain(`FROM "skills"`);
-    expect(sql).toContain("ORDER BY name ASC, version DESC");
+    expect(sql).toContain("ORDER BY project_key ASC, name ASC, version DESC");
   });
 
   it("filters by single user", () => {
@@ -86,28 +87,82 @@ describe("resolvePullDestination", () => {
 
 // ── selectLatestPerName ─────────────────────────────────────────────────────
 
-describe("selectLatestPerName", () => {
-  it("keeps the first row per name (rows ordered by version DESC already)", () => {
+describe("selectLatestPerName (composite project_key + name key)", () => {
+  it("keeps the first row per (project_key, name) — same name in different projects is preserved", () => {
     const rows = [
-      { name: "a", version: 3 },
-      { name: "a", version: 2 },
-      { name: "a", version: 1 },
-      { name: "b", version: 5 },
-      { name: "b", version: 4 },
+      { name: "deploy", project_key: "p1", version: 3 },
+      { name: "deploy", project_key: "p1", version: 2 },
+      { name: "deploy", project_key: "p2", version: 1 },  // SAME name, DIFFERENT project — must NOT be deduped
+      { name: "build",  project_key: "p1", version: 1 },
     ];
     const out = selectLatestPerName(rows);
-    expect(out).toHaveLength(2);
-    expect(out[0]).toEqual({ name: "a", version: 3 });
-    expect(out[1]).toEqual({ name: "b", version: 5 });
+    expect(out).toHaveLength(3);
+    // deploy@p1 (latest), then deploy@p2, then build@p1
+    expect(out[0]).toMatchObject({ name: "deploy", project_key: "p1", version: 3 });
+    expect(out[1]).toMatchObject({ name: "deploy", project_key: "p2", version: 1 });
+    expect(out[2]).toMatchObject({ name: "build", project_key: "p1", version: 1 });
+  });
+
+  it("dedupes within a single project — keeps the highest version", () => {
+    const rows = [
+      { name: "a", project_key: "p", version: 5 },
+      { name: "a", project_key: "p", version: 4 },
+      { name: "a", project_key: "p", version: 3 },
+    ];
+    const out = selectLatestPerName(rows);
+    expect(out).toHaveLength(1);
+    expect(out[0].version).toBe(5);
+  });
+
+  it("treats missing project_key as the empty string (legacy rows still grouped)", () => {
+    const rows = [
+      { name: "x", version: 2 },                       // no project_key
+      { name: "x", version: 1 },                       // no project_key
+      { name: "x", project_key: "", version: 3 },      // explicit empty
+    ];
+    const out = selectLatestPerName(rows);
+    expect(out).toHaveLength(1);
+    expect(out[0].version).toBe(2); // first row wins (highest in DESC)
   });
 
   it("skips rows with empty / missing name", () => {
-    const out = selectLatestPerName([{ name: "", version: 1 }, { version: 1 }, { name: "x", version: 1 }]);
-    expect(out).toEqual([{ name: "x", version: 1 }]);
+    const out = selectLatestPerName([
+      { name: "", project_key: "p", version: 1 },
+      { project_key: "p", version: 1 },
+      { name: "x", project_key: "p", version: 1 },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].name).toBe("x");
   });
 
   it("returns [] for empty input", () => {
     expect(selectLatestPerName([])).toEqual([]);
+  });
+});
+
+describe("isMissingTableError", () => {
+  it("matches Deeplake / Postgres relation-does-not-exist", () => {
+    expect(isMissingTableError(`Table does not exist: relation "skills" does not exist`)).toBe(true);
+    expect(isMissingTableError(`relation "skills" does not exist`)).toBe(true);
+    expect(isMissingTableError(`no such table: skills`)).toBe(true);
+  });
+
+  it("does NOT match generic 'does not exist' (column errors etc.)", () => {
+    expect(isMissingTableError(`column "foo" does not exist`)).toBe(false);
+    expect(isMissingTableError(`syntax error`)).toBe(false);
+    expect(isMissingTableError(`permission denied`)).toBe(false);
+  });
+
+  it("returns false for empty / undefined", () => {
+    expect(isMissingTableError(undefined)).toBe(false);
+    expect(isMissingTableError("")).toBe(false);
+  });
+});
+
+describe("buildPullSql ORDER BY composite", () => {
+  it("orders by project_key, name, version DESC", () => {
+    const sql = buildPullSql({ tableName: "skills", users: [] });
+    expect(sql).toContain("ORDER BY project_key ASC, name ASC, version DESC");
   });
 });
 
@@ -246,15 +301,16 @@ describe("runPull", () => {
     ...over,
   });
 
-  it("writes a new SKILL.md to project root when local missing", async () => {
-    const { fn } = makeMockQuery([sampleRow()]);
+  it("writes a new SKILL.md to <root>/<project_key>/<name>/ when local missing", async () => {
+    const { fn } = makeMockQuery([sampleRow()]);  // sampleRow uses project_key: "pk"
     const summary = await runPull({
       query: fn, tableName: "skills", install: "project", cwd: projectRoot,
       users: [], dryRun: false, force: false,
     });
     expect(summary.wrote).toBe(1);
     expect(summary.skipped).toBe(0);
-    const path = join(projectSkillsRoot, "vox-cli", "SKILL.md");
+    // Path now namespaced by project_key to prevent cross-project collisions
+    const path = join(projectSkillsRoot, "pk", "vox-cli", "SKILL.md");
     expect(existsSync(path)).toBe(true);
     const text = readFileSync(path, "utf-8");
     expect(text).toContain("version: 2");
@@ -262,8 +318,8 @@ describe("runPull", () => {
   });
 
   it("skips when local version >= remote", async () => {
-    // Pre-create a local v3
-    const dir = join(projectSkillsRoot, "vox-cli");
+    // Pre-create a local v3 at the new project-keyed path
+    const dir = join(projectSkillsRoot, "pk", "vox-cli");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "SKILL.md"),
       `---\nname: vox-cli\ndescription: "old"\nsource_sessions:\nversion: 3\ncreated_by_agent: cc\ncreated_at: t\nupdated_at: t\n---\n\nlocal body`);
@@ -278,7 +334,7 @@ describe("runPull", () => {
   });
 
   it("--force overrides skip and backs up the existing file", async () => {
-    const dir = join(projectSkillsRoot, "vox-cli");
+    const dir = join(projectSkillsRoot, "pk", "vox-cli");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "SKILL.md"),
       `---\nname: vox-cli\ndescription: "old"\nsource_sessions:\nversion: 5\ncreated_by_agent: cc\ncreated_at: t\nupdated_at: t\n---\n\nlocal v5 body`);
@@ -301,14 +357,14 @@ describe("runPull", () => {
     });
     expect(summary.dryrun).toBe(1);
     expect(summary.wrote).toBe(0);
-    expect(existsSync(join(projectSkillsRoot, "vox-cli"))).toBe(false);
+    expect(existsSync(join(projectSkillsRoot, "pk", "vox-cli"))).toBe(false);
   });
 
-  it("dedups rows by name keeping latest version", async () => {
+  it("dedups rows by (project_key, name) keeping latest version per project", async () => {
     const rows = [
-      sampleRow({ name: "a", version: 3 }),
-      sampleRow({ name: "a", version: 2 }),
-      sampleRow({ name: "b", version: 1 }),
+      sampleRow({ name: "a", version: 3 }),       // project_key: "pk" (default)
+      sampleRow({ name: "a", version: 2 }),       // same key — deduped
+      sampleRow({ name: "b", version: 1 }),       // different name, same key
     ];
     const { fn } = makeMockQuery(rows);
     const summary = await runPull({
@@ -317,7 +373,7 @@ describe("runPull", () => {
     });
     expect(summary.scanned).toBe(2);
     expect(summary.wrote).toBe(2);
-    const aText = readFileSync(join(projectSkillsRoot, "a", "SKILL.md"), "utf-8");
+    const aText = readFileSync(join(projectSkillsRoot, "pk", "a", "SKILL.md"), "utf-8");
     expect(aText).toContain("version: 3");
   });
 
@@ -332,5 +388,54 @@ describe("runPull", () => {
     expect(calls[0]).toContain(`FROM "skills_test"`);
     expect(calls[0]).toContain(`author IN ('alice', 'bob')`);
     expect(calls[0]).toContain(`name = 'vox-cli'`);
+  });
+
+  it("treats 'Table does not exist' as an empty result (lazy-create-friendly)", async () => {
+    const fn: QueryFn = async () => { throw new Error(`Table does not exist: relation "skills" does not exist`); };
+    const summary = await runPull({
+      query: fn, tableName: "skills", install: "project", cwd: projectRoot,
+      users: [], dryRun: false, force: false,
+    });
+    expect(summary).toEqual({ scanned: 0, wrote: 0, skipped: 0, dryrun: 0, entries: [] });
+  });
+
+  it("propagates non-missing-table errors", async () => {
+    const fn: QueryFn = async () => { throw new Error(`Authentication failed: 401`); };
+    await expect(runPull({
+      query: fn, tableName: "skills", install: "project", cwd: projectRoot,
+      users: [], dryRun: false, force: false,
+    })).rejects.toThrow(/Authentication failed/);
+  });
+
+  it("writes under <root>/<project_key>/<name> so cross-project skills don't collide", async () => {
+    const rows = [
+      sampleRow({ name: "deploy", project_key: "alpha-key" }),
+      sampleRow({ name: "deploy", project_key: "beta-key" }),
+    ];
+    const { fn } = makeMockQuery(rows);
+    await runPull({
+      query: fn, tableName: "skills", install: "project", cwd: projectRoot,
+      users: [], dryRun: false, force: false,
+    });
+    expect(existsSync(join(projectSkillsRoot, "alpha-key", "deploy", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(projectSkillsRoot, "beta-key", "deploy", "SKILL.md"))).toBe(true);
+  });
+
+  it("skips rows with invalid skill names instead of writing dangerous paths", async () => {
+    const rows = [
+      sampleRow({ name: "../escape", project_key: "p" }),
+      sampleRow({ name: "valid-skill", project_key: "p" }),
+    ];
+    const { fn } = makeMockQuery(rows);
+    const summary = await runPull({
+      query: fn, tableName: "skills", install: "project", cwd: projectRoot,
+      users: [], dryRun: false, force: false,
+    });
+    // valid-skill written, invalid one skipped (not thrown — graceful)
+    expect(summary.wrote).toBe(1);
+    expect(summary.skipped).toBe(1);
+    expect(existsSync(join(projectSkillsRoot, "p", "valid-skill", "SKILL.md"))).toBe(true);
+    // No dangerous paths created
+    expect(existsSync(join(projectSkillsRoot, "..", "escape"))).toBe(false);
   });
 });

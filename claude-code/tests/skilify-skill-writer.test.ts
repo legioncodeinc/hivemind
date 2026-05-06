@@ -8,6 +8,7 @@ import {
   parseFrontmatter,
   listSkills,
   resolveSkillsRoot,
+  assertValidSkillName,
 } from "../../src/skilify/skill-writer.js";
 
 let projectRoot: string;
@@ -166,6 +167,63 @@ describe("listSkills", () => {
 
     const skills = listSkills(skillsRoot).map(s => s.name).sort();
     expect(skills).toEqual(["a", "b"]);
+  });
+});
+
+describe("assertValidSkillName (path-traversal guard)", () => {
+  it("accepts standard kebab-case names", () => {
+    expect(() => assertValidSkillName("my-skill")).not.toThrow();
+    expect(() => assertValidSkillName("postgres-explain-analyze")).not.toThrow();
+    expect(() => assertValidSkillName("a")).not.toThrow();
+    expect(() => assertValidSkillName("skill1")).not.toThrow();
+    expect(() => assertValidSkillName("skill-with-9-numbers")).not.toThrow();
+  });
+
+  it("rejects path traversal attempts", () => {
+    expect(() => assertValidSkillName("../etc/passwd")).toThrow(/path separator|kebab-case/);
+    expect(() => assertValidSkillName("..")).toThrow(/path separator|'\\.'|\.\./);
+    expect(() => assertValidSkillName("foo/bar")).toThrow(/path separator/);
+    expect(() => assertValidSkillName("foo\\bar")).toThrow(/path separator/);
+    expect(() => assertValidSkillName("/abs/path")).toThrow(/path separator/);
+    expect(() => assertValidSkillName("..foo")).toThrow();
+  });
+
+  it("rejects empty / wrong type", () => {
+    expect(() => assertValidSkillName("")).toThrow(/empty/);
+    expect(() => assertValidSkillName(undefined as any)).toThrow(/empty/);
+    expect(() => assertValidSkillName(null as any)).toThrow(/empty/);
+    expect(() => assertValidSkillName(42 as any)).toThrow(/empty/);
+  });
+
+  it("rejects names longer than 100 chars", () => {
+    expect(() => assertValidSkillName("a".repeat(101))).toThrow(/too long/);
+    expect(() => assertValidSkillName("a".repeat(100))).not.toThrow();
+  });
+
+  it("rejects uppercase / underscores / spaces / dots", () => {
+    expect(() => assertValidSkillName("MySkill")).toThrow(/kebab-case/);
+    expect(() => assertValidSkillName("my_skill")).toThrow(/kebab-case/);
+    expect(() => assertValidSkillName("my skill")).toThrow(/kebab-case/);
+    expect(() => assertValidSkillName("my.skill")).toThrow(/kebab-case/);
+    expect(() => assertValidSkillName("--double-dash")).toThrow(/kebab-case/);
+    expect(() => assertValidSkillName("trailing-")).toThrow(/kebab-case/);
+  });
+});
+
+describe("writeNewSkill / mergeSkill reject invalid names", () => {
+  it("writeNewSkill throws on path-traversal name", () => {
+    expect(() => writeNewSkill({
+      skillsRoot, name: "../escape", description: "", body: VALID_BODY,
+      sourceSessions: [], agent: "x",
+    })).toThrow(/path separator|kebab-case/);
+  });
+
+  it("mergeSkill throws on path-traversal name", () => {
+    // Pre-create a real skill so the does-not-exist check doesn't fire first
+    writeNewSkill({ skillsRoot, name: "real", description: "", body: VALID_BODY, sourceSessions: [], agent: "x" });
+    expect(() => mergeSkill({
+      skillsRoot, name: "../real", body: "x", newSourceSessions: [], agent: "x",
+    })).toThrow(/path separator|kebab-case/);
   });
 });
 
