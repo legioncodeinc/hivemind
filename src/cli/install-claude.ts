@@ -65,6 +65,13 @@ function pluginAlreadyInstalled(): boolean {
   return r.stdout.includes(PLUGIN_KEY);
 }
 
+// Claude Code's plugin model is multi-scope: a plugin can be enabled at
+// any of `user` / `project` / `local` / `managed` scope, and each scope
+// has its own activation. `claude plugin update` is per-scope, so an
+// upgrade has to fan out across all four; the scopes the user hasn't
+// activated will simply error out, which is fine.
+const PLUGIN_SCOPES = ["user", "project", "local", "managed"] as const;
+
 export function installClaude(): void {
   requireClaudeCli();
 
@@ -78,18 +85,34 @@ export function installClaude(): void {
   }
 
   if (!pluginAlreadyInstalled()) {
+    // First-time install path: just install. The marketplace fetch is
+    // implicit in `claude plugin install`.
     const inst = runClaude(["plugin", "install", "hivemind"]);
     if (!inst.ok) {
       throw new Error(
         `Failed to install hivemind plugin: ${inst.stderr.slice(0, 200)}`,
       );
     }
+    log(`  Claude Code    installed via marketplace ${MARKETPLACE_SOURCE}`);
+  } else {
+    // Already-installed path: refresh the marketplace cache so
+    // `plugin update` sees the newest version, then update across every
+    // scope. Without the explicit `marketplace update` first, ClawHub
+    // would serve a stale catalog and `plugin update` would no-op even
+    // when a newer version is published. Mirrors the legacy
+    // session-start logic in src/hooks/session-start.ts but routes it
+    // through the centralized `hivemind update` command — this is what
+    // makes `hivemind update` actually upgrade Claude (the install-only
+    // path was idempotent and silently skipped the upgrade).
+    runClaude(["plugin", "marketplace", "update", MARKETPLACE_NAME]);
+    for (const scope of PLUGIN_SCOPES) {
+      runClaude(["plugin", "update", PLUGIN_KEY, "--scope", scope]);
+    }
+    log(`  Claude Code    refreshed via marketplace ${MARKETPLACE_SOURCE}`);
   }
 
   // enable is idempotent in claude CLI — safe to run unconditionally
   runClaude(["plugin", "enable", PLUGIN_KEY]);
-
-  log(`  Claude Code    installed via marketplace ${MARKETPLACE_SOURCE}`);
 }
 
 export function uninstallClaude(): void {

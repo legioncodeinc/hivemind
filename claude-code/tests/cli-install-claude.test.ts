@@ -139,14 +139,57 @@ describe("installClaude — happy path argv shape", () => {
     expect(argvList).toContain("plugin enable hivemind@hivemind");
   });
 
-  it("skips plugin install when 'plugin list' already includes 'hivemind@hivemind'", async () => {
+  it("skips 'plugin install' AND triggers 'plugin update' across all 4 scopes when already installed", async () => {
+    // When `plugin list` already shows the plugin, we no longer skip and
+    // do nothing. We refresh the marketplace cache and run
+    // `plugin update --scope X` for every scope so the user actually
+    // gets the new version. Without this, `hivemind update`'s call into
+    // installClaude() was a silent no-op for Claude.
     setupClaudeResponses({ pluginList: "hivemind@hivemind enabled" });
     const { installClaude } = await importFresh();
     installClaude();
 
     const argvList = calls().map(c => c.args.join(" "));
     expect(argvList).not.toContain("plugin install hivemind");
+    expect(argvList).toContain("plugin marketplace update hivemind");
+    // All four scopes must be exercised — `claude plugin update` is
+    // per-scope, and we don't know which one the user has the plugin
+    // activated under.
+    expect(argvList).toContain("plugin update hivemind@hivemind --scope user");
+    expect(argvList).toContain("plugin update hivemind@hivemind --scope project");
+    expect(argvList).toContain("plugin update hivemind@hivemind --scope local");
+    expect(argvList).toContain("plugin update hivemind@hivemind --scope managed");
+    // And enable still fires (idempotent).
     expect(argvList).toContain("plugin enable hivemind@hivemind");
+  });
+
+  it("on already-installed: runs marketplace update BEFORE plugin update (cache must be fresh)", async () => {
+    // Order matters — without `marketplace update` first, the `plugin
+    // update` calls would resolve against a stale catalog and could
+    // no-op even when a newer version is published.
+    setupClaudeResponses({ pluginList: "hivemind@hivemind enabled" });
+    const { installClaude } = await importFresh();
+    installClaude();
+
+    const argvList = calls().map(c => c.args.join(" "));
+    const refreshIdx = argvList.indexOf("plugin marketplace update hivemind");
+    const firstUpdateIdx = argvList.findIndex(a => a.startsWith("plugin update hivemind@hivemind --scope"));
+    expect(refreshIdx).toBeGreaterThanOrEqual(0);
+    expect(firstUpdateIdx).toBeGreaterThan(refreshIdx);
+  });
+
+  it("on cold install: does NOT run 'plugin update' (no upgrade needed when freshly installed)", async () => {
+    // Negative-pattern test (CLAUDE.md rule 8): a regression that ran
+    // `plugin update` even on a cold install would waste cycles and
+    // possibly misreport "refreshed" instead of "installed".
+    setupClaudeResponses({});
+    const { installClaude } = await importFresh();
+    installClaude();
+
+    const argvList = calls().map(c => c.args.join(" "));
+    expect(argvList.some(a => a.startsWith("plugin update hivemind@hivemind"))).toBe(false);
+    expect(argvList).not.toContain("plugin marketplace update hivemind");
+    expect(argvList).toContain("plugin install hivemind");
   });
 
   it("matches the marketplace name as a whole token, not a substring", async () => {

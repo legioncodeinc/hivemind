@@ -177,6 +177,7 @@ function pluginAlreadyInstalled() {
     return false;
   return r.stdout.includes(PLUGIN_KEY);
 }
+var PLUGIN_SCOPES = ["user", "project", "local", "managed"];
 function installClaude() {
   requireClaudeCli();
   if (!marketplaceAlreadyAdded()) {
@@ -190,9 +191,15 @@ function installClaude() {
     if (!inst.ok) {
       throw new Error(`Failed to install hivemind plugin: ${inst.stderr.slice(0, 200)}`);
     }
+    log(`  Claude Code    installed via marketplace ${MARKETPLACE_SOURCE}`);
+  } else {
+    runClaude(["plugin", "marketplace", "update", MARKETPLACE_NAME]);
+    for (const scope of PLUGIN_SCOPES) {
+      runClaude(["plugin", "update", PLUGIN_KEY, "--scope", scope]);
+    }
+    log(`  Claude Code    refreshed via marketplace ${MARKETPLACE_SOURCE}`);
   }
   runClaude(["plugin", "enable", PLUGIN_KEY]);
-  log(`  Claude Code    installed via marketplace ${MARKETPLACE_SOURCE}`);
 }
 function uninstallClaude() {
   try {
