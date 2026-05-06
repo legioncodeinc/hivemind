@@ -1,0 +1,340 @@
+#!/usr/bin/env node
+
+// dist/src/commands/auth.js
+import { execSync } from "node:child_process";
+
+// dist/src/commands/auth-creds.js
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+function configDir() {
+  return join(homedir(), ".deeplake");
+}
+function credsPath() {
+  return join(configDir(), "credentials.json");
+}
+function loadCredentials() {
+  try {
+    return JSON.parse(readFileSync(credsPath(), "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+// dist/src/utils/stdin.js
+function readStdin() {
+  return new Promise((resolve3, reject) => {
+    let data = "";
+    process.stdin.setEncoding("utf-8");
+    process.stdin.on("data", (chunk) => data += chunk);
+    process.stdin.on("end", () => {
+      try {
+        resolve3(JSON.parse(data));
+      } catch (err) {
+        reject(new Error(`Failed to parse hook input: ${err}`));
+      }
+    });
+    process.stdin.on("error", reject);
+  });
+}
+
+// dist/src/notifications/rules/registry.js
+var RULES = [];
+function registerRule(rule) {
+  if (RULES.find((r) => r.id === rule.id)) {
+    throw new Error(`duplicate rule id: ${rule.id}`);
+  }
+  RULES.push(rule);
+}
+function evaluateRules(trigger, ctx) {
+  const out = [];
+  for (const r of RULES) {
+    if (r.trigger !== trigger)
+      continue;
+    const result = r.evaluate(ctx);
+    if (result)
+      out.push(result);
+  }
+  return out;
+}
+
+// dist/src/notifications/queue.js
+import { readFileSync as readFileSync2, writeFileSync as writeFileSync2, renameSync, mkdirSync as mkdirSync2 } from "node:fs";
+import { join as join3, resolve } from "node:path";
+import { homedir as homedir3 } from "node:os";
+
+// dist/src/utils/debug.js
+import { appendFileSync } from "node:fs";
+import { join as join2 } from "node:path";
+import { homedir as homedir2 } from "node:os";
+var DEBUG = process.env.HIVEMIND_DEBUG === "1";
+var LOG = join2(homedir2(), ".deeplake", "hook-debug.log");
+function log(tag, msg) {
+  if (!DEBUG)
+    return;
+  appendFileSync(LOG, `${(/* @__PURE__ */ new Date()).toISOString()} [${tag}] ${msg}
+`);
+}
+
+// dist/src/notifications/queue.js
+var log2 = (msg) => log("notifications-queue", msg);
+function queuePath() {
+  return join3(homedir3(), ".deeplake", "notifications-queue.json");
+}
+function readQueue() {
+  try {
+    const raw = readFileSync2(queuePath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.queue)) {
+      log2(`queue malformed \u2192 treating as empty`);
+      return { queue: [] };
+    }
+    return { queue: parsed.queue };
+  } catch {
+    return { queue: [] };
+  }
+}
+function writeQueue(q) {
+  const path = queuePath();
+  const home = resolve(homedir3());
+  if (!resolve(path).startsWith(home + "/") && resolve(path) !== home) {
+    throw new Error(`notifications-queue write blocked: ${path} is outside ${home}`);
+  }
+  mkdirSync2(join3(home, ".deeplake"), { recursive: true, mode: 448 });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync2(tmp, JSON.stringify(q, null, 2), { mode: 384 });
+  renameSync(tmp, path);
+}
+
+// dist/src/notifications/state.js
+import { readFileSync as readFileSync3, writeFileSync as writeFileSync3, renameSync as renameSync2, mkdirSync as mkdirSync3 } from "node:fs";
+import { join as join4, resolve as resolve2 } from "node:path";
+import { homedir as homedir4 } from "node:os";
+var log3 = (msg) => log("notifications-state", msg);
+function statePath() {
+  return join4(homedir4(), ".deeplake", "notifications-state.json");
+}
+function readState() {
+  try {
+    const raw = readFileSync3(statePath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || typeof parsed.shown !== "object") {
+      log3(`state malformed \u2192 treating as empty`);
+      return { shown: {} };
+    }
+    return { shown: { ...parsed.shown } };
+  } catch {
+    return { shown: {} };
+  }
+}
+function writeState(state) {
+  const path = statePath();
+  const home = resolve2(homedir4());
+  if (!resolve2(path).startsWith(home + "/") && resolve2(path) !== home) {
+    throw new Error(`notifications-state write blocked: ${path} is outside ${home}`);
+  }
+  mkdirSync3(join4(home, ".deeplake"), { recursive: true, mode: 448 });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync3(tmp, JSON.stringify(state, null, 2), { mode: 384 });
+  renameSync2(tmp, path);
+}
+function markShown(state, n, now = /* @__PURE__ */ new Date()) {
+  return {
+    shown: {
+      ...state.shown,
+      [n.id]: { dedupKey: JSON.stringify(n.dedupKey), shownAt: now.toISOString() }
+    }
+  };
+}
+function alreadyShown(state, n) {
+  const prev = state.shown[n.id];
+  if (!prev)
+    return false;
+  return prev.dedupKey === JSON.stringify(n.dedupKey);
+}
+
+// dist/src/notifications/format.js
+var SEVERITY_PREFIX = {
+  info: "\u{1F41D}",
+  warn: "\u26A0\uFE0F",
+  error: "\u{1F6A8}"
+};
+function renderOne(n) {
+  const prefix = SEVERITY_PREFIX[n.severity ?? "info"] ?? SEVERITY_PREFIX.info;
+  return `${prefix} ${n.title}
+${n.body}`;
+}
+function renderNotifications(items) {
+  if (items.length === 0)
+    return "";
+  return items.map(renderOne).join("\n\n");
+}
+
+// dist/src/notifications/delivery/claude-code.js
+function emitClaudeCode(rendered) {
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: rendered
+    }
+  }));
+}
+
+// dist/src/notifications/delivery/codex.js
+function emitCodex(_rendered) {
+}
+
+// dist/src/notifications/delivery/cursor.js
+function emitCursor(_rendered) {
+}
+
+// dist/src/notifications/delivery/hermes.js
+function emitHermes(_rendered) {
+}
+
+// dist/src/notifications/delivery/index.js
+var ADAPTERS = {
+  "claude-code": emitClaudeCode,
+  codex: emitCodex,
+  cursor: emitCursor,
+  hermes: emitHermes
+};
+function emit(agent, rendered) {
+  if (!rendered)
+    return;
+  ADAPTERS[agent](rendered);
+}
+
+// dist/src/notifications/sources/backend.js
+var log4 = (msg) => log("notifications-backend", msg);
+var FETCH_TIMEOUT_MS = 1500;
+var DEFAULT_API_URL = "https://api.deeplake.ai";
+var ALLOWED_SEVERITIES = /* @__PURE__ */ new Set(["info", "warn", "error"]);
+function normalizeSeverity(s) {
+  return typeof s === "string" && ALLOWED_SEVERITIES.has(s) ? s : "info";
+}
+function toClient(n) {
+  if (!n.id || typeof n.id !== "string")
+    return null;
+  if (!n.title || typeof n.title !== "string")
+    return null;
+  if (!n.body || typeof n.body !== "string")
+    return null;
+  return {
+    // Prefix with `backend:` so a future local-only rule can never collide
+    // with a server-issued id, even if both happen to use the same string.
+    id: `backend:${n.id}`,
+    severity: normalizeSeverity(n.severity),
+    title: n.title,
+    body: n.body,
+    // dedupKey wraps server fields the client cares about. The server's
+    // dedup_key is hashed in here so a server that reuses the same UUID
+    // with a fresh dedup_key (rare but supported) re-fires for the user.
+    dedupKey: { id: n.id, dedup_key: n.dedup_key ?? "" }
+  };
+}
+async function fetchBackendNotifications(creds) {
+  if (!creds?.token)
+    return [];
+  const apiUrl = creds.apiUrl ?? DEFAULT_API_URL;
+  const url = `${apiUrl}/me/notifications`;
+  const ctrl = new AbortController();
+  const timeoutHandle = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${creds.token}`,
+        ...creds.orgId ? { "X-Activeloop-Org-Id": creds.orgId } : {}
+      },
+      signal: ctrl.signal
+    });
+    if (!resp.ok) {
+      log4(`fetch ${url} returned ${resp.status}`);
+      return [];
+    }
+    const body = await resp.json();
+    if (!body || !Array.isArray(body.notifications)) {
+      log4(`fetch ${url} returned malformed body`);
+      return [];
+    }
+    const out = [];
+    for (const sn of body.notifications) {
+      const c = toClient(sn);
+      if (c)
+        out.push(c);
+    }
+    log4(`fetched ${out.length} backend notification(s) from ${apiUrl}`);
+    return out;
+  } catch (e) {
+    log4(`fetch ${url} failed: ${e?.message ?? String(e)}`);
+    return [];
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
+// dist/src/notifications/index.js
+var log5 = (msg) => log("notifications", msg);
+async function drainSessionStart(opts) {
+  try {
+    const state = readState();
+    const queue = readQueue();
+    const ctx = { agent: opts.agent, creds: opts.creds, state };
+    const fromRules = evaluateRules("session_start", ctx);
+    const fromQueue = queue.queue;
+    const fromBackend = await fetchBackendNotifications(opts.creds);
+    const all = [...fromRules, ...fromQueue, ...fromBackend];
+    const fresh = all.filter((n) => !alreadyShown(state, n));
+    if (fresh.length === 0) {
+      if (queue.queue.length > 0)
+        writeQueue({ queue: [] });
+      return;
+    }
+    const rendered = renderNotifications(fresh);
+    emit(opts.agent, rendered);
+    let nextState = state;
+    for (const n of fresh)
+      nextState = markShown(nextState, n);
+    writeState(nextState);
+    if (queue.queue.length > 0)
+      writeQueue({ queue: [] });
+    log5(`delivered ${fresh.length} notification(s) to ${opts.agent}`);
+  } catch (e) {
+    log5(`drainSessionStart failed: ${e?.message ?? String(e)}`);
+  }
+}
+
+// dist/src/notifications/rules/welcome.js
+var welcomeRule = {
+  id: "welcome",
+  trigger: "session_start",
+  evaluate({ creds }) {
+    if (!creds?.token)
+      return null;
+    const userName = creds.userName ?? "there";
+    const orgName = creds.orgName ?? creds.orgId;
+    const workspace = creds.workspaceId ?? "default";
+    return {
+      id: "welcome",
+      severity: "info",
+      title: `Welcome back, ${userName}`,
+      body: `Connected to org ${orgName} (workspace ${workspace}).`,
+      dedupKey: { savedAt: creds.savedAt }
+    };
+  }
+};
+
+// dist/src/hooks/session-notifications.js
+var log6 = (msg) => log("session-notifications", msg);
+registerRule(welcomeRule);
+async function main() {
+  if (process.env.HIVEMIND_WIKI_WORKER === "1")
+    return;
+  await readStdin().catch(() => ({}));
+  const creds = loadCredentials();
+  await drainSessionStart({ agent: "claude-code", creds });
+}
+main().catch((e) => {
+  log6(`fatal: ${e?.message ?? String(e)}`);
+  process.exit(0);
+});

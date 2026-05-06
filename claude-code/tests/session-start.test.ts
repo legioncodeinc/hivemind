@@ -13,24 +13,32 @@ const bundleDir = join(ccRoot, "bundle");
 describe("claude-code hooks.json: async refactor", () => {
   const hooks = JSON.parse(readFileSync(join(ccRoot, "hooks", "hooks.json"), "utf-8"));
 
-  it("SessionStart has exactly 2 hooks", () => {
+  it("SessionStart has exactly 3 hooks (memory/hivemind + notifications + async setup)", () => {
     const sessionStart = hooks.hooks.SessionStart;
     expect(sessionStart).toHaveLength(1); // one entry
-    expect(sessionStart[0].hooks).toHaveLength(2); // two hooks in the entry
+    expect(sessionStart[0].hooks).toHaveLength(3); // three hooks in the entry
   });
 
-  it("first SessionStart hook is sync with timeout <= 15s", () => {
+  it("first SessionStart hook is sync and references session-start.js (memory/hivemind block)", () => {
     const first = hooks.hooks.SessionStart[0].hooks[0];
     expect(first).not.toHaveProperty("async");
     expect(first.timeout).toBeLessThanOrEqual(15);
     expect(first.command).toContain("session-start.js");
     expect(first.command).not.toContain("session-start-setup.js");
+    expect(first.command).not.toContain("session-notifications.js");
   });
 
-  it("second SessionStart hook is async and references session-start-setup.js", () => {
+  it("second SessionStart hook is sync, fast, and references session-notifications.js (own context block)", () => {
     const second = hooks.hooks.SessionStart[0].hooks[1];
-    expect(second.async).toBe(true);
-    expect(second.command).toContain("session-start-setup.js");
+    expect(second).not.toHaveProperty("async");
+    expect(second.timeout).toBeLessThanOrEqual(10);
+    expect(second.command).toContain("session-notifications.js");
+  });
+
+  it("third SessionStart hook is async and references session-start-setup.js", () => {
+    const third = hooks.hooks.SessionStart[0].hooks[2];
+    expect(third.async).toBe(true);
+    expect(third.command).toContain("session-start-setup.js");
   });
 
   it("UserPromptSubmit has async: true", () => {

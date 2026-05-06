@@ -11,6 +11,11 @@
           },
           {
             "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/bundle/session-notifications.js\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/bundle/session-start-setup.js\"",
             "timeout": 120,
             "async": true
