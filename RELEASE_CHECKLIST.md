@@ -67,27 +67,56 @@ Lives outside the repo by design — the e2e matrix is per-feature scratch.
 
 ---
 
-## 3. Per-agent matrix (claude / codex / cursor / hermes)
+## 3. Per-agent matrix (ALL SIX AGENTS — never just four)
 
-Hivemind ships hooks for **four** agents. A feature that works in Claude
-Code can be entirely broken in Hermes because each agent has its own gate
-CLI, its own session-end semantics, and its own bundle.
+Hivemind ships into **six** agent surfaces. A feature is not done until
+every applicable surface is covered. Skipping one because "it's the
+weird one" is how skilify shipped to Pi and OpenClaw blind on PR #98 —
+the prior version of this section listed only the four hook-driven
+agents and quietly excluded the other two.
+
+| Agent | Source root | Hook surface | Worker mining | Inject discoverability | Notes |
+|---|---|---|---|---|---|
+| Claude Code | `src/hooks/`, `claude-code/bundle/` | full (5 hooks) | ✅ | ✅ session-start.ts | npm bin via `${CLAUDE_PLUGIN_ROOT}` |
+| Codex       | `src/hooks/codex/`, `codex/bundle/` | full | ✅ | ✅ session-start.ts | npm bin via `$CODEX_PLUGIN_ROOT` |
+| Cursor      | `src/hooks/cursor/`, `cursor/bundle/` | session-start + end + capture + pre-tool-use | ✅ | ✅ session-start.ts | no slash command surface |
+| Hermes      | `src/hooks/hermes/`, `hermes/bundle/` | analogous to cursor | ✅ | ✅ session-start.ts | gate uses OpenRouter (`hermes -z`), NOT claude |
+| **Pi**      | `pi/extension-source/hivemind.ts` (raw .ts, no bundle) | full (session_start, input, tool_result, message_end, session_shutdown) | ⚠️ partial — inject yes, worker firing TBD | ✅ inline in `CONTEXT_PREAMBLE` | self-contained extension; pi compiles the .ts at load time |
+| **OpenClaw**| `openclaw/src/index.ts`, `openclaw/skills/SKILL.md` | gateway plugin (no agent sessions to mine) | ❌ N/A by design | ✅ in `openclaw/skills/SKILL.md` | runtime is HTTP/WebSocket gateway; agents consume openclaw, openclaw doesn't run sessions |
+
+**Mining (worker firing on session end)** is only applicable when the
+agent runs the user's sessions inside its own runtime. CC, Codex,
+Cursor, Hermes, and Pi qualify; OpenClaw does not. So OpenClaw's
+mining row is "N/A by design" — but its **discoverability** (the agent
+on the other side of the gateway needs to know skilify exists) IS still
+in scope, surfaced via SKILL.md.
+
+**Discoverability (inject)** is in scope for all six. The injection
+*mechanism* differs:
+- CC/Codex/Cursor/Hermes: a string template inside `src/hooks/<agent>/session-start.ts` with `HIVEMIND_CLI` placeholder substitution
+- Pi: a string template inside `pi/extension-source/hivemind.ts` (`CONTEXT_PREAMBLE` const)
+- OpenClaw: a markdown section inside `openclaw/skills/SKILL.md`
+
+For every feature that runs inside a hook (worker, capture, session-end):
 
 For every feature that runs inside a hook (worker, capture, session-end):
 
 - [ ] Source code lives in `src/hooks/{cc,codex,cursor,hermes}/<file>.ts` AND is wired into all four `*/bundle/` outputs by `esbuild.config.mjs`
-- [ ] Each agent's bundle file shows up in the `Built: 11 CC + 10 Codex + 9 Cursor + 9 Hermes …` line after `npm run build`
+- [ ] Each agent's bundle file shows up in the `Built: 11 CC + 10 Codex + 9 Cursor + 9 Hermes + 1 OpenClaw …` line after `npm run build`
+- [ ] **Pi**: if the feature uses session lifecycle events, mirror the change in `pi/extension-source/hivemind.ts` (it subscribes to `session_start`, `input`, `tool_result`, `message_end`, `session_shutdown`). Pi ships as raw .ts — no bundle step, but the file IS the deployable artifact
+- [ ] **OpenClaw**: if the feature has any agent-facing surface (commands, tools, discoverability text), update `openclaw/skills/SKILL.md` so the host agent learns about it. Mining-style features that need session lifecycle don't apply (openclaw has none) — document the limitation in the SKILL.md instead of pretending parity
 - [ ] **Per-agent CLI dispatch is correct**: `findAgentBin` / `runGate` calls the right binary for each agent
   - Claude Code → `claude -p haiku-3-5` (or model from settings)
   - Codex → `codex exec --model gpt-5-codex-mini --no-history`
   - Cursor → `cursor-agent --print --model auto`
   - Hermes → `hermes -z` (uses OpenRouter under the hood, NOT claude)
-  - **Never hard-code `claude` as the gate** — users without claude installed will silently get 0 results across all four agents
-- [ ] e2e matrix script runs the feature end-to-end **once per agent** with a representative prompt that should trigger the new feature
+  - Pi → no separate gate yet; see the Pi extension's worker section
+  - **Never hard-code `claude` as the gate** — users without claude installed will silently get 0 results across the agents that have a gate
+- [ ] e2e matrix script runs the feature end-to-end **once per agent** with a representative prompt that should trigger the new feature (Pi included if applicable)
 - [ ] Verify the worker / hook actually fires for every agent (check Deeplake table for the inserted row, not just "no error")
 - [ ] If the feature uses async hooks (Stop / SessionEnd), check both: parent process exits before async work completes is a real risk and has bitten us before (`claude -p` does not block on Stop hook)
 
-Reference: `/tmp/skilify-e2e-matrix.mjs` exercised gate CREATE / MERGE / SKIP across all four agents — but did NOT cover `pull` (gap closed by the dedicated pull e2e in Section 2).
+Reference: `/tmp/skilify-e2e-matrix.mjs` exercised gate CREATE / MERGE / SKIP across the four hook-driven agents — but did NOT cover `pull` (gap closed by the dedicated pull e2e in Section 2), and did NOT cover Pi or OpenClaw at all (gap closed by the Pi inject + OpenClaw SKILL.md additions in commit `9d74db6`).
 
 ---
 
@@ -201,8 +230,9 @@ we passed every section EXCEPT:
 - **Section 2** — only the gate write path was e2e-tested; `pull --user`, `pull --users`, `pull --all-users`, `pull --to global`, `pull --dry-run`, `pull --force`, positional name, SQL injection, missing table, invalid identifier all relied on mocked unit tests until we did the dedicated pull e2e (65 assertions across 15 scenarios)
 - **Section 4** — the SessionStart injection was never extended for skilify, even though `auth-login` already had its parallel section. All four agents shipped without any way to discover `hivemind skilify pull --user X` or its variants. Closed by commits `64b25eb` + `e5c5987`.
 - **Section 4 (slash command)** — initial slash command files (`claude-code/commands/skilify.md`, `codex/commands/skilify.md`) used the bare-binary form `hivemind skilify $ARGUMENTS`, which silently fails for marketplace-installed users (no global `hivemind` bin). After deciding the SessionStart inject + CLI cover the ground, both files were removed rather than fixed — keeping the surface honest across the 4 agents (Cursor and Hermes never had slash commands anyway). Reviewer Kaghni surfaced this on PR comment 3196839552.
+- **Section 3 (per-agent matrix scope)** — the matrix in this checklist initially listed only **four** agents (CC / Codex / Cursor / Hermes). Pi has the full session lifecycle (`session_start` … `session_shutdown`) via its extension API and was simply forgotten. OpenClaw has a different model (gateway, not session runner) but its agent-facing SKILL.md was also untouched. Both were closed when the user asked "Abbiamo coperto anche OpenClaw e Pi?" and forced the surface to grow from 4 to 6. The matrix table in Section 3 now explicitly enumerates all six.
 
-Three gaps caught only because the user asked the right cynical
+Four gaps caught only because the user asked the right cynical
 questions ("ha funzionato tutto davvero?" / "will cc codex etc know?" /
-"non ci serve" on the slash command). This file exists so the next PR
-doesn't depend on luck.
+"non ci serve" on the slash command / "Abbiamo coperto anche OpenClaw
+e Pi?"). This file exists so the next PR doesn't depend on luck.
