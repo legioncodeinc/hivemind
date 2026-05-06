@@ -5443,6 +5443,19 @@ Semantic search (embeddings):
   Add --with-embeddings to "hivemind install" (or "hivemind <agent> install")
   to run "embeddings install" automatically after installing the agent(s).
 
+Skill management (mine + share reusable Claude skills across the org):
+  hivemind skilify                         Show scope, team, install, and per-project state.
+  hivemind skilify pull [skill-name]       Sync skills from the org table to local FS.
+                                           Options: --user <email>, --users a,b,c,
+                                           --all-users, --to <project|global>,
+                                           --dry-run, --force.
+  hivemind skilify scope <me|team|org>     Set the sharing scope for newly mined skills.
+  hivemind skilify install <project|global>  Set where new skills are written.
+  hivemind skilify promote <name>          Move a project skill to the global location.
+  hivemind skilify team add <username>     Add a username to the team list.
+  hivemind skilify team remove <username>  Remove a username from the team list.
+  hivemind skilify team list               List current team members.
+
 Account / org / workspace:
   hivemind whoami                          Show current user, org, workspace.
   hivemind logout                          Remove credentials.

@@ -620,13 +620,28 @@ function getInstalledVersion(bundleDir, pluginManifestDir) {
 var log3 = (msg) => log("hermes-session-start", msg);
 var __bundleDir = dirname2(fileURLToPath(import.meta.url));
 var AUTH_CMD = join6(__bundleDir, "commands", "auth-login.js");
+var HIVEMIND_CLI = join6(__bundleDir, "..", "..", "bundle", "cli.js");
 var context = `DEEPLAKE MEMORY: Persistent memory at ~/.deeplake/memory/ shared across sessions, users, and agents.
 
 Structure: index.md (start here) \u2192 summaries/*.md \u2192 sessions/*.jsonl (last resort). Do NOT jump straight to JSONL.
 Search: use \`grep\` (NOT \`rg\`/ripgrep). Example: grep -ri "keyword" ~/.deeplake/memory/
 You also have hivemind MCP tools registered: hivemind_search, hivemind_read, hivemind_index. Prefer these \u2014 one tool call returns ranked hits across all summaries and sessions in a single SQL query.
 IMPORTANT: Only use these bash builtins to interact with ~/.deeplake/memory/: cat, ls, grep, echo, jq, head, tail, sed, awk, wc, sort, find. Do NOT use rg/ripgrep, python, python3, node, curl, or other interpreters.
-Do NOT spawn subagents to read deeplake memory.`;
+Do NOT spawn subagents to read deeplake memory.
+
+SKILLS (skilify) \u2014 mine + share reusable skills across the org:
+- node "HIVEMIND_CLI" skilify                         \u2014 show scope/team/install + per-project state
+- node "HIVEMIND_CLI" skilify pull                    \u2014 sync project skills from the org table
+- node "HIVEMIND_CLI" skilify pull --user <email>     \u2014 only that author's skills
+- node "HIVEMIND_CLI" skilify pull --users a,b,c      \u2014 multiple authors (CSV)
+- node "HIVEMIND_CLI" skilify pull --all-users        \u2014 explicit "no author filter"
+- node "HIVEMIND_CLI" skilify pull --to project|global  \u2014 install location
+- node "HIVEMIND_CLI" skilify pull --dry-run          \u2014 preview only
+- node "HIVEMIND_CLI" skilify pull --force            \u2014 overwrite local (creates .bak)
+- node "HIVEMIND_CLI" skilify pull <skill-name>       \u2014 pull only that skill (combines with --user)
+- node "HIVEMIND_CLI" skilify scope <me|team|org>     \u2014 sharing scope for new skills
+- node "HIVEMIND_CLI" skilify install <project|global>  \u2014 default install location
+- node "HIVEMIND_CLI" skilify team add|remove|list <name>  \u2014 manage team list`;
 async function createPlaceholder(api, table, sessionId, cwd, userName, orgName, workspaceId) {
   const summaryPath = `/summaries/${userName}/${sessionId}.md`;
   const existing = await api.query(`SELECT path FROM "${table}" WHERE path = '${sqlStr(summaryPath)}' LIMIT 1`);
@@ -673,8 +688,9 @@ async function main() {
   if (current)
     versionNotice = `
 Hivemind v${current}`;
-  const additional = creds?.token ? `${context}
-Logged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${creds.workspaceId ?? "default"})${versionNotice}` : `${context}
+  const resolvedContext = context.replace(/HIVEMIND_CLI/g, HIVEMIND_CLI);
+  const additional = creds?.token ? `${resolvedContext}
+Logged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${creds.workspaceId ?? "default"})${versionNotice}` : `${resolvedContext}
 Not logged in to Deeplake. Run: node "${AUTH_CMD}" login${versionNotice}`;
   console.log(JSON.stringify({ context: additional }));
 }
