@@ -12,7 +12,10 @@ export const welcomeRule: Rule = {
   evaluate({ creds }) {
     if (!creds?.token) return null;
     const userName = creds.userName ?? "there";
-    const orgName = creds.orgName ?? creds.orgId;
+    // Fallback chain: orgName → orgId → "your org". The "your org" arm
+    // guards against a malformed credentials.json where both fields are
+    // missing — without it, the rendered body would contain "undefined".
+    const orgName = creds.orgName ?? creds.orgId ?? "your org";
     const workspace = creds.workspaceId ?? "default";
     return {
       id: "welcome",

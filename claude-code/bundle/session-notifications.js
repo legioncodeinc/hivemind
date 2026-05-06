@@ -313,7 +313,7 @@ var welcomeRule = {
     if (!creds?.token)
       return null;
     const userName = creds.userName ?? "there";
-    const orgName = creds.orgName ?? creds.orgId;
+    const orgName = creds.orgName ?? creds.orgId ?? "your org";
     const workspace = creds.workspaceId ?? "default";
     return {
       id: "welcome",
