@@ -9,10 +9,11 @@
  */
 
 import { readStdin } from "../utils/stdin.js";
-import { loadConfig } from "../config.js";
+import { loadConfig, type Config } from "../config.js";
 import { log as _log } from "../utils/debug.js";
 import { bundleDirFromImportMeta, spawnWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
 import { tryAcquireLock, releaseLock } from "./summary-state.js";
+import { forceSessionEndTrigger } from "../skilify/triggers.js";
 
 const log = (msg: string) => _log("session-end", msg);
 
@@ -63,6 +64,14 @@ async function main(): Promise<void> {
     }
     throw e;
   }
+
+  forceSessionEndTrigger({
+    config,
+    cwd,
+    bundleDir: bundleDirFromImportMeta(import.meta.url),
+    agent: "claude_code",
+    sessionId,
+  });
 }
 
 main().catch((e) => { log(`fatal: ${e.message}`); process.exit(0); });

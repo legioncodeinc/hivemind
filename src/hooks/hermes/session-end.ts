@@ -10,6 +10,7 @@ import { log as _log } from "../../utils/debug.js";
 import { loadConfig } from "../../config.js";
 import { tryAcquireLock } from "../summary-state.js";
 import { bundleDirFromImportMeta, spawnHermesWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
+import { forceSessionEndTrigger } from "../../skilify/triggers.js";
 
 const log = (msg: string) => _log("hermes-session-end", msg);
 
@@ -38,6 +39,13 @@ async function main(): Promise<void> {
       cwd: input.cwd ?? process.cwd(),
       bundleDir: bundleDirFromImportMeta(import.meta.url),
       reason: "SessionEnd",
+    });
+    forceSessionEndTrigger({
+      config,
+      cwd: input.cwd ?? process.cwd(),
+      bundleDir: bundleDirFromImportMeta(import.meta.url),
+      agent: "hermes",
+      sessionId,
     });
   } catch (e: any) {
     wikiLog(`SessionEnd: spawn failed: ${e?.message ?? e}`);

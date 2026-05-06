@@ -15,6 +15,7 @@ import { log as _log } from "../../utils/debug.js";
 import { loadConfig } from "../../config.js";
 import { tryAcquireLock } from "../summary-state.js";
 import { bundleDirFromImportMeta, spawnCursorWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
+import { forceSessionEndTrigger } from "../../skilify/triggers.js";
 
 const log = (msg: string) => _log("cursor-session-end", msg);
 
@@ -47,6 +48,13 @@ async function main(): Promise<void> {
       cwd: process.cwd(),
       bundleDir: bundleDirFromImportMeta(import.meta.url),
       reason: "SessionEnd",
+    });
+    forceSessionEndTrigger({
+      config,
+      cwd: process.cwd(),
+      bundleDir: bundleDirFromImportMeta(import.meta.url),
+      agent: "cursor",
+      sessionId,
     });
   } catch (e: any) {
     wikiLog(`SessionEnd: spawn failed: ${e?.message ?? e}`);

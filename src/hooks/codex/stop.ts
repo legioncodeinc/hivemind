@@ -20,6 +20,7 @@ import { DeeplakeApi } from "../../deeplake-api.js";
 import { sqlStr } from "../../utils/sql.js";
 import { log as _log } from "../../utils/debug.js";
 import { bundleDirFromImportMeta, spawnCodexWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
+import { forceSessionEndTrigger } from "../../skilify/triggers.js";
 import { tryAcquireLock, releaseLock } from "../summary-state.js";
 import { buildSessionPath } from "../../utils/session-path.js";
 import { EmbedClient } from "../../embeddings/client.js";
@@ -165,6 +166,18 @@ async function main(): Promise<void> {
     }
     throw e;
   }
+
+  // Skilify: Codex Stop is the end-of-session signal (no separate SessionEnd
+  // hook). Always force-fire — same shape as Claude Code's SessionEnd path.
+  // The forceSessionEndTrigger helper resets the counter internally so the
+  // mid-session Stop counter doesn't double-fire on the same window.
+  forceSessionEndTrigger({
+    config,
+    cwd: input.cwd ?? "",
+    bundleDir: bundleDirFromImportMeta(import.meta.url),
+    agent: "codex",
+    sessionId,
+  });
 }
 
 main().catch((e) => { log(`fatal: ${e.message}`); process.exit(0); });

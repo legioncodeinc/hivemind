@@ -33,6 +33,7 @@ import {
   releaseLock,
 } from "../summary-state.js";
 import { bundleDirFromImportMeta, spawnHermesWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
+import { tryStopCounterTrigger } from "../../skilify/triggers.js";
 import type { Config } from "../../config.js";
 const log = (msg: string) => _log("hermes-capture", msg);
 
@@ -144,6 +145,17 @@ async function main(): Promise<void> {
   log("capture ok → cloud");
 
   maybeTriggerPeriodicSummary(sessionId, cwd, config);
+
+  // Skilify Stop counter — post_llm_call is the assistant-complete event.
+  if (event === "post_llm_call") {
+    tryStopCounterTrigger({
+      config,
+      cwd,
+      bundleDir: bundleDirFromImportMeta(import.meta.url),
+      agent: "hermes",
+      sessionId,
+    });
+  }
 }
 
 function maybeTriggerPeriodicSummary(sessionId: string, cwd: string, config: Config): void {
