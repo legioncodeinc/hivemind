@@ -24,6 +24,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { loadScopeConfig, saveScopeConfig, type Scope, type InstallLocation } from "../skilify/scope-config.js";
 import { runPull, type PullSummary } from "../skilify/pull.js";
+import { runUnpull } from "../skilify/unpull.js";
 import { loadConfig } from "../config.js";
 import { DeeplakeApi } from "../deeplake-api.js";
 
@@ -147,6 +148,15 @@ function usage(): void {
   console.log("      --all-users               all authors (default — equivalent to no filter)");
   console.log("      --dry-run                 show what would be written, don't touch disk");
   console.log("      --force                   overwrite even when local version >= remote");
+  console.log("  hivemind skilify unpull [opts]              remove skills previously installed by pull");
+  console.log("    Options for unpull:");
+  console.log("      --to <project|global>     where to scan (default: global)");
+  console.log("      --user <name>             only entries authored by this user");
+  console.log("      --users <a,b,c>           only entries authored by these users");
+  console.log("      --not-mine                remove all pulled entries except your own");
+  console.log("      --dry-run                 show what would be removed");
+  console.log("      --all                     also remove flat-layout (locally-mined) entries");
+  console.log("      --legacy-cleanup          also remove pre-`--author`-layout legacy `<projectKey>/` dirs");
   console.log("  hivemind skilify status                     show per-project state");
 }
 
@@ -235,6 +245,68 @@ async function pullSkills(args: string[]): Promise<void> {
   console.log(`Result: ${summary.wrote} written, ${summary.dryrun} dry-run, ${summary.skipped} skipped.`);
 }
 
+async function unpullSkills(args: string[]): Promise<void> {
+  const work = [...args];
+  const toRaw = takeFlagValue(work, "--to") ?? "global";
+  const userOne = takeFlagValue(work, "--user");
+  const usersMany = takeFlagValue(work, "--users");
+  const notMine = takeBooleanFlag(work, "--not-mine");
+  const dryRun = takeBooleanFlag(work, "--dry-run");
+  const all = takeBooleanFlag(work, "--all");
+  const legacyCleanup = takeBooleanFlag(work, "--legacy-cleanup");
+
+  if (toRaw !== "project" && toRaw !== "global") {
+    console.error(`Invalid --to '${toRaw}'. Use 'project' or 'global'.`);
+    process.exit(1);
+  }
+
+  let users: string[] = [];
+  if (userOne) users = [userOne];
+  else if (usersMany) users = usersMany.split(",").map(s => s.trim()).filter(Boolean);
+
+  const config = loadConfig();
+  if (!config) {
+    console.error("Not logged in. Run: hivemind login");
+    process.exit(1);
+  }
+
+  const summary = runUnpull({
+    install: toRaw,
+    cwd: toRaw === "project" ? process.cwd() : undefined,
+    users,
+    myUsername: config.userName,
+    notMine,
+    dryRun,
+    all,
+    legacyCleanup,
+  });
+
+  const dest = toRaw === "global" ? join(homedir(), ".claude", "skills") : `${process.cwd()}/.claude/skills`;
+  const filterParts: string[] = [];
+  if (users.length > 0) filterParts.push(`users=${users.join(",")}`);
+  if (notMine) filterParts.push("not-mine");
+  if (all) filterParts.push("all");
+  if (legacyCleanup) filterParts.push("legacy-cleanup");
+  if (dryRun) filterParts.push("dry-run");
+  const filterDesc = filterParts.length ? filterParts.join(" · ") : "(no filter — all pulled)";
+
+  console.log(`Scanning:    ${dest}`);
+  console.log(`Filter:      ${filterDesc}`);
+  console.log(`Scanned ${summary.scanned} dir(s).`);
+  for (const e of summary.entries) {
+    const tag =
+      e.action === "removed" ? "✓ removed" :
+      e.action === "would-remove" ? "→ would remove" :
+      e.action === "manifest-pruned" ? "⚠ pruned (orphan)" :
+      "· kept";
+    const id = e.dirName;
+    const note = e.reason ? `  (${e.reason})` : "";
+    console.log(`  ${tag.padEnd(20)} ${id.padEnd(50)} [${e.kind}]${note}`);
+  }
+  const prunedNote = summary.manifestPruned > 0 ? `, ${summary.manifestPruned} manifest-pruned` : "";
+  console.log(`Result: ${summary.removed} removed, ${summary.wouldRemove} dry-run, ${summary.kept} kept${prunedNote}.`);
+}
+
 export function runSkilifyCommand(args: string[]): void {
   const sub = args[0];
   if (!sub || sub === "status") { showStatus(); return; }
@@ -244,6 +316,13 @@ export function runSkilifyCommand(args: string[]): void {
   if (sub === "pull") {
     pullSkills(args.slice(1)).catch(e => {
       console.error(`pull error: ${e?.message ?? e}`);
+      process.exit(1);
+    });
+    return;
+  }
+  if (sub === "unpull") {
+    unpullSkills(args.slice(1)).catch(e => {
+      console.error(`unpull error: ${e?.message ?? e}`);
       process.exit(1);
     });
     return;
