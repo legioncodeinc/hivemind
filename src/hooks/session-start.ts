@@ -67,6 +67,10 @@ Skill management (mine + share reusable Claude skills across the org):
 - hivemind skilify pull --dry-run                   — preview without touching disk
 - hivemind skilify pull --force                     — overwrite local files even if up-to-date (creates .bak)
 - hivemind skilify pull <skill-name>                — pull only that one skill (combines with --user)
+- hivemind skilify unpull                           — remove every skill previously installed by pull
+- hivemind skilify unpull --user <email>            — remove only that author's pulls
+- hivemind skilify unpull --not-mine                — remove all pulls except your own
+- hivemind skilify unpull --dry-run                 — preview without touching disk
 - hivemind skilify scope <me|team|org>              — sharing scope for newly mined skills
 - hivemind skilify install <project|global>         — default install location for new skills
 - hivemind skilify promote <skill-name>             — move a project skill to the global location

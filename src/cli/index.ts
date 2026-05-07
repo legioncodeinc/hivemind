@@ -69,6 +69,11 @@ Skill management (mine + share reusable Claude skills across the org):
                                            Options: --user <email>, --users a,b,c,
                                            --all-users, --to <project|global>,
                                            --dry-run, --force.
+  hivemind skilify unpull                  Remove skills previously installed by pull.
+                                           Options: --user, --users, --not-mine,
+                                           --to <project|global>, --dry-run,
+                                           --all (also locally-mined),
+                                           --legacy-cleanup (pre-suffix-author dirs).
   hivemind skilify scope <me|team|org>     Set the sharing scope for newly mined skills.
   hivemind skilify install <project|global>  Set where new skills are written.
   hivemind skilify promote <name>          Move a project skill to the global location.
