@@ -16,14 +16,24 @@ import {
 
 let projectRoot: string;
 let projectSkillsRoot: string;
+let fakeHome: string;
+let originalHome: string | undefined;
 
 beforeEach(() => {
   projectRoot = mkdtempSync(join(tmpdir(), "skilify-pull-"));
   projectSkillsRoot = join(projectRoot, ".claude", "skills");
+  // Isolate HOME so the manifest written by recordPull lands in a temp
+  // directory instead of polluting the developer's real ~/.deeplake state.
+  fakeHome = mkdtempSync(join(tmpdir(), "skilify-pull-home-"));
+  originalHome = process.env.HOME;
+  process.env.HOME = fakeHome;
 });
 
 afterEach(() => {
   try { rmSync(projectRoot, { recursive: true, force: true }); } catch { /* nothing */ }
+  try { rmSync(fakeHome, { recursive: true, force: true }); } catch { /* nothing */ }
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
 });
 
 // ── buildPullSql ────────────────────────────────────────────────────────────
@@ -301,16 +311,17 @@ describe("runPull", () => {
     ...over,
   });
 
-  it("writes a new SKILL.md to <root>/<project_key>/<name>/ when local missing", async () => {
-    const { fn } = makeMockQuery([sampleRow()]);  // sampleRow uses project_key: "pk"
+  it("writes a new SKILL.md to <root>/<name>--<author>/ when local missing", async () => {
+    const { fn } = makeMockQuery([sampleRow()]);  // sampleRow uses author: "alice"
     const summary = await runPull({
       query: fn, tableName: "skills", install: "project", cwd: projectRoot,
       users: [], dryRun: false, force: false,
     });
     expect(summary.wrote).toBe(1);
     expect(summary.skipped).toBe(0);
-    // Path now namespaced by project_key to prevent cross-project collisions
-    const path = join(projectSkillsRoot, "pk", "vox-cli", "SKILL.md");
+    // Flat layout suffixed by author keeps cross-author entries disjoint and
+    // remains visible to Claude Code's single-depth skill loader.
+    const path = join(projectSkillsRoot, "vox-cli--alice", "SKILL.md");
     expect(existsSync(path)).toBe(true);
     const text = readFileSync(path, "utf-8");
     expect(text).toContain("version: 2");
@@ -318,8 +329,7 @@ describe("runPull", () => {
   });
 
   it("skips when local version >= remote", async () => {
-    // Pre-create a local v3 at the new project-keyed path
-    const dir = join(projectSkillsRoot, "pk", "vox-cli");
+    const dir = join(projectSkillsRoot, "vox-cli--alice");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "SKILL.md"),
       `---\nname: vox-cli\ndescription: "old"\nsource_sessions:\nversion: 3\ncreated_by_agent: cc\ncreated_at: t\nupdated_at: t\n---\n\nlocal body`);
@@ -334,7 +344,7 @@ describe("runPull", () => {
   });
 
   it("--force overrides skip and backs up the existing file", async () => {
-    const dir = join(projectSkillsRoot, "pk", "vox-cli");
+    const dir = join(projectSkillsRoot, "vox-cli--alice");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "SKILL.md"),
       `---\nname: vox-cli\ndescription: "old"\nsource_sessions:\nversion: 5\ncreated_by_agent: cc\ncreated_at: t\nupdated_at: t\n---\n\nlocal v5 body`);
@@ -357,7 +367,7 @@ describe("runPull", () => {
     });
     expect(summary.dryrun).toBe(1);
     expect(summary.wrote).toBe(0);
-    expect(existsSync(join(projectSkillsRoot, "pk", "vox-cli"))).toBe(false);
+    expect(existsSync(join(projectSkillsRoot, "vox-cli--alice"))).toBe(false);
   });
 
   it("dedups rows by (project_key, name) keeping latest version per project", async () => {
@@ -373,7 +383,7 @@ describe("runPull", () => {
     });
     expect(summary.scanned).toBe(2);
     expect(summary.wrote).toBe(2);
-    const aText = readFileSync(join(projectSkillsRoot, "pk", "a", "SKILL.md"), "utf-8");
+    const aText = readFileSync(join(projectSkillsRoot, "a--alice", "SKILL.md"), "utf-8");
     expect(aText).toContain("version: 3");
   });
 
@@ -407,18 +417,18 @@ describe("runPull", () => {
     })).rejects.toThrow(/Authentication failed/);
   });
 
-  it("writes under <root>/<project_key>/<name> so cross-project skills don't collide", async () => {
+  it("keeps cross-author skills with the same name disjoint via --<author> suffix", async () => {
     const rows = [
-      sampleRow({ name: "deploy", project_key: "alpha-key" }),
-      sampleRow({ name: "deploy", project_key: "beta-key" }),
+      sampleRow({ name: "deploy", author: "alice", project_key: "alpha-key" }),
+      sampleRow({ name: "deploy", author: "bob",   project_key: "beta-key" }),
     ];
     const { fn } = makeMockQuery(rows);
     await runPull({
       query: fn, tableName: "skills", install: "project", cwd: projectRoot,
       users: [], dryRun: false, force: false,
     });
-    expect(existsSync(join(projectSkillsRoot, "alpha-key", "deploy", "SKILL.md"))).toBe(true);
-    expect(existsSync(join(projectSkillsRoot, "beta-key", "deploy", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(projectSkillsRoot, "deploy--alice", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(projectSkillsRoot, "deploy--bob", "SKILL.md"))).toBe(true);
   });
 
   it("skips rows with invalid skill names instead of writing dangerous paths", async () => {
@@ -434,7 +444,7 @@ describe("runPull", () => {
     // valid-skill written, invalid one skipped (not thrown — graceful)
     expect(summary.wrote).toBe(1);
     expect(summary.skipped).toBe(1);
-    expect(existsSync(join(projectSkillsRoot, "p", "valid-skill", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(projectSkillsRoot, "valid-skill--alice", "SKILL.md"))).toBe(true);
     // No dangerous paths created
     expect(existsSync(join(projectSkillsRoot, "..", "escape"))).toBe(false);
   });

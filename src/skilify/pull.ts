@@ -22,6 +22,21 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { assertValidSkillName, parseFrontmatter, type SkillFrontmatter } from "./skill-writer.js";
 import type { InstallLocation } from "./scope-config.js";
+import { recordPull } from "./manifest.js";
+
+/**
+ * Tighter-than-skill-name validator for the author segment that becomes a
+ * directory name (`<root>/<name>--<author>/`). Same intent as
+ * `assertValidSkillName`: reject anything that could escape the install
+ * root or break path-handling tools.
+ */
+export function assertValidAuthor(author: string): void {
+  if (!author) throw new Error("author is empty");
+  if (author.length > 64) throw new Error(`author too long (${author.length}): ${author.slice(0, 32)}…`);
+  if (!/^[A-Za-z0-9_.\-@]+$/.test(author)) {
+    throw new Error(`author contains invalid characters: ${author}`);
+  }
+}
 
 export type QueryFn = (sql: string) => Promise<Record<string, unknown>[]>;
 
@@ -274,10 +289,34 @@ export async function runPull(opts: PullOptions): Promise<PullSummary> {
       summary.skipped++;
       continue;
     }
-    const projectKey = String(row.project_key ?? "");
-    // Project subdirectory keeps cross-project skills with the same name
-    // disjoint. Skip it only when project_key is empty (legacy rows).
-    const skillDir = projectKey ? join(root, projectKey, name) : join(root, name);
+    const author = String(row.author ?? "");
+    // Pulled skills land at `<root>/<name>--<author>/SKILL.md` so:
+    //   1. Claude Code's skill loader (single-depth scan) sees them directly
+    //   2. Cross-author name collisions stay disjoint on disk
+    //   3. The directory name self-documents authorship at a glance
+    // Locally-mined skills stay at `<root>/<name>/` (flat, no suffix), so
+    // a self-mined `deploy` and a pulled `deploy--alice` coexist.
+    // Same-author / same-name across two projects is the one regression vs
+    // the legacy `<projectKey>/<name>/` layout: the more recently pulled
+    // row clobbers the earlier one (with `.bak` of the prior SKILL.md).
+    // Acceptable trade-off — the row stays in Deeplake and is recoverable
+    // via re-pull from the project that authored it.
+    let dirName = name;
+    if (author) {
+      try {
+        assertValidAuthor(author);
+        dirName = `${name}--${author}`;
+      } catch (e: any) {
+        summary.entries.push({
+          name, remoteVersion: Number(row.version ?? 1), localVersion: null,
+          action: "skipped", destination: `(invalid author '${author}' — skipped)`,
+          author, sourceAgent: String(row.source_agent ?? ""),
+        });
+        summary.skipped++;
+        continue;
+      }
+    }
+    const skillDir = join(root, dirName);
     const skillFile = join(skillDir, "SKILL.md");
     const remoteVersion = Number(row.version ?? 1);
     const localVersion = readLocalVersion(skillFile);
@@ -295,6 +334,23 @@ export async function runPull(opts: PullOptions): Promise<PullSummary> {
         try { renameSync(skillFile, `${skillFile}.bak`); } catch { /* best effort */ }
       }
       writeFileSync(skillFile, renderSkillFile(row));
+      // Record in manifest so `unpull` can identify this entry as
+      // pull-managed without relying on the `--<author>` dirname heuristic.
+      try {
+        recordPull({
+          dirName,
+          name,
+          author,
+          projectKey: String(row.project_key ?? ""),
+          remoteVersion,
+          install: opts.install,
+          installRoot: root,
+          pulledAt: new Date().toISOString(),
+        });
+      } catch (e: any) {
+        // Manifest write failure is non-fatal; the skill is still on disk
+        // and the user can clean it up manually if they need to.
+      }
     }
 
     summary.entries.push({
