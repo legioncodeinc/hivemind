@@ -1,5 +1,5 @@
 {
-  "name": "@deeplake/hivemind",
+  "name": "hivemind",
   "version": "0.7.9",
   "type": "module",
   "description": "Hivemind — cloud-backed persistent shared memory for AI agents, powered by DeepLake",
