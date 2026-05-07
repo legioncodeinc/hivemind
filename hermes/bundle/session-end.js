@@ -59,6 +59,7 @@ function loadConfig() {
     apiUrl: process.env.HIVEMIND_API_URL ?? creds?.apiUrl ?? "https://api.deeplake.ai",
     tableName: process.env.HIVEMIND_TABLE ?? "memory",
     sessionsTableName: process.env.HIVEMIND_SESSIONS_TABLE ?? "sessions",
+    skillsTableName: process.env.HIVEMIND_SKILLS_TABLE ?? "skills",
     memoryPath: process.env.HIVEMIND_MEMORY_PATH ?? join2(home, ".deeplake", "memory")
   };
 }
@@ -228,6 +229,291 @@ function bundleDirFromImportMeta(importMetaUrl) {
   return dirname(fileURLToPath(importMetaUrl));
 }
 
+// dist/src/skilify/spawn-skilify-worker.js
+import { spawn as spawn2 } from "node:child_process";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+import { dirname as dirname2, join as join7 } from "node:path";
+import { writeFileSync as writeFileSync3, mkdirSync as mkdirSync4, appendFileSync as appendFileSync3, chmodSync } from "node:fs";
+import { homedir as homedir6, tmpdir as tmpdir2 } from "node:os";
+
+// dist/src/skilify/gate-runner.js
+import { execFileSync } from "node:child_process";
+import { existsSync as existsSync3 } from "node:fs";
+import { homedir as homedir5 } from "node:os";
+import { join as join6 } from "node:path";
+function findAgentBin(agent) {
+  const which = (name) => {
+    try {
+      const out = execFileSync("which", [name], {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"]
+      });
+      return out.trim() || null;
+    } catch {
+      return null;
+    }
+  };
+  switch (agent) {
+    case "claude_code":
+      return which("claude") ?? join6(homedir5(), ".claude", "local", "claude");
+    case "codex":
+      return which("codex") ?? "/usr/local/bin/codex";
+    case "cursor":
+      return which("cursor-agent") ?? "/usr/local/bin/cursor-agent";
+    case "hermes":
+      return which("hermes") ?? join6(homedir5(), ".local", "bin", "hermes");
+    case "pi":
+      return which("pi") ?? join6(homedir5(), ".local", "bin", "pi");
+  }
+}
+
+// dist/src/skilify/spawn-skilify-worker.js
+var HOME2 = homedir6();
+var SKILIFY_LOG = join7(HOME2, ".claude", "hooks", "skilify.log");
+function skilifyLog(msg) {
+  try {
+    mkdirSync4(dirname2(SKILIFY_LOG), { recursive: true });
+    appendFileSync3(SKILIFY_LOG, `[${utcTimestamp()}] ${msg}
+`);
+  } catch {
+  }
+}
+function spawnSkilifyWorker(opts) {
+  const { config, cwd, projectKey, project, bundleDir, agent, scopeConfig, currentSessionId, reason } = opts;
+  const tmpDir = join7(tmpdir2(), `deeplake-skilify-${projectKey}-${Date.now()}`);
+  mkdirSync4(tmpDir, { recursive: true, mode: 448 });
+  const gateBin = findAgentBin(agent);
+  const configFile = join7(tmpDir, "config.json");
+  writeFileSync3(configFile, JSON.stringify({
+    apiUrl: config.apiUrl,
+    token: config.token,
+    orgId: config.orgId,
+    workspaceId: config.workspaceId,
+    sessionsTable: config.sessionsTableName,
+    skillsTable: config.skillsTableName,
+    userName: config.userName,
+    cwd,
+    projectKey,
+    project,
+    agent,
+    scope: scopeConfig.scope,
+    team: scopeConfig.team,
+    install: scopeConfig.install,
+    tmpDir,
+    gateBin,
+    cursorModel: process.env.HIVEMIND_CURSOR_MODEL,
+    hermesProvider: process.env.HIVEMIND_HERMES_PROVIDER,
+    hermesModel: process.env.HIVEMIND_HERMES_MODEL,
+    piProvider: process.env.HIVEMIND_PI_PROVIDER,
+    piModel: process.env.HIVEMIND_PI_MODEL,
+    skilifyLog: SKILIFY_LOG,
+    currentSessionId
+  }), { mode: 384 });
+  try {
+    chmodSync(configFile, 384);
+  } catch {
+  }
+  skilifyLog(`${reason}: spawning skilify worker for project=${project} key=${projectKey}`);
+  const workerPath = join7(bundleDir, "skilify-worker.js");
+  spawn2("nohup", ["node", workerPath, configFile], {
+    detached: true,
+    stdio: ["ignore", "ignore", "ignore"]
+  }).unref();
+  skilifyLog(`${reason}: spawned skilify worker for ${projectKey}`);
+}
+
+// dist/src/skilify/state.js
+import { readFileSync as readFileSync3, writeFileSync as writeFileSync4, writeSync as writeSync2, mkdirSync as mkdirSync5, renameSync as renameSync2, existsSync as existsSync4, unlinkSync as unlinkSync2, openSync as openSync2, closeSync as closeSync2 } from "node:fs";
+import { execSync as execSync2 } from "node:child_process";
+import { homedir as homedir7 } from "node:os";
+import { createHash } from "node:crypto";
+import { join as join8, basename } from "node:path";
+var dlog2 = (msg) => log("skilify-state", msg);
+var STATE_DIR2 = join8(homedir7(), ".deeplake", "state", "skilify");
+var YIELD_BUF2 = new Int32Array(new SharedArrayBuffer(4));
+var TRIGGER_THRESHOLD = (() => {
+  const n = Number(process.env.HIVEMIND_SKILIFY_EVERY_N_TURNS ?? "");
+  return Number.isInteger(n) && n > 0 ? n : 20;
+})();
+function statePath(projectKey) {
+  return join8(STATE_DIR2, `${projectKey}.json`);
+}
+function lockPath2(projectKey) {
+  return join8(STATE_DIR2, `${projectKey}.lock`);
+}
+function deriveProjectKey(cwd) {
+  const project = basename(cwd) || "unknown";
+  let signature = null;
+  try {
+    signature = execSync2("git config --get remote.origin.url", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim() || null;
+  } catch {
+  }
+  const input = signature ?? cwd;
+  const key = createHash("sha1").update(input).digest("hex").slice(0, 16);
+  return { key, project };
+}
+function readState(projectKey) {
+  const p = statePath(projectKey);
+  if (!existsSync4(p))
+    return null;
+  try {
+    return JSON.parse(readFileSync3(p, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function writeState(projectKey, state) {
+  mkdirSync5(STATE_DIR2, { recursive: true });
+  const p = statePath(projectKey);
+  const tmp = `${p}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync4(tmp, JSON.stringify(state, null, 2));
+  renameSync2(tmp, p);
+}
+function withRmwLock(projectKey, fn) {
+  mkdirSync5(STATE_DIR2, { recursive: true });
+  const rmw = lockPath2(projectKey) + ".rmw";
+  const deadline = Date.now() + 2e3;
+  let fd = null;
+  while (fd === null) {
+    try {
+      fd = openSync2(rmw, "wx");
+    } catch (e) {
+      if (e.code !== "EEXIST")
+        throw e;
+      if (Date.now() > deadline) {
+        dlog2(`rmw lock deadline exceeded for ${projectKey}, reclaiming stale lock`);
+        try {
+          unlinkSync2(rmw);
+        } catch (unlinkErr) {
+          dlog2(`stale rmw lock unlink failed for ${projectKey}: ${unlinkErr.message}`);
+        }
+        continue;
+      }
+      Atomics.wait(YIELD_BUF2, 0, 0, 10);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    closeSync2(fd);
+    try {
+      unlinkSync2(rmw);
+    } catch (unlinkErr) {
+      dlog2(`rmw lock cleanup failed for ${projectKey}: ${unlinkErr.message}`);
+    }
+  }
+}
+function resetCounter(projectKey) {
+  withRmwLock(projectKey, () => {
+    const s = readState(projectKey);
+    if (!s)
+      return;
+    writeState(projectKey, { ...s, counter: 0, updatedAt: Date.now() });
+  });
+}
+function tryAcquireWorkerLock(projectKey, maxAgeMs = 10 * 60 * 1e3) {
+  mkdirSync5(STATE_DIR2, { recursive: true });
+  const p = lockPath2(projectKey);
+  if (existsSync4(p)) {
+    try {
+      const ageMs = Date.now() - parseInt(readFileSync3(p, "utf-8"), 10);
+      if (Number.isFinite(ageMs) && ageMs < maxAgeMs)
+        return false;
+    } catch (readErr) {
+      dlog2(`worker lock unreadable for ${projectKey}, treating as stale: ${readErr.message}`);
+    }
+    try {
+      unlinkSync2(p);
+    } catch (unlinkErr) {
+      dlog2(`could not unlink stale worker lock for ${projectKey}: ${unlinkErr.message}`);
+      return false;
+    }
+  }
+  try {
+    const fd = openSync2(p, "wx");
+    try {
+      writeSync2(fd, String(Date.now()));
+    } finally {
+      closeSync2(fd);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+function releaseWorkerLock(projectKey) {
+  const p = lockPath2(projectKey);
+  try {
+    unlinkSync2(p);
+  } catch {
+  }
+}
+
+// dist/src/skilify/scope-config.js
+import { existsSync as existsSync5, mkdirSync as mkdirSync6, readFileSync as readFileSync4, writeFileSync as writeFileSync5 } from "node:fs";
+import { homedir as homedir8 } from "node:os";
+import { join as join9 } from "node:path";
+var STATE_DIR3 = join9(homedir8(), ".deeplake", "state", "skilify");
+var CONFIG_PATH = join9(STATE_DIR3, "config.json");
+var DEFAULT = { scope: "me", team: [], install: "project" };
+function loadScopeConfig() {
+  if (!existsSync5(CONFIG_PATH))
+    return DEFAULT;
+  try {
+    const raw = JSON.parse(readFileSync4(CONFIG_PATH, "utf-8"));
+    const scope = raw.scope === "team" || raw.scope === "org" ? raw.scope : "me";
+    const team = Array.isArray(raw.team) ? raw.team.filter((s) => typeof s === "string") : [];
+    const install = raw.install === "global" ? "global" : "project";
+    return { scope, team, install };
+  } catch {
+    return DEFAULT;
+  }
+}
+
+// dist/src/skilify/triggers.js
+function forceSessionEndTrigger(opts) {
+  if (process.env.HIVEMIND_SKILIFY_WORKER === "1")
+    return;
+  if (!opts.cwd)
+    return;
+  try {
+    const { key: projectKey, project } = deriveProjectKey(opts.cwd);
+    if (!tryAcquireWorkerLock(projectKey)) {
+      skilifyLog(`SessionEnd: skilify worker already running for ${projectKey}, skipping`);
+      return;
+    }
+    if (readState(projectKey)) {
+      resetCounter(projectKey);
+    }
+    skilifyLog(`SessionEnd: spawning skilify worker for project=${project} agent=${opts.agent}`);
+    try {
+      spawnSkilifyWorker({
+        config: opts.config,
+        cwd: opts.cwd,
+        projectKey,
+        project,
+        bundleDir: opts.bundleDir,
+        agent: opts.agent,
+        scopeConfig: loadScopeConfig(),
+        currentSessionId: opts.sessionId,
+        reason: "SessionEnd"
+      });
+    } catch (e) {
+      skilifyLog(`SessionEnd spawn failed: ${e?.message ?? e}`);
+      try {
+        releaseWorkerLock(projectKey);
+      } catch {
+      }
+    }
+  } catch (e) {
+    skilifyLog(`SessionEnd trigger error: ${e?.message ?? e}`);
+  }
+}
+
 // dist/src/hooks/hermes/session-end.js
 var log2 = (msg) => log("hermes-session-end", msg);
 async function main() {
@@ -242,21 +528,33 @@ async function main() {
     wikiLog(`SessionEnd: periodic worker already running for ${sessionId}, skipping final`);
     return;
   }
+  const config = loadConfig();
+  if (!config) {
+    wikiLog(`SessionEnd: no config, skipping summary`);
+    return;
+  }
+  const cwd = input.cwd ?? process.cwd();
   try {
-    const config = loadConfig();
-    if (!config) {
-      wikiLog(`SessionEnd: no config, skipping summary`);
-      return;
-    }
     spawnHermesWikiWorker({
       config,
       sessionId,
-      cwd: input.cwd ?? process.cwd(),
+      cwd,
       bundleDir: bundleDirFromImportMeta(import.meta.url),
       reason: "SessionEnd"
     });
   } catch (e) {
-    wikiLog(`SessionEnd: spawn failed: ${e?.message ?? e}`);
+    wikiLog(`SessionEnd: wiki spawn failed: ${e?.message ?? e}`);
+  }
+  try {
+    forceSessionEndTrigger({
+      config,
+      cwd,
+      bundleDir: bundleDirFromImportMeta(import.meta.url),
+      agent: "hermes",
+      sessionId
+    });
+  } catch (e) {
+    wikiLog(`SessionEnd: skilify trigger failed: ${e?.message ?? e}`);
   }
 }
 main().catch((e) => {

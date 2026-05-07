@@ -268,6 +268,94 @@ describe("session files are read-only", () => {
   });
 });
 
+describe("ensureSkillsTable schema (skilify provenance table)", () => {
+  it("creates skills table with all expected columns when missing", async () => {
+    const { DeeplakeApi } = await import("../../src/deeplake-api.js");
+    const api = new DeeplakeApi("token", "https://api.test", "org", "ws", "memory");
+    const queryCalls: string[] = [];
+    api.query = vi.fn().mockImplementation(async (sql: string) => {
+      queryCalls.push(sql);
+      return [];
+    }) as typeof api.query;
+    api.listTables = vi.fn().mockResolvedValue([]) as typeof api.listTables;
+
+    await api.ensureSkillsTable("skills");
+
+    const createSql = queryCalls.find(s => s.includes("CREATE TABLE") && s.includes('"skills"'));
+    expect(createSql).toBeDefined();
+    // All required provenance columns
+    for (const col of [
+      "id ", "name ", "project ", "project_key ", "local_path ", "install ",
+      "source_sessions ", "source_agent ", "scope ", "author ",
+      "description ", "trigger_text ", "body ", "version ",
+      "created_at ", "updated_at ",
+    ]) {
+      expect(createSql, `missing column ${col}`).toContain(col);
+    }
+    // Append-only design: no message_embedding (sessions table specific)
+    expect(createSql).not.toContain("message_embedding");
+    // The (project_key, name) index is created via ensureLookupIndex, which
+    // skips the CREATE INDEX call when a fresh local marker exists from a
+    // previous test/run. We verify the CREATE TABLE itself instead.
+  });
+
+  it("rejects an invalid skills table name (HIVEMIND_SKILLS_TABLE config injection guard)", async () => {
+    const { DeeplakeApi } = await import("../../src/deeplake-api.js");
+    const api = new DeeplakeApi("token", "https://api.test", "org", "ws", "memory");
+    api.query = vi.fn() as typeof api.query;
+    api.listTables = vi.fn().mockResolvedValue([]) as typeof api.listTables;
+
+    // Stray quote — would otherwise interpolate into CREATE TABLE and corrupt the SQL
+    await expect(api.ensureSkillsTable(`skills"; DROP TABLE memory; --`)).rejects.toThrow(/Invalid SQL identifier/);
+    // Hyphens / spaces / dots also rejected (sqlIdent uses [A-Za-z_][A-Za-z0-9_]*)
+    await expect(api.ensureSkillsTable("skills-test")).rejects.toThrow(/Invalid SQL identifier/);
+    await expect(api.ensureSkillsTable("skills test")).rejects.toThrow(/Invalid SQL identifier/);
+    // No query should have been issued for any of these
+    expect(api.query).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid sessions table name (HIVEMIND_SESSIONS_TABLE config injection guard)", async () => {
+    const { DeeplakeApi } = await import("../../src/deeplake-api.js");
+    const api = new DeeplakeApi("token", "https://api.test", "org", "ws", "memory");
+    api.query = vi.fn() as typeof api.query;
+    api.listTables = vi.fn().mockResolvedValue([]) as typeof api.listTables;
+
+    await expect(api.ensureSessionsTable(`sessions"; DROP TABLE memory; --`)).rejects.toThrow(/Invalid SQL identifier/);
+    await expect(api.ensureSessionsTable("sessions-test")).rejects.toThrow(/Invalid SQL identifier/);
+    await expect(api.ensureSessionsTable("sessions test")).rejects.toThrow(/Invalid SQL identifier/);
+    expect(api.query).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid memory table name (HIVEMIND_TABLE config injection guard)", async () => {
+    const { DeeplakeApi } = await import("../../src/deeplake-api.js");
+    const api = new DeeplakeApi("token", "https://api.test", "org", "ws", `memory"; DROP TABLE x; --`);
+    api.query = vi.fn() as typeof api.query;
+    api.listTables = vi.fn().mockResolvedValue([]) as typeof api.listTables;
+
+    // Default ensureTable() uses constructor's tableName — should reject
+    await expect(api.ensureTable()).rejects.toThrow(/Invalid SQL identifier/);
+    // Explicit override also rejected
+    await expect(api.ensureTable("memory-test")).rejects.toThrow(/Invalid SQL identifier/);
+    await expect(api.ensureTable("memory test")).rejects.toThrow(/Invalid SQL identifier/);
+    expect(api.query).not.toHaveBeenCalled();
+  });
+
+  it("skips CREATE TABLE when the table already exists", async () => {
+    const { DeeplakeApi } = await import("../../src/deeplake-api.js");
+    const api = new DeeplakeApi("token", "https://api.test", "org", "ws", "memory");
+    const queryCalls: string[] = [];
+    api.query = vi.fn().mockImplementation(async (sql: string) => {
+      queryCalls.push(sql);
+      return [];
+    }) as typeof api.query;
+    // listTables claims skills already exists
+    api.listTables = vi.fn().mockResolvedValue(["skills"]) as typeof api.listTables;
+
+    await api.ensureSkillsTable("skills");
+    expect(queryCalls.find(s => s.includes("CREATE TABLE"))).toBeUndefined();
+  });
+});
+
 describe("ensureSessionsTable schema", () => {
   it("creates table with JSONB message column", async () => {
     const client = {

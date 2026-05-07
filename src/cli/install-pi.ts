@@ -39,6 +39,10 @@ const VERSION_DIR = join(PI_AGENT_DIR, ".hivemind");
 // install it as a separate file alongside.
 const WIKI_WORKER_DIR = join(PI_AGENT_DIR, "hivemind");
 const WIKI_WORKER_PATH = join(WIKI_WORKER_DIR, "wiki-worker.js");
+// Skilify worker bundle, spawned by pi extension on session_shutdown to mine
+// reusable Claude skills from the just-finished session. Sibling of
+// wiki-worker.js so a single ensureDir + cleanup covers both.
+const SKILIFY_WORKER_PATH = join(WIKI_WORKER_DIR, "skilify-worker.js");
 
 const HIVEMIND_BLOCK_START = "<!-- BEGIN hivemind-memory -->";
 const HIVEMIND_BLOCK_END = "<!-- END hivemind-memory -->";
@@ -122,6 +126,15 @@ export function installPi(): void {
     copyFileSync(srcWorker, WIKI_WORKER_PATH);
   }
 
+  // 4. Skilify-worker bundle (spawned by extension on session_shutdown to
+  //    mine reusable skills from the finished session). Same dir as
+  //    wiki-worker, same shared ensureDir.
+  const srcSkilifyWorker = join(pkgRoot(), "pi", "bundle", "skilify-worker.js");
+  if (existsSync(srcSkilifyWorker)) {
+    ensureDir(WIKI_WORKER_DIR);
+    copyFileSync(srcSkilifyWorker, SKILIFY_WORKER_PATH);
+  }
+
   ensureDir(VERSION_DIR);
   writeVersionStamp(VERSION_DIR, getVersion());
 
@@ -129,6 +142,9 @@ export function installPi(): void {
   log(`  pi             extension installed -> ${EXTENSION_PATH}`);
   if (existsSync(WIKI_WORKER_PATH)) {
     log(`  pi             wiki-worker installed -> ${WIKI_WORKER_PATH}`);
+  }
+  if (existsSync(SKILIFY_WORKER_PATH)) {
+    log(`  pi             skilify-worker installed -> ${SKILIFY_WORKER_PATH}`);
   }
 }
 

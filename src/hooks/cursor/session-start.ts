@@ -31,14 +31,40 @@ import { autoUpdate } from "../shared/autoupdate.js";
 const log = (msg: string) => _log("cursor-session-start", msg);
 
 const __bundleDir = dirname(fileURLToPath(import.meta.url));
-const AUTH_CMD = join(__bundleDir, "commands", "auth-login.js");
+// Hivemind requires its npm bin (`hivemind` from @deeplake/hivemind) on PATH.
+// Inject text uses bare `hivemind <sub>` form — no per-agent path resolution needed.
 
 const context = `DEEPLAKE MEMORY: Persistent memory at ~/.deeplake/memory/ shared across sessions, users, and agents.
 
 Structure: index.md (start here) → summaries/*.md → sessions/*.jsonl (last resort). Do NOT jump straight to JSONL.
 Search: use \`grep\` (NOT \`rg\`/ripgrep). Example: grep -ri "keyword" ~/.deeplake/memory/
 IMPORTANT: Only use these bash builtins to interact with ~/.deeplake/memory/: cat, ls, grep, echo, jq, head, tail, sed, awk, wc, sort, find. Do NOT use rg/ripgrep, python, python3, node, curl, or other interpreters — they may not be installed and the memory filesystem only supports the listed builtins.
-Do NOT spawn subagents to read deeplake memory.`;
+Do NOT spawn subagents to read deeplake memory.
+
+Organization management — each argument is SEPARATE (do NOT quote subcommands together):
+- hivemind login                              — SSO login
+- hivemind whoami                             — show current user/org
+- hivemind org list                           — list organizations
+- hivemind org switch <name-or-id>            — switch organization
+- hivemind workspaces                         — list workspaces
+- hivemind workspace <id>                     — switch workspace
+- hivemind invite <email> <ADMIN|WRITE|READ>  — invite member (ALWAYS ask user which role before inviting)
+- hivemind members                            — list members
+- hivemind remove <user-id>                   — remove member
+
+SKILLS (skilify) — mine + share reusable skills across the org:
+- hivemind skilify                         — show scope/team/install + per-project state
+- hivemind skilify pull                    — sync project skills from the org table
+- hivemind skilify pull --user <email>     — only that author's skills
+- hivemind skilify pull --users a,b,c      — multiple authors (CSV)
+- hivemind skilify pull --all-users        — explicit "no author filter"
+- hivemind skilify pull --to project|global  — install location
+- hivemind skilify pull --dry-run          — preview only
+- hivemind skilify pull --force            — overwrite local (creates .bak)
+- hivemind skilify pull <skill-name>       — pull only that skill (combines with --user)
+- hivemind skilify scope <me|team|org>     — sharing scope for new skills
+- hivemind skilify install <project|global>  — default install location
+- hivemind skilify team add|remove|list <name>  — manage team list`;
 
 interface CursorSessionStartInput {
   session_id?: string;
@@ -142,9 +168,10 @@ async function main(): Promise<void> {
   const current = getInstalledVersion(__bundleDir, ".claude-plugin");
   if (current) versionNotice = `\nHivemind v${current}`;
 
+  // No placeholder substitution — inject already uses bare `hivemind <sub>` form.
   const additionalContext = creds?.token
     ? `${context}\nLogged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${creds.workspaceId ?? "default"})${versionNotice}`
-    : `${context}\nNot logged in to Deeplake. Run: node "${AUTH_CMD}" login${versionNotice}`;
+    : `${context}\nNot logged in to Deeplake. Run: hivemind login${versionNotice}`;
 
   console.log(JSON.stringify({ additional_context: additionalContext }));
 }

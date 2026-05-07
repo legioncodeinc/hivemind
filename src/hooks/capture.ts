@@ -21,6 +21,7 @@ import {
   releaseLock,
 } from "./summary-state.js";
 import { bundleDirFromImportMeta, spawnWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
+import { tryStopCounterTrigger } from "../skilify/triggers.js";
 import { EmbedClient } from "../embeddings/client.js";
 import { embeddingSqlLiteral } from "../embeddings/sql.js";
 import { embeddingsDisabled } from "../embeddings/disable.js";
@@ -153,6 +154,17 @@ async function main(): Promise<void> {
   log("capture ok → cloud");
 
   maybeTriggerPeriodicSummary(input.session_id, input.cwd ?? "", config);
+
+  if (input.hook_event_name === "Stop") {
+    if (process.env.HIVEMIND_WIKI_WORKER === "1") return;
+    tryStopCounterTrigger({
+      config,
+      cwd: input.cwd ?? "",
+      bundleDir: bundleDirFromImportMeta(import.meta.url),
+      agent: "claude_code",
+      sessionId: input.session_id,
+    });
+  }
 }
 
 /** Increment the event counter and, if the threshold is crossed, spawn a background wiki worker. */

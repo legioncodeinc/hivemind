@@ -32,6 +32,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { connect } from "node:net";
 import { spawn, execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 // ---------- diagnostic logging --------------------------------------------------
 //
@@ -204,6 +205,11 @@ function tryEmbedOverSocket(text: string, kind: "document" | "query"): Promise<n
 
 const SUMMARY_STATE_DIR = join(homedir(), ".claude", "hooks", "summary-state");
 const PI_WIKI_WORKER_PATH = join(homedir(), ".pi", "agent", "hivemind", "wiki-worker.js");
+// Skilify worker installed alongside wiki-worker by `hivemind pi install`.
+// Spawned on session_shutdown to mine reusable Claude skills from the just-
+// finished session. Same shared bundle used by CC/Codex/Cursor/Hermes.
+const PI_SKILIFY_WORKER_PATH = join(homedir(), ".pi", "agent", "hivemind", "skilify-worker.js");
+const SKILIFY_STATE_DIR = join(homedir(), ".deeplake", "state", "skilify");
 
 interface SummaryState {
   lastSummaryAt: number;
@@ -398,6 +404,96 @@ function spawnWikiWorker(
   }
 }
 
+// ---------- skilify worker spawn ---------------------------------------------
+//
+// Mirror of src/skilify/spawn-skilify-worker.ts and src/skilify/triggers.ts —
+// inlined here because pi/extension-source/hivemind.ts is shipped as raw .ts
+// with zero non-builtin runtime dependencies (pi compiles + loads it at
+// extension-load time). The shared TypeScript modules under src/skilify/
+// can't be imported from this file.
+//
+// The skilify worker mines the just-finished session for reusable Claude
+// skills, gates each cluster via a model call, and writes SKILL.md files +
+// rows in the org's skills Deeplake table.
+
+/** Stable project key — sha1(cwd) truncated, mirrors src/skilify/state.ts deriveProjectKey. */
+function deriveSkilifyProjectKey(cwd: string): { key: string; project: string } {
+  const project = (cwd ?? "").split("/").pop() || "unknown";
+  // Pi's extension can't easily run `git config` synchronously here; use cwd
+  // as the signature. Two checkouts of the same repo at different paths get
+  // different project_keys, which is acceptable for pi (the other agents
+  // hash the git remote when available; pi falls back to cwd-only).
+  const key = createHash("sha1").update(cwd ?? "").digest("hex").slice(0, 16);
+  return { key, project };
+}
+
+function spawnPiSkilifyWorker(creds: Creds, sessionId: string, cwd: string): void {
+  if (!existsSync(PI_SKILIFY_WORKER_PATH)) {
+    logHm(`spawnPiSkilifyWorker: no worker at ${PI_SKILIFY_WORKER_PATH} — install via 'hivemind pi install' or rebuild`);
+    return;
+  }
+  const { key: projectKey, project } = deriveSkilifyProjectKey(cwd);
+
+  // No spawn-side lock: the worker itself acquires `<projectKey>.lock` via
+  // src/skilify/state.ts:tryAcquireWorkerLock and releases it on exit (with
+  // a 10-min stale-lock fallback). A spawn-side lock here would create a
+  // SECOND lockfile (`<projectKey>.worker.lock`) that nobody releases,
+  // permanently blocking subsequent spawns from the same Pi runtime
+  // instance. Let the worker's own lock be the single source of truth;
+  // back-to-back spawns where a worker is in flight cost only one extra
+  // node cold-start (~50ms) before the worker self-skips on the lock.
+
+  const tmpDir = join(tmpdir(), `deeplake-skilify-${projectKey}-${Date.now()}`);
+  try { mkdirSync(tmpDir, { recursive: true, mode: 0o700 }); }
+  catch (e: any) { logHm(`spawnPiSkilifyWorker: mkdir failed: ${e?.message ?? e}`); return; }
+  const configPath = join(tmpDir, "config.json");
+
+  // Same shape the spawn-skilify-worker.ts module writes for the other agents.
+  // Defaults match scope-config.ts: scope=me, install=project, no team list.
+  // Pi-specific: no per-agent gate binary (`gateBin: null`) — the worker's
+  // gate-runner falls back to its agent dispatch which for `agent: "pi"`
+  // resolves to the `pi --print` invocation we'd want for consistency.
+  const config = {
+    apiUrl: creds.apiUrl,
+    token: creds.token,
+    orgId: creds.orgId,
+    workspaceId: creds.workspaceId,
+    sessionsTable: SESSIONS_TABLE,
+    skillsTable: process.env.HIVEMIND_SKILLS_TABLE || "skills",
+    userName: creds.userName,
+    cwd,
+    projectKey,
+    project,
+    agent: "pi",
+    scope: "me" as const,
+    team: [] as string[],
+    install: "project" as const,
+    tmpDir,
+    gateBin: findPiBin(),
+    cursorModel: process.env.HIVEMIND_CURSOR_MODEL,
+    hermesProvider: process.env.HIVEMIND_HERMES_PROVIDER,
+    hermesModel: process.env.HIVEMIND_HERMES_MODEL,
+    // pi-specific gate args — match wikiWorker config defaults (google + gemini-2.5-flash)
+    piProvider: process.env.HIVEMIND_PI_PROVIDER ?? "google",
+    piModel: process.env.HIVEMIND_PI_MODEL ?? "gemini-2.5-flash",
+    skilifyLog: join(homedir(), ".deeplake", "hivemind-pi-skilify.log"),
+    currentSessionId: sessionId,
+  };
+  try { writeFileSync(configPath, JSON.stringify(config), { mode: 0o600 }); }
+  catch (e: any) { logHm(`spawnPiSkilifyWorker: config write failed: ${e?.message ?? e}`); return; }
+
+  logHm(`spawnPiSkilifyWorker: spawning ${PI_SKILIFY_WORKER_PATH} project=${project} key=${projectKey} session=${sessionId}`);
+  try {
+    spawn(process.execPath, [PI_SKILIFY_WORKER_PATH, configPath], {
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, HIVEMIND_SKILIFY_WORKER: "1", HIVEMIND_CAPTURE: "false" },
+    }).unref();
+  } catch (e: any) {
+    logHm(`spawnPiSkilifyWorker: spawn failed: ${e?.message ?? e}`);
+  }
+}
+
 function maybeTriggerPeriodicSummary(creds: Creds, sessionId: string, cwd: string): void {
   if (process.env.HIVEMIND_CAPTURE === "false") return;
   const state = bumpCounter(sessionId);
@@ -547,7 +643,32 @@ Three hivemind tools are registered:
   hivemind_read   { path }            read full content at a memory path
   hivemind_index  { prefix?, limit? } list summary entries
 
-Prefer these tools — one call returns ranked hits across all summaries and sessions in a single SQL query. Different paths under /summaries/<username>/ are different users; do NOT merge or alias them. Fall back to grep on ~/.deeplake/memory/ only if tools are unavailable.`;
+Prefer these tools — one call returns ranked hits across all summaries and sessions in a single SQL query. Different paths under /summaries/<username>/ are different users; do NOT merge or alias them. Fall back to grep on ~/.deeplake/memory/ only if tools are unavailable.
+
+Organization management — each argument is SEPARATE (do NOT quote subcommands together):
+- hivemind login                              — SSO login
+- hivemind whoami                             — show current user/org
+- hivemind org list                           — list organizations
+- hivemind org switch <name-or-id>            — switch organization
+- hivemind workspaces                         — list workspaces
+- hivemind workspace <id>                     — switch workspace
+- hivemind invite <email> <ADMIN|WRITE|READ>  — invite member (ALWAYS ask user which role before inviting)
+- hivemind members                            — list members
+- hivemind remove <user-id>                   — remove member
+
+SKILLS (skilify) — mine + share reusable skills across the org. Run these in a terminal (or via shell if available):
+- hivemind skilify                         — show scope/team/install + per-project state
+- hivemind skilify pull                    — sync project skills from the org table
+- hivemind skilify pull --user <email>     — only that author's skills
+- hivemind skilify pull --users a,b,c      — multiple authors (CSV)
+- hivemind skilify pull --all-users        — explicit "no author filter"
+- hivemind skilify pull --to project|global  — install location
+- hivemind skilify pull --dry-run          — preview only
+- hivemind skilify pull --force            — overwrite local (creates .bak)
+- hivemind skilify pull <skill-name>       — pull only that skill (combines with --user)
+- hivemind skilify scope <me|team|org>     — sharing scope for new skills
+- hivemind skilify install <project|global>  — default install location
+- hivemind skilify team add|remove|list <name>  — manage team list`;
 
 export default function hivemindExtension(pi: ExtensionAPI): void {
   const captureEnabled = process.env.HIVEMIND_CAPTURE !== "false";
@@ -832,6 +953,14 @@ export default function hivemindExtension(pi: ExtensionAPI): void {
     // Always spawn for "final" — but the lock check inside spawnWikiWorker
     // skips if a periodic worker is mid-flight. Non-fatal either way.
     spawnWikiWorker(creds, sessionId, cwd, "final");
+
+    // Also kick off the skilify worker so this session's prompt+answer
+    // pairs become candidates for reusable skills. Lock keyed on
+    // projectKey, not sessionId — multiple sessions in the same project
+    // shouldn't race the gate. Non-fatal: failure here only loses the
+    // mining for this one session, never breaks the wiki summary above.
+    try { spawnPiSkilifyWorker(creds, sessionId, cwd); }
+    catch (e: any) { logHm(`session_shutdown: skilify spawn threw: ${e?.message ?? e}`); }
   });
 
   // Module-load breadcrumb so we know the extension's default export ran at all.

@@ -45,6 +45,25 @@ Do NOT jump straight to reading raw JSONL files. Always start with `hivemind_ind
 - `/hivemind_update` — shows how to install (ask the agent, or run `hivemind update` in your terminal)
 - `/hivemind_autoupdate [on|off]` — toggle the agent-facing update nudge (on by default: when a newer version is available, the agent is prompted to install it via `exec` if you ask to update)
 
+## Skill Management (skilify)
+
+Hivemind also mines reusable Claude skills from agent sessions and stores them in a per-org Deeplake table. Openclaw itself doesn't run sessions to mine, but you can pull skills others have already mined for the user. These run in the user's terminal (the openclaw plugin does not register them as `/hivemind_*` commands):
+
+- `hivemind skilify` — show scope/team/install + per-project state
+- `hivemind skilify pull` — sync skills for the current project from the org table
+- `hivemind skilify pull --user <email>` — only that author's skills
+- `hivemind skilify pull --users a,b,c` — multiple authors (CSV)
+- `hivemind skilify pull --all-users` — explicit "no author filter"
+- `hivemind skilify pull --to project|global` — install location (`<cwd>/.claude/skills/` vs `~/.claude/skills/`)
+- `hivemind skilify pull --dry-run` — preview without touching disk
+- `hivemind skilify pull --force` — overwrite local (creates `.bak`)
+- `hivemind skilify pull <skill-name>` — pull only that one skill (combines with `--user`)
+- `hivemind skilify scope <me|team|org>` — set sharing scope for new skills
+- `hivemind skilify install <project|global>` — default install location
+- `hivemind skilify team add|remove|list <name>` — manage team list
+
+If the user asks to "pull skills from X", "share skills with the team", or similar, suggest the matching `hivemind skilify` command. Run `hivemind skilify --help` for the full reference.
+
 ## Limits
 
 Do NOT delegate to subagents when reading Hivemind memory. If a tool call returns empty after 2 attempts, skip it and move on. Report what you found rather than exhaustively retrying.

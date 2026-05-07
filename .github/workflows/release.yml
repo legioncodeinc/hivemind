@@ -6,11 +6,21 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
     name: Auto-bump version and create release
     runs-on: ubuntu-latest
+    outputs:
+      # Set only when the Create GitHub Release step actually runs.
+      # The downstream `publish` job gates on this so it fires once
+      # per real release — and crucially fires in the SAME workflow
+      # run as the bump+release, because pushes made with the default
+      # GITHUB_TOKEN do not retrigger workflows.
+      published: ${{ steps.set_outputs.outputs.published }}
+      sha: ${{ steps.set_outputs.outputs.sha }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24.12'
+          node-version: "24.12"
 
       - name: Check if version was already bumped in this push
         id: check_bump
@@ -129,3 +139,110 @@ jobs:
           name: "${{ steps.version.outputs.version }} — ${{ steps.pr.outputs.title }}"
           body: ${{ steps.pr.outputs.body }}
           generate_release_notes: false
+
+      - name: Set outputs for publish job
+        # Captures the local HEAD SHA after the bump+push (or the
+        # untouched HEAD on the manual-bump path). The publish job
+        # checks out this SHA explicitly, so an in-flight `main`
+        # advance during the environment-approval pause cannot
+        # redirect the publish to an unreviewed commit.
+        id: set_outputs
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  publish:
+    # Publish @deeplake/hivemind to npm and the openclaw bundle to ClawHub.
+    # Runs in the SAME workflow run as `release` (gated on its
+    # `published` output) because the bump-commit push uses the
+    # default GITHUB_TOKEN, which by GitHub's loop-prevention rule
+    # does not retrigger workflows. Pauses at the `production`
+    # environment gate for human approval before tokens are
+    # accessible. Tokens live as environment-scoped secrets, so PRs
+    # from forks and unprotected branches cannot reach them.
+    name: Publish to npm + ClawHub
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: hivemind-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Pin to the bump commit captured by the release job. Pinning
+          # to a SHA (not `main`) is required: the `production`
+          # environment gate can pause for hours, during which `main`
+          # may advance — checking out a moving ref would publish a
+          # commit the reviewer never approved.
+          ref: ${{ needs.release.outputs.sha }}
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.12"
+          registry-url: "https://registry.npmjs.org"
+          scope: "@deeplake"
+          cache: "npm"
+
+      - name: Load secrets from 1Password
+        uses: 1Password/load-secrets-action@v4.0.0
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CLAWHUB_TOKEN: "op://GitHub Actions/hivemind/CLAWHUB_TOKEN"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Quality gate (typecheck + duplication + test)
+        # Belt-and-braces: ci.yml already gates merges to main, but a
+        # publish job that doesn't re-run the gate could ship if someone
+        # disables a CI status check.
+        run: npm run ci
+
+      - name: Build bundles
+        run: npm run build
+
+      - name: Pack-check (refuse forbidden filenames in tarball)
+        run: npm run pack:check
+
+      - name: Publish to npm with Sigstore provenance
+        # --provenance uses the GitHub OIDC token (id-token: write above)
+        # to sign the artifact via Sigstore. Even if NPM_TOKEN later leaks,
+        # consumers can verify the package was built by THIS workflow on
+        # THIS commit, and npmjs.com displays a Provenance badge.
+        run: npm publish --provenance --access public
+
+      - name: Install ClawHub CLI
+        run: npm install -g clawhub
+
+      - name: Authenticate ClawHub CLI
+        # `clawhub login --token` writes a credential file inside the
+        # runner's $HOME, which is ephemeral and discarded when the job
+        # ends. The token only ever appears as ${{ secrets.* }}, which
+        # GitHub auto-masks in logs.
+        run: clawhub login --token "$CLAWHUB_TOKEN" --no-browser
+
+      - name: Publish openclaw bundle to ClawHub
+        # The release job above already synced openclaw/package.json and
+        # openclaw/openclaw.plugin.json versions to the bumped root
+        # version, so this publishes the same X.Y.Z that npm just got.
+        run: clawhub package publish ./openclaw
+
+      - name: Summary
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          {
+            echo "### Published"
+            echo ""
+            echo "- **npm**: \`@deeplake/hivemind@${VERSION}\` (with Sigstore provenance)"
+            echo "- **ClawHub**: \`clawhub:hivemind@${VERSION}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

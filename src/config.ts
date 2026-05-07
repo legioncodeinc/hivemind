@@ -11,6 +11,7 @@ export interface Config {
   apiUrl: string;
   tableName: string;
   sessionsTableName: string;
+  skillsTableName: string;
   memoryPath: string;
 }
 
@@ -51,6 +52,7 @@ export function loadConfig(): Config | null {
     apiUrl: process.env.HIVEMIND_API_URL ?? creds?.apiUrl ?? "https://api.deeplake.ai",
     tableName: process.env.HIVEMIND_TABLE ?? "memory",
     sessionsTableName: process.env.HIVEMIND_SESSIONS_TABLE ?? "sessions",
+    skillsTableName: process.env.HIVEMIND_SKILLS_TABLE ?? "skills",
     memoryPath: process.env.HIVEMIND_MEMORY_PATH ?? join(home, ".deeplake", "memory"),
   };
 }

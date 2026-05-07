@@ -53,9 +53,9 @@ var init_index_marker_store = __esm({
 });
 
 // dist/src/hooks/codex/stop.js
-import { readFileSync as readFileSync5, existsSync as existsSync5 } from "node:fs";
-import { fileURLToPath as fileURLToPath2 } from "node:url";
-import { dirname as dirname2, join as join9 } from "node:path";
+import { readFileSync as readFileSync7, existsSync as existsSync8 } from "node:fs";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+import { dirname as dirname3, join as join13 } from "node:path";
 
 // dist/src/utils/stdin.js
 function readStdin() {
@@ -102,6 +102,7 @@ function loadConfig() {
     apiUrl: process.env.HIVEMIND_API_URL ?? creds?.apiUrl ?? "https://api.deeplake.ai",
     tableName: process.env.HIVEMIND_TABLE ?? "memory",
     sessionsTableName: process.env.HIVEMIND_SESSIONS_TABLE ?? "sessions",
+    skillsTableName: process.env.HIVEMIND_SKILLS_TABLE ?? "skills",
     memoryPath: process.env.HIVEMIND_MEMORY_PATH ?? join(home, ".deeplake", "memory")
   };
 }
@@ -128,6 +129,12 @@ function log(tag, msg) {
 // dist/src/utils/sql.js
 function sqlStr(value) {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/\0/g, "").replace(/[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+function sqlIdent(name) {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+    throw new Error(`Invalid SQL identifier: ${JSON.stringify(name)}`);
+  }
+  return name;
 }
 
 // dist/src/embeddings/columns.js
@@ -501,7 +508,7 @@ var DeeplakeApi = class {
   }
   /** Create the memory table if it doesn't already exist. Migrate columns on existing tables. */
   async ensureTable(name) {
-    const tbl = name ?? this.tableName;
+    const tbl = sqlIdent(name ?? this.tableName);
     const tables = await this.listTables();
     if (!tables.includes(tbl)) {
       log2(`table "${tbl}" not found, creating`);
@@ -515,17 +522,40 @@ var DeeplakeApi = class {
   }
   /** Create the sessions table (uses JSONB for message since every row is a JSON event). */
   async ensureSessionsTable(name) {
+    const safe = sqlIdent(name);
     const tables = await this.listTables();
-    if (!tables.includes(name)) {
-      log2(`table "${name}" not found, creating`);
-      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${name}" (id TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', filename TEXT NOT NULL DEFAULT '', message JSONB, message_embedding FLOAT4[], author TEXT NOT NULL DEFAULT '', mime_type TEXT NOT NULL DEFAULT 'application/json', size_bytes BIGINT NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '', creation_date TEXT NOT NULL DEFAULT '', last_update_date TEXT NOT NULL DEFAULT '') USING deeplake`, name);
-      log2(`table "${name}" created`);
-      if (!tables.includes(name))
-        this._tablesCache = [...tables, name];
+    if (!tables.includes(safe)) {
+      log2(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${safe}" (id TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', filename TEXT NOT NULL DEFAULT '', message JSONB, message_embedding FLOAT4[], author TEXT NOT NULL DEFAULT '', mime_type TEXT NOT NULL DEFAULT 'application/json', size_bytes BIGINT NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '', creation_date TEXT NOT NULL DEFAULT '', last_update_date TEXT NOT NULL DEFAULT '') USING deeplake`, safe);
+      log2(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
     }
-    await this.ensureEmbeddingColumn(name, MESSAGE_EMBEDDING_COL);
-    await this.ensureColumn(name, "agent", "TEXT NOT NULL DEFAULT ''");
-    await this.ensureLookupIndex(name, "path_creation_date", `("path", "creation_date")`);
+    await this.ensureEmbeddingColumn(safe, MESSAGE_EMBEDDING_COL);
+    await this.ensureColumn(safe, "agent", "TEXT NOT NULL DEFAULT ''");
+    await this.ensureLookupIndex(safe, "path_creation_date", `("path", "creation_date")`);
+  }
+  /**
+   * Create the skills table.
+   *
+   * One row per skill version. Workers INSERT a fresh row on every KEEP /
+   * MERGE rather than UPDATE-ing in place, so the full version history is
+   * recoverable. Uniqueness in the *current* state is by (project_key, name)
+   * — newer rows shadow older ones at read time (ORDER BY version DESC).
+   * This sidesteps the Deeplake UPDATE-coalescing quirk that bit the wiki
+   * worker.
+   */
+  async ensureSkillsTable(name) {
+    const safe = sqlIdent(name);
+    const tables = await this.listTables();
+    if (!tables.includes(safe)) {
+      log2(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${safe}" (id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', project TEXT NOT NULL DEFAULT '', project_key TEXT NOT NULL DEFAULT '', local_path TEXT NOT NULL DEFAULT '', install TEXT NOT NULL DEFAULT 'project', source_sessions TEXT NOT NULL DEFAULT '[]', source_agent TEXT NOT NULL DEFAULT '', scope TEXT NOT NULL DEFAULT 'me', author TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', trigger_text TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', version BIGINT NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '') USING deeplake`, safe);
+      log2(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
+    }
+    await this.ensureLookupIndex(safe, "project_key_name", `("project_key", "name")`);
   }
 };
 
@@ -649,31 +679,207 @@ function bundleDirFromImportMeta(importMetaUrl) {
   return dirname(fileURLToPath(importMetaUrl));
 }
 
-// dist/src/hooks/summary-state.js
-import { readFileSync as readFileSync3, writeFileSync as writeFileSync3, writeSync, mkdirSync as mkdirSync4, renameSync, existsSync as existsSync3, unlinkSync, openSync, closeSync } from "node:fs";
+// dist/src/skilify/spawn-skilify-worker.js
+import { spawn as spawn2 } from "node:child_process";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+import { dirname as dirname2, join as join7 } from "node:path";
+import { writeFileSync as writeFileSync3, mkdirSync as mkdirSync4, appendFileSync as appendFileSync3, chmodSync } from "node:fs";
+import { homedir as homedir5, tmpdir as tmpdir3 } from "node:os";
+
+// dist/src/skilify/gate-runner.js
+import { execFileSync } from "node:child_process";
+import { existsSync as existsSync3 } from "node:fs";
 import { homedir as homedir4 } from "node:os";
 import { join as join6 } from "node:path";
-var dlog = (msg) => log("summary-state", msg);
-var STATE_DIR = join6(homedir4(), ".claude", "hooks", "summary-state");
-var YIELD_BUF = new Int32Array(new SharedArrayBuffer(4));
-function lockPath(sessionId) {
-  return join6(STATE_DIR, `${sessionId}.lock`);
+function findAgentBin(agent) {
+  const which = (name) => {
+    try {
+      const out = execFileSync("which", [name], {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"]
+      });
+      return out.trim() || null;
+    } catch {
+      return null;
+    }
+  };
+  switch (agent) {
+    case "claude_code":
+      return which("claude") ?? join6(homedir4(), ".claude", "local", "claude");
+    case "codex":
+      return which("codex") ?? "/usr/local/bin/codex";
+    case "cursor":
+      return which("cursor-agent") ?? "/usr/local/bin/cursor-agent";
+    case "hermes":
+      return which("hermes") ?? join6(homedir4(), ".local", "bin", "hermes");
+    case "pi":
+      return which("pi") ?? join6(homedir4(), ".local", "bin", "pi");
+  }
 }
-function tryAcquireLock(sessionId, maxAgeMs = 10 * 60 * 1e3) {
-  mkdirSync4(STATE_DIR, { recursive: true });
-  const p = lockPath(sessionId);
-  if (existsSync3(p)) {
+
+// dist/src/skilify/spawn-skilify-worker.js
+var HOME2 = homedir5();
+var SKILIFY_LOG = join7(HOME2, ".claude", "hooks", "skilify.log");
+function skilifyLog(msg) {
+  try {
+    mkdirSync4(dirname2(SKILIFY_LOG), { recursive: true });
+    appendFileSync3(SKILIFY_LOG, `[${utcTimestamp()}] ${msg}
+`);
+  } catch {
+  }
+}
+function spawnSkilifyWorker(opts) {
+  const { config, cwd, projectKey, project, bundleDir, agent, scopeConfig, currentSessionId, reason } = opts;
+  const tmpDir = join7(tmpdir3(), `deeplake-skilify-${projectKey}-${Date.now()}`);
+  mkdirSync4(tmpDir, { recursive: true, mode: 448 });
+  const gateBin = findAgentBin(agent);
+  const configFile = join7(tmpDir, "config.json");
+  writeFileSync3(configFile, JSON.stringify({
+    apiUrl: config.apiUrl,
+    token: config.token,
+    orgId: config.orgId,
+    workspaceId: config.workspaceId,
+    sessionsTable: config.sessionsTableName,
+    skillsTable: config.skillsTableName,
+    userName: config.userName,
+    cwd,
+    projectKey,
+    project,
+    agent,
+    scope: scopeConfig.scope,
+    team: scopeConfig.team,
+    install: scopeConfig.install,
+    tmpDir,
+    gateBin,
+    cursorModel: process.env.HIVEMIND_CURSOR_MODEL,
+    hermesProvider: process.env.HIVEMIND_HERMES_PROVIDER,
+    hermesModel: process.env.HIVEMIND_HERMES_MODEL,
+    piProvider: process.env.HIVEMIND_PI_PROVIDER,
+    piModel: process.env.HIVEMIND_PI_MODEL,
+    skilifyLog: SKILIFY_LOG,
+    currentSessionId
+  }), { mode: 384 });
+  try {
+    chmodSync(configFile, 384);
+  } catch {
+  }
+  skilifyLog(`${reason}: spawning skilify worker for project=${project} key=${projectKey}`);
+  const workerPath = join7(bundleDir, "skilify-worker.js");
+  spawn2("nohup", ["node", workerPath, configFile], {
+    detached: true,
+    stdio: ["ignore", "ignore", "ignore"]
+  }).unref();
+  skilifyLog(`${reason}: spawned skilify worker for ${projectKey}`);
+}
+
+// dist/src/skilify/state.js
+import { readFileSync as readFileSync3, writeFileSync as writeFileSync4, writeSync, mkdirSync as mkdirSync5, renameSync, existsSync as existsSync4, unlinkSync, openSync, closeSync } from "node:fs";
+import { execSync as execSync2 } from "node:child_process";
+import { homedir as homedir6 } from "node:os";
+import { createHash } from "node:crypto";
+import { join as join8, basename } from "node:path";
+var dlog = (msg) => log("skilify-state", msg);
+var STATE_DIR = join8(homedir6(), ".deeplake", "state", "skilify");
+var YIELD_BUF = new Int32Array(new SharedArrayBuffer(4));
+var TRIGGER_THRESHOLD = (() => {
+  const n = Number(process.env.HIVEMIND_SKILIFY_EVERY_N_TURNS ?? "");
+  return Number.isInteger(n) && n > 0 ? n : 20;
+})();
+function statePath(projectKey) {
+  return join8(STATE_DIR, `${projectKey}.json`);
+}
+function lockPath(projectKey) {
+  return join8(STATE_DIR, `${projectKey}.lock`);
+}
+function deriveProjectKey(cwd) {
+  const project = basename(cwd) || "unknown";
+  let signature = null;
+  try {
+    signature = execSync2("git config --get remote.origin.url", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim() || null;
+  } catch {
+  }
+  const input = signature ?? cwd;
+  const key = createHash("sha1").update(input).digest("hex").slice(0, 16);
+  return { key, project };
+}
+function readState(projectKey) {
+  const p = statePath(projectKey);
+  if (!existsSync4(p))
+    return null;
+  try {
+    return JSON.parse(readFileSync3(p, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function writeState(projectKey, state) {
+  mkdirSync5(STATE_DIR, { recursive: true });
+  const p = statePath(projectKey);
+  const tmp = `${p}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync4(tmp, JSON.stringify(state, null, 2));
+  renameSync(tmp, p);
+}
+function withRmwLock(projectKey, fn) {
+  mkdirSync5(STATE_DIR, { recursive: true });
+  const rmw = lockPath(projectKey) + ".rmw";
+  const deadline = Date.now() + 2e3;
+  let fd = null;
+  while (fd === null) {
+    try {
+      fd = openSync(rmw, "wx");
+    } catch (e) {
+      if (e.code !== "EEXIST")
+        throw e;
+      if (Date.now() > deadline) {
+        dlog(`rmw lock deadline exceeded for ${projectKey}, reclaiming stale lock`);
+        try {
+          unlinkSync(rmw);
+        } catch (unlinkErr) {
+          dlog(`stale rmw lock unlink failed for ${projectKey}: ${unlinkErr.message}`);
+        }
+        continue;
+      }
+      Atomics.wait(YIELD_BUF, 0, 0, 10);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    closeSync(fd);
+    try {
+      unlinkSync(rmw);
+    } catch (unlinkErr) {
+      dlog(`rmw lock cleanup failed for ${projectKey}: ${unlinkErr.message}`);
+    }
+  }
+}
+function resetCounter(projectKey) {
+  withRmwLock(projectKey, () => {
+    const s = readState(projectKey);
+    if (!s)
+      return;
+    writeState(projectKey, { ...s, counter: 0, updatedAt: Date.now() });
+  });
+}
+function tryAcquireWorkerLock(projectKey, maxAgeMs = 10 * 60 * 1e3) {
+  mkdirSync5(STATE_DIR, { recursive: true });
+  const p = lockPath(projectKey);
+  if (existsSync4(p)) {
     try {
       const ageMs = Date.now() - parseInt(readFileSync3(p, "utf-8"), 10);
       if (Number.isFinite(ageMs) && ageMs < maxAgeMs)
         return false;
     } catch (readErr) {
-      dlog(`lock file unreadable for ${sessionId}, treating as stale: ${readErr.message}`);
+      dlog(`worker lock unreadable for ${projectKey}, treating as stale: ${readErr.message}`);
     }
     try {
       unlinkSync(p);
     } catch (unlinkErr) {
-      dlog(`could not unlink stale lock for ${sessionId}: ${unlinkErr.message}`);
+      dlog(`could not unlink stale worker lock for ${projectKey}: ${unlinkErr.message}`);
       return false;
     }
   }
@@ -685,6 +891,115 @@ function tryAcquireLock(sessionId, maxAgeMs = 10 * 60 * 1e3) {
       closeSync(fd);
     }
     return true;
+  } catch {
+    return false;
+  }
+}
+function releaseWorkerLock(projectKey) {
+  const p = lockPath(projectKey);
+  try {
+    unlinkSync(p);
+  } catch {
+  }
+}
+
+// dist/src/skilify/scope-config.js
+import { existsSync as existsSync5, mkdirSync as mkdirSync6, readFileSync as readFileSync4, writeFileSync as writeFileSync5 } from "node:fs";
+import { homedir as homedir7 } from "node:os";
+import { join as join9 } from "node:path";
+var STATE_DIR2 = join9(homedir7(), ".deeplake", "state", "skilify");
+var CONFIG_PATH = join9(STATE_DIR2, "config.json");
+var DEFAULT = { scope: "me", team: [], install: "project" };
+function loadScopeConfig() {
+  if (!existsSync5(CONFIG_PATH))
+    return DEFAULT;
+  try {
+    const raw = JSON.parse(readFileSync4(CONFIG_PATH, "utf-8"));
+    const scope = raw.scope === "team" || raw.scope === "org" ? raw.scope : "me";
+    const team = Array.isArray(raw.team) ? raw.team.filter((s) => typeof s === "string") : [];
+    const install = raw.install === "global" ? "global" : "project";
+    return { scope, team, install };
+  } catch {
+    return DEFAULT;
+  }
+}
+
+// dist/src/skilify/triggers.js
+function forceSessionEndTrigger(opts) {
+  if (process.env.HIVEMIND_SKILIFY_WORKER === "1")
+    return;
+  if (!opts.cwd)
+    return;
+  try {
+    const { key: projectKey, project } = deriveProjectKey(opts.cwd);
+    if (!tryAcquireWorkerLock(projectKey)) {
+      skilifyLog(`SessionEnd: skilify worker already running for ${projectKey}, skipping`);
+      return;
+    }
+    if (readState(projectKey)) {
+      resetCounter(projectKey);
+    }
+    skilifyLog(`SessionEnd: spawning skilify worker for project=${project} agent=${opts.agent}`);
+    try {
+      spawnSkilifyWorker({
+        config: opts.config,
+        cwd: opts.cwd,
+        projectKey,
+        project,
+        bundleDir: opts.bundleDir,
+        agent: opts.agent,
+        scopeConfig: loadScopeConfig(),
+        currentSessionId: opts.sessionId,
+        reason: "SessionEnd"
+      });
+    } catch (e) {
+      skilifyLog(`SessionEnd spawn failed: ${e?.message ?? e}`);
+      try {
+        releaseWorkerLock(projectKey);
+      } catch {
+      }
+    }
+  } catch (e) {
+    skilifyLog(`SessionEnd trigger error: ${e?.message ?? e}`);
+  }
+}
+
+// dist/src/hooks/summary-state.js
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync6, writeSync as writeSync2, mkdirSync as mkdirSync7, renameSync as renameSync2, existsSync as existsSync6, unlinkSync as unlinkSync2, openSync as openSync2, closeSync as closeSync2 } from "node:fs";
+import { homedir as homedir8 } from "node:os";
+import { join as join10 } from "node:path";
+var dlog2 = (msg) => log("summary-state", msg);
+var STATE_DIR3 = join10(homedir8(), ".claude", "hooks", "summary-state");
+var YIELD_BUF2 = new Int32Array(new SharedArrayBuffer(4));
+function lockPath2(sessionId) {
+  return join10(STATE_DIR3, `${sessionId}.lock`);
+}
+function tryAcquireLock(sessionId, maxAgeMs = 10 * 60 * 1e3) {
+  mkdirSync7(STATE_DIR3, { recursive: true });
+  const p = lockPath2(sessionId);
+  if (existsSync6(p)) {
+    try {
+      const ageMs = Date.now() - parseInt(readFileSync5(p, "utf-8"), 10);
+      if (Number.isFinite(ageMs) && ageMs < maxAgeMs)
+        return false;
+    } catch (readErr) {
+      dlog2(`lock file unreadable for ${sessionId}, treating as stale: ${readErr.message}`);
+    }
+    try {
+      unlinkSync2(p);
+    } catch (unlinkErr) {
+      dlog2(`could not unlink stale lock for ${sessionId}: ${unlinkErr.message}`);
+      return false;
+    }
+  }
+  try {
+    const fd = openSync2(p, "wx");
+    try {
+      writeSync2(fd, String(Date.now()));
+    } finally {
+      closeSync2(fd);
+    }
+    return true;
   } catch (e) {
     if (e.code === "EEXIST")
       return false;
@@ -693,10 +1008,10 @@ function tryAcquireLock(sessionId, maxAgeMs = 10 * 60 * 1e3) {
 }
 function releaseLock(sessionId) {
   try {
-    unlinkSync(lockPath(sessionId));
+    unlinkSync2(lockPath2(sessionId));
   } catch (e) {
     if (e?.code !== "ENOENT") {
-      dlog(`releaseLock unlink failed for ${sessionId}: ${e.message}`);
+      dlog2(`releaseLock unlink failed for ${sessionId}: ${e.message}`);
     }
   }
 }
@@ -709,10 +1024,10 @@ function buildSessionPath(config, sessionId) {
 
 // dist/src/embeddings/client.js
 import { connect } from "node:net";
-import { spawn as spawn2 } from "node:child_process";
-import { openSync as openSync2, closeSync as closeSync2, writeSync as writeSync2, unlinkSync as unlinkSync2, existsSync as existsSync4, readFileSync as readFileSync4 } from "node:fs";
-import { homedir as homedir5 } from "node:os";
-import { join as join7 } from "node:path";
+import { spawn as spawn3 } from "node:child_process";
+import { openSync as openSync3, closeSync as closeSync3, writeSync as writeSync3, unlinkSync as unlinkSync3, existsSync as existsSync7, readFileSync as readFileSync6 } from "node:fs";
+import { homedir as homedir9 } from "node:os";
+import { join as join11 } from "node:path";
 
 // dist/src/embeddings/protocol.js
 var DEFAULT_SOCKET_DIR = "/tmp";
@@ -726,7 +1041,7 @@ function pidPathFor(uid, dir = DEFAULT_SOCKET_DIR) {
 }
 
 // dist/src/embeddings/client.js
-var SHARED_DAEMON_PATH = join7(homedir5(), ".hivemind", "embed-deps", "embed-daemon.js");
+var SHARED_DAEMON_PATH = join11(homedir9(), ".hivemind", "embed-deps", "embed-daemon.js");
 var log3 = (m) => log("embed-client", m);
 function getUid() {
   const uid = typeof process.getuid === "function" ? process.getuid() : void 0;
@@ -746,7 +1061,7 @@ var EmbedClient = class {
     this.socketPath = socketPathFor(uid, dir);
     this.pidPath = pidPathFor(uid, dir);
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_CLIENT_TIMEOUT_MS;
-    this.daemonEntry = opts.daemonEntry ?? process.env.HIVEMIND_EMBED_DAEMON ?? (existsSync4(SHARED_DAEMON_PATH) ? SHARED_DAEMON_PATH : void 0);
+    this.daemonEntry = opts.daemonEntry ?? process.env.HIVEMIND_EMBED_DAEMON ?? (existsSync7(SHARED_DAEMON_PATH) ? SHARED_DAEMON_PATH : void 0);
     this.autoSpawn = opts.autoSpawn ?? true;
     this.spawnWaitMs = opts.spawnWaitMs ?? 5e3;
   }
@@ -828,17 +1143,17 @@ var EmbedClient = class {
   trySpawnDaemon() {
     let fd;
     try {
-      fd = openSync2(this.pidPath, "wx", 384);
-      writeSync2(fd, String(process.pid));
+      fd = openSync3(this.pidPath, "wx", 384);
+      writeSync3(fd, String(process.pid));
     } catch (e) {
       if (this.isPidFileStale()) {
         try {
-          unlinkSync2(this.pidPath);
+          unlinkSync3(this.pidPath);
         } catch {
         }
         try {
-          fd = openSync2(this.pidPath, "wx", 384);
-          writeSync2(fd, String(process.pid));
+          fd = openSync3(this.pidPath, "wx", 384);
+          writeSync3(fd, String(process.pid));
         } catch {
           return;
         }
@@ -846,17 +1161,17 @@ var EmbedClient = class {
         return;
       }
     }
-    if (!this.daemonEntry || !existsSync4(this.daemonEntry)) {
+    if (!this.daemonEntry || !existsSync7(this.daemonEntry)) {
       log3(`daemonEntry not configured or missing: ${this.daemonEntry}`);
       try {
-        closeSync2(fd);
-        unlinkSync2(this.pidPath);
+        closeSync3(fd);
+        unlinkSync3(this.pidPath);
       } catch {
       }
       return;
     }
     try {
-      const child = spawn2(process.execPath, [this.daemonEntry], {
+      const child = spawn3(process.execPath, [this.daemonEntry], {
         detached: true,
         stdio: "ignore",
         env: process.env
@@ -864,12 +1179,12 @@ var EmbedClient = class {
       child.unref();
       log3(`spawned daemon pid=${child.pid}`);
     } finally {
-      closeSync2(fd);
+      closeSync3(fd);
     }
   }
   isPidFileStale() {
     try {
-      const raw = readFileSync4(this.pidPath, "utf-8").trim();
+      const raw = readFileSync6(this.pidPath, "utf-8").trim();
       const pid = Number(raw);
       if (!pid || Number.isNaN(pid))
         return true;
@@ -889,7 +1204,7 @@ var EmbedClient = class {
     while (Date.now() < deadline) {
       await sleep2(delay);
       delay = Math.min(delay * 1.5, 300);
-      if (!existsSync4(this.socketPath))
+      if (!existsSync7(this.socketPath))
         continue;
       try {
         return await this.connectOnce();
@@ -950,8 +1265,8 @@ function embeddingSqlLiteral(vec) {
 
 // dist/src/embeddings/disable.js
 import { createRequire } from "node:module";
-import { homedir as homedir6 } from "node:os";
-import { join as join8 } from "node:path";
+import { homedir as homedir10 } from "node:os";
+import { join as join12 } from "node:path";
 import { pathToFileURL } from "node:url";
 var cachedStatus = null;
 function defaultResolveTransformers() {
@@ -960,7 +1275,7 @@ function defaultResolveTransformers() {
     return;
   } catch {
   }
-  const sharedDir = join8(homedir6(), ".hivemind", "embed-deps");
+  const sharedDir = join12(homedir10(), ".hivemind", "embed-deps");
   createRequire(pathToFileURL(`${sharedDir}/`).href).resolve("@huggingface/transformers");
 }
 var _resolve = defaultResolveTransformers;
@@ -987,7 +1302,7 @@ function embeddingsDisabled() {
 // dist/src/hooks/codex/stop.js
 var log4 = (msg) => log("codex-stop", msg);
 function resolveEmbedDaemonPath() {
-  return join9(dirname2(fileURLToPath2(import.meta.url)), "embeddings", "embed-daemon.js");
+  return join13(dirname3(fileURLToPath3(import.meta.url)), "embeddings", "embed-daemon.js");
 }
 var CAPTURE = process.env.HIVEMIND_CAPTURE !== "false";
 async function main() {
@@ -1011,8 +1326,8 @@ async function main() {
       if (input.transcript_path) {
         try {
           const transcriptPath = input.transcript_path;
-          if (existsSync5(transcriptPath)) {
-            const transcript = readFileSync5(transcriptPath, "utf-8");
+          if (existsSync8(transcriptPath)) {
+            const transcript = readFileSync7(transcriptPath, "utf-8");
             const lines = transcript.trim().split("\n").reverse();
             for (const line2 of lines) {
               try {
@@ -1084,6 +1399,13 @@ async function main() {
     }
     throw e;
   }
+  forceSessionEndTrigger({
+    config,
+    cwd: input.cwd ?? "",
+    bundleDir: bundleDirFromImportMeta(import.meta.url),
+    agent: "codex",
+    sessionId
+  });
 }
 main().catch((e) => {
   log4(`fatal: ${e.message}`);

@@ -33,6 +33,7 @@ import {
   releaseLock,
 } from "../summary-state.js";
 import { bundleDirFromImportMeta, spawnHermesWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
+import { tryStopCounterTrigger } from "../../skilify/triggers.js";
 import type { Config } from "../../config.js";
 const log = (msg: string) => _log("hermes-capture", msg);
 
@@ -144,6 +145,23 @@ async function main(): Promise<void> {
   log("capture ok → cloud");
 
   maybeTriggerPeriodicSummary(sessionId, cwd, config);
+
+  // Skilify Stop counter — post_llm_call is the assistant-complete event.
+  // Guard: don't fire when this capture is running INSIDE the wiki worker
+  // or skilify worker themselves (their spawned CLI inherits env vars and
+  // would otherwise loop). triggers.ts has the same SKILIFY_WORKER guard;
+  // the WIKI_WORKER guard below covers the wiki-worker-calling-hermes case.
+  if (event === "post_llm_call" &&
+      process.env.HIVEMIND_WIKI_WORKER !== "1" &&
+      process.env.HIVEMIND_SKILIFY_WORKER !== "1") {
+    tryStopCounterTrigger({
+      config,
+      cwd,
+      bundleDir: bundleDirFromImportMeta(import.meta.url),
+      agent: "hermes",
+      sessionId,
+    });
+  }
 }
 
 function maybeTriggerPeriodicSummary(sessionId: string, cwd: string, config: Config): void {

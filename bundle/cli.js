@@ -3352,6 +3352,7 @@ var EXTENSION_PATH = join8(EXTENSIONS_DIR, "hivemind.ts");
 var VERSION_DIR = join8(PI_AGENT_DIR, ".hivemind");
 var WIKI_WORKER_DIR = join8(PI_AGENT_DIR, "hivemind");
 var WIKI_WORKER_PATH = join8(WIKI_WORKER_DIR, "wiki-worker.js");
+var SKILIFY_WORKER_PATH = join8(WIKI_WORKER_DIR, "skilify-worker.js");
 var HIVEMIND_BLOCK_START = "<!-- BEGIN hivemind-memory -->";
 var HIVEMIND_BLOCK_END = "<!-- END hivemind-memory -->";
 var HIVEMIND_BLOCK_BODY = `${HIVEMIND_BLOCK_START}
@@ -3436,12 +3437,20 @@ function installPi() {
     ensureDir(WIKI_WORKER_DIR);
     copyFileSync2(srcWorker, WIKI_WORKER_PATH);
   }
+  const srcSkilifyWorker = join8(pkgRoot(), "pi", "bundle", "skilify-worker.js");
+  if (existsSync7(srcSkilifyWorker)) {
+    ensureDir(WIKI_WORKER_DIR);
+    copyFileSync2(srcSkilifyWorker, SKILIFY_WORKER_PATH);
+  }
   ensureDir(VERSION_DIR);
   writeVersionStamp(VERSION_DIR, getVersion());
   log(`  pi             AGENTS.md updated -> ${AGENTS_MD}`);
   log(`  pi             extension installed -> ${EXTENSION_PATH}`);
   if (existsSync7(WIKI_WORKER_PATH)) {
     log(`  pi             wiki-worker installed -> ${WIKI_WORKER_PATH}`);
+  }
+  if (existsSync7(SKILIFY_WORKER_PATH)) {
+    log(`  pi             skilify-worker installed -> ${SKILIFY_WORKER_PATH}`);
   }
 }
 function uninstallPi() {
@@ -3928,6 +3937,7 @@ function loadConfig() {
     apiUrl: process.env.HIVEMIND_API_URL ?? creds?.apiUrl ?? "https://api.deeplake.ai",
     tableName: process.env.HIVEMIND_TABLE ?? "memory",
     sessionsTableName: process.env.HIVEMIND_SESSIONS_TABLE ?? "sessions",
+    skillsTableName: process.env.HIVEMIND_SKILLS_TABLE ?? "skills",
     memoryPath: process.env.HIVEMIND_MEMORY_PATH ?? join12(home, ".deeplake", "memory")
   };
 }
@@ -3951,6 +3961,12 @@ function log2(tag, msg) {
 // dist/src/utils/sql.js
 function sqlStr(value) {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/\0/g, "").replace(/[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+function sqlIdent(name) {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+    throw new Error(`Invalid SQL identifier: ${JSON.stringify(name)}`);
+  }
+  return name;
 }
 
 // dist/src/embeddings/columns.js
@@ -4315,7 +4331,7 @@ var DeeplakeApi = class {
   }
   /** Create the memory table if it doesn't already exist. Migrate columns on existing tables. */
   async ensureTable(name) {
-    const tbl = name ?? this.tableName;
+    const tbl = sqlIdent(name ?? this.tableName);
     const tables = await this.listTables();
     if (!tables.includes(tbl)) {
       log3(`table "${tbl}" not found, creating`);
@@ -4329,17 +4345,40 @@ var DeeplakeApi = class {
   }
   /** Create the sessions table (uses JSONB for message since every row is a JSON event). */
   async ensureSessionsTable(name) {
+    const safe = sqlIdent(name);
     const tables = await this.listTables();
-    if (!tables.includes(name)) {
-      log3(`table "${name}" not found, creating`);
-      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${name}" (id TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', filename TEXT NOT NULL DEFAULT '', message JSONB, message_embedding FLOAT4[], author TEXT NOT NULL DEFAULT '', mime_type TEXT NOT NULL DEFAULT 'application/json', size_bytes BIGINT NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '', creation_date TEXT NOT NULL DEFAULT '', last_update_date TEXT NOT NULL DEFAULT '') USING deeplake`, name);
-      log3(`table "${name}" created`);
-      if (!tables.includes(name))
-        this._tablesCache = [...tables, name];
+    if (!tables.includes(safe)) {
+      log3(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${safe}" (id TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', filename TEXT NOT NULL DEFAULT '', message JSONB, message_embedding FLOAT4[], author TEXT NOT NULL DEFAULT '', mime_type TEXT NOT NULL DEFAULT 'application/json', size_bytes BIGINT NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '', creation_date TEXT NOT NULL DEFAULT '', last_update_date TEXT NOT NULL DEFAULT '') USING deeplake`, safe);
+      log3(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
     }
-    await this.ensureEmbeddingColumn(name, MESSAGE_EMBEDDING_COL);
-    await this.ensureColumn(name, "agent", "TEXT NOT NULL DEFAULT ''");
-    await this.ensureLookupIndex(name, "path_creation_date", `("path", "creation_date")`);
+    await this.ensureEmbeddingColumn(safe, MESSAGE_EMBEDDING_COL);
+    await this.ensureColumn(safe, "agent", "TEXT NOT NULL DEFAULT ''");
+    await this.ensureLookupIndex(safe, "path_creation_date", `("path", "creation_date")`);
+  }
+  /**
+   * Create the skills table.
+   *
+   * One row per skill version. Workers INSERT a fresh row on every KEEP /
+   * MERGE rather than UPDATE-ing in place, so the full version history is
+   * recoverable. Uniqueness in the *current* state is by (project_key, name)
+   * — newer rows shadow older ones at read time (ORDER BY version DESC).
+   * This sidesteps the Deeplake UPDATE-coalescing quirk that bit the wiki
+   * worker.
+   */
+  async ensureSkillsTable(name) {
+    const safe = sqlIdent(name);
+    const tables = await this.listTables();
+    if (!tables.includes(safe)) {
+      log3(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${safe}" (id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', project TEXT NOT NULL DEFAULT '', project_key TEXT NOT NULL DEFAULT '', local_path TEXT NOT NULL DEFAULT '', install TEXT NOT NULL DEFAULT 'project', source_sessions TEXT NOT NULL DEFAULT '[]', source_agent TEXT NOT NULL DEFAULT '', scope TEXT NOT NULL DEFAULT 'me', author TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', trigger_text TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', version BIGINT NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '') USING deeplake`, safe);
+      log3(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
+    }
+    await this.ensureLookupIndex(safe, "project_key_name", `("project_key", "name")`);
   }
 };
 
@@ -4670,15 +4709,550 @@ if (process.argv[1] && process.argv[1].endsWith("auth-login.js")) {
   });
 }
 
+// dist/src/commands/skilify.js
+import { readdirSync as readdirSync3, existsSync as existsSync15, readFileSync as readFileSync12, mkdirSync as mkdirSync7, renameSync as renameSync2 } from "node:fs";
+import { homedir as homedir8 } from "node:os";
+import { dirname as dirname2, join as join18 } from "node:path";
+
+// dist/src/skilify/scope-config.js
+import { existsSync as existsSync12, mkdirSync as mkdirSync4, readFileSync as readFileSync9, writeFileSync as writeFileSync6 } from "node:fs";
+import { homedir as homedir5 } from "node:os";
+import { join as join15 } from "node:path";
+var STATE_DIR = join15(homedir5(), ".deeplake", "state", "skilify");
+var CONFIG_PATH2 = join15(STATE_DIR, "config.json");
+var DEFAULT = { scope: "me", team: [], install: "project" };
+function loadScopeConfig() {
+  if (!existsSync12(CONFIG_PATH2))
+    return DEFAULT;
+  try {
+    const raw = JSON.parse(readFileSync9(CONFIG_PATH2, "utf-8"));
+    const scope = raw.scope === "team" || raw.scope === "org" ? raw.scope : "me";
+    const team = Array.isArray(raw.team) ? raw.team.filter((s) => typeof s === "string") : [];
+    const install = raw.install === "global" ? "global" : "project";
+    return { scope, team, install };
+  } catch {
+    return DEFAULT;
+  }
+}
+function saveScopeConfig(cfg) {
+  mkdirSync4(STATE_DIR, { recursive: true });
+  writeFileSync6(CONFIG_PATH2, JSON.stringify(cfg, null, 2));
+}
+
+// dist/src/skilify/pull.js
+import { existsSync as existsSync14, readFileSync as readFileSync11, writeFileSync as writeFileSync8, mkdirSync as mkdirSync6, renameSync } from "node:fs";
+import { homedir as homedir7 } from "node:os";
+import { join as join17 } from "node:path";
+
+// dist/src/skilify/skill-writer.js
+import { existsSync as existsSync13, mkdirSync as mkdirSync5, readFileSync as readFileSync10, readdirSync as readdirSync2, statSync as statSync2, writeFileSync as writeFileSync7 } from "node:fs";
+import { homedir as homedir6 } from "node:os";
+import { join as join16 } from "node:path";
+function assertValidSkillName(name) {
+  if (typeof name !== "string" || name.length === 0) {
+    throw new Error(`invalid skill name: empty or non-string`);
+  }
+  if (name.length > 100) {
+    throw new Error(`invalid skill name: too long (${name.length} chars)`);
+  }
+  if (name.includes("/") || name.includes("\\") || name.includes("..")) {
+    throw new Error(`invalid skill name: contains path separator or '..': ${name}`);
+  }
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
+    throw new Error(`invalid skill name: must be kebab-case (lowercase a-z, 0-9, hyphen): ${name}`);
+  }
+}
+function parseFrontmatter(text) {
+  if (!text.startsWith("---\n") && !text.startsWith("---\r\n"))
+    return null;
+  const end = text.indexOf("\n---", 4);
+  if (end < 0)
+    return null;
+  const head = text.slice(4, end).trim();
+  const body = text.slice(end + 4).replace(/^\r?\n/, "");
+  const fm = { source_sessions: [] };
+  let mode = "kv";
+  for (const raw of head.split(/\r?\n/)) {
+    if (mode === "sources") {
+      const m2 = raw.match(/^\s+-\s+(.+)$/);
+      if (m2) {
+        fm.source_sessions.push(m2[1].trim());
+        continue;
+      }
+      mode = "kv";
+    }
+    if (raw.startsWith("source_sessions:")) {
+      mode = "sources";
+      continue;
+    }
+    const m = raw.match(/^([a-zA-Z_]+):\s*(.*)$/);
+    if (!m)
+      continue;
+    const [, k, v] = m;
+    let val = v;
+    if (v.startsWith('"') && v.endsWith('"')) {
+      try {
+        val = JSON.parse(v);
+      } catch {
+      }
+    } else if (k === "version") {
+      const n = parseInt(v, 10);
+      if (Number.isFinite(n))
+        val = n;
+    }
+    fm[k] = val;
+  }
+  return { fm, body };
+}
+
+// dist/src/skilify/pull.js
+function esc(s) {
+  return s.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+function buildPullSql(args) {
+  const where = [];
+  if (args.users.length > 0) {
+    const list = args.users.map((u) => `'${esc(u)}'`).join(", ");
+    where.push(`author IN (${list})`);
+  }
+  if (args.skillName) {
+    where.push(`name = '${esc(args.skillName)}'`);
+  }
+  const whereClause = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
+  return `SELECT name, project, project_key, body, version, source_agent, scope, author, description, trigger_text, source_sessions, install, created_at, updated_at FROM "${args.tableName}"${whereClause} ORDER BY project_key ASC, name ASC, version DESC`;
+}
+function isMissingTableError(message) {
+  if (!message)
+    return false;
+  return /Table does not exist|relation .* does not exist|no such table/i.test(message);
+}
+function resolvePullDestination(install, cwd) {
+  if (install === "global")
+    return join17(homedir7(), ".claude", "skills");
+  if (!cwd)
+    throw new Error("install=project requires a cwd");
+  return join17(cwd, ".claude", "skills");
+}
+function selectLatestPerName(rows) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const r of rows) {
+    const name = String(r.name ?? "");
+    const projectKey = String(r.project_key ?? "");
+    if (!name)
+      continue;
+    const key = `${projectKey}\0${name}`;
+    if (seen.has(key))
+      continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+function renderSkillFile(row) {
+  const sources = parseSourceSessions(row.source_sessions);
+  const fm = {
+    name: String(row.name ?? ""),
+    description: String(row.description ?? ""),
+    trigger: typeof row.trigger_text === "string" && row.trigger_text.length > 0 ? String(row.trigger_text) : void 0,
+    source_sessions: sources,
+    version: Number(row.version ?? 1),
+    created_by_agent: String(row.source_agent ?? "unknown"),
+    created_at: String(row.created_at ?? (/* @__PURE__ */ new Date()).toISOString()),
+    updated_at: String(row.updated_at ?? (/* @__PURE__ */ new Date()).toISOString())
+  };
+  const body = String(row.body ?? "").trim();
+  return `${renderFrontmatter(fm)}
+
+${body}
+`;
+}
+function parseSourceSessions(v) {
+  if (Array.isArray(v))
+    return v.map(String);
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      if (Array.isArray(parsed))
+        return parsed.map(String);
+    } catch {
+    }
+  }
+  return [];
+}
+function renderFrontmatter(fm) {
+  const lines = ["---"];
+  lines.push(`name: ${fm.name}`);
+  lines.push(`description: ${JSON.stringify(fm.description)}`);
+  if (fm.trigger)
+    lines.push(`trigger: ${JSON.stringify(fm.trigger)}`);
+  lines.push(`source_sessions:`);
+  for (const s of fm.source_sessions)
+    lines.push(`  - ${s}`);
+  lines.push(`version: ${fm.version}`);
+  lines.push(`created_by_agent: ${fm.created_by_agent}`);
+  lines.push(`created_at: ${fm.created_at}`);
+  lines.push(`updated_at: ${fm.updated_at}`);
+  lines.push("---");
+  return lines.join("\n");
+}
+function readLocalVersion(path) {
+  if (!existsSync14(path))
+    return null;
+  try {
+    const text = readFileSync11(path, "utf-8");
+    const parsed = parseFrontmatter(text);
+    if (!parsed)
+      return null;
+    const v = parsed.fm.version;
+    return typeof v === "number" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function decideAction(args) {
+  const shouldWrite = args.localVersion === null || args.remoteVersion > args.localVersion || args.force;
+  if (!shouldWrite)
+    return "skipped";
+  return args.dryRun ? "dryrun" : "wrote";
+}
+async function runPull(opts) {
+  const sql = buildPullSql({
+    tableName: opts.tableName,
+    users: opts.users,
+    skillName: opts.skillName
+  });
+  let rows = [];
+  try {
+    rows = await opts.query(sql);
+  } catch (e) {
+    if (isMissingTableError(e?.message))
+      rows = [];
+    else
+      throw e;
+  }
+  const latest = selectLatestPerName(rows);
+  const root = resolvePullDestination(opts.install, opts.cwd);
+  const summary = { scanned: latest.length, wrote: 0, skipped: 0, dryrun: 0, entries: [] };
+  for (const row of latest) {
+    const name = String(row.name ?? "");
+    if (!name)
+      continue;
+    try {
+      assertValidSkillName(name);
+    } catch (e) {
+      summary.entries.push({
+        name,
+        remoteVersion: Number(row.version ?? 1),
+        localVersion: null,
+        action: "skipped",
+        destination: "(invalid name \u2014 skipped)",
+        author: String(row.author ?? ""),
+        sourceAgent: String(row.source_agent ?? "")
+      });
+      summary.skipped++;
+      continue;
+    }
+    const projectKey = String(row.project_key ?? "");
+    const skillDir = projectKey ? join17(root, projectKey, name) : join17(root, name);
+    const skillFile = join17(skillDir, "SKILL.md");
+    const remoteVersion = Number(row.version ?? 1);
+    const localVersion = readLocalVersion(skillFile);
+    const action = decideAction({
+      remoteVersion,
+      localVersion,
+      force: opts.force ?? false,
+      dryRun: opts.dryRun ?? false
+    });
+    if (action === "wrote") {
+      mkdirSync6(skillDir, { recursive: true });
+      if (existsSync14(skillFile)) {
+        try {
+          renameSync(skillFile, `${skillFile}.bak`);
+        } catch {
+        }
+      }
+      writeFileSync8(skillFile, renderSkillFile(row));
+    }
+    summary.entries.push({
+      name,
+      remoteVersion,
+      localVersion,
+      action,
+      destination: skillFile,
+      author: String(row.author ?? ""),
+      sourceAgent: String(row.source_agent ?? "")
+    });
+    if (action === "wrote")
+      summary.wrote++;
+    else if (action === "dryrun")
+      summary.dryrun++;
+    else
+      summary.skipped++;
+  }
+  return summary;
+}
+
+// dist/src/commands/skilify.js
+var STATE_DIR2 = join18(homedir8(), ".deeplake", "state", "skilify");
+function showStatus() {
+  const cfg = loadScopeConfig();
+  console.log(`scope:   ${cfg.scope}`);
+  console.log(`team:    ${cfg.team.length === 0 ? "(empty)" : cfg.team.join(", ")}`);
+  console.log(`install: ${cfg.install}  (${cfg.install === "global" ? "~/.claude/skills/" : "<project>/.claude/skills/"})`);
+  if (!existsSync15(STATE_DIR2)) {
+    console.log(`state: (no projects tracked yet)`);
+    return;
+  }
+  const files = readdirSync3(STATE_DIR2).filter((f) => f.endsWith(".json") && f !== "config.json");
+  if (files.length === 0) {
+    console.log(`state: (no projects tracked yet)`);
+    return;
+  }
+  console.log(`state: ${files.length} project(s) tracked`);
+  for (const f of files) {
+    try {
+      const s = JSON.parse(readFileSync12(join18(STATE_DIR2, f), "utf-8"));
+      const skills = s.skillsGenerated.length === 0 ? "none" : s.skillsGenerated.join(", ");
+      console.log(`  - ${s.project} (counter=${s.counter}, last=${s.lastDate ?? "never"}, skills=${skills})`);
+    } catch {
+    }
+  }
+}
+function setScope(scope) {
+  if (scope !== "me" && scope !== "team" && scope !== "org") {
+    console.error(`Invalid scope '${scope}'. Use one of: me, team, org`);
+    process.exit(1);
+  }
+  const cfg = loadScopeConfig();
+  saveScopeConfig({ ...cfg, scope });
+  console.log(`Scope set to '${scope}'.`);
+  if (scope === "team" && cfg.team.length === 0) {
+    console.log(`Note: team list is empty. Use 'hivemind skilify team add <username>' to populate it.`);
+  }
+}
+function setInstall(loc) {
+  if (loc !== "project" && loc !== "global") {
+    console.error(`Invalid install location '${loc}'. Use one of: project, global`);
+    process.exit(1);
+  }
+  const cfg = loadScopeConfig();
+  saveScopeConfig({ ...cfg, install: loc });
+  const path = loc === "global" ? join18(homedir8(), ".claude", "skills") : "<cwd>/.claude/skills";
+  console.log(`Install location set to '${loc}'. New skills will be written to ${path}/<name>/SKILL.md.`);
+}
+function promoteSkill(name, cwd) {
+  if (!name) {
+    console.error("Usage: hivemind skilify promote <skill-name>");
+    process.exit(1);
+  }
+  const projectPath = join18(cwd, ".claude", "skills", name);
+  const globalPath = join18(homedir8(), ".claude", "skills", name);
+  if (!existsSync15(join18(projectPath, "SKILL.md"))) {
+    console.error(`Skill '${name}' not found at ${projectPath}/SKILL.md`);
+    process.exit(1);
+  }
+  if (existsSync15(join18(globalPath, "SKILL.md"))) {
+    console.error(`Skill '${name}' already exists at ${globalPath}/SKILL.md \u2014 refusing to overwrite. Remove it first or rename the project skill.`);
+    process.exit(1);
+  }
+  mkdirSync7(dirname2(globalPath), { recursive: true });
+  renameSync2(projectPath, globalPath);
+  console.log(`Promoted '${name}' from ${projectPath} \u2192 ${globalPath}.`);
+}
+function teamAdd(name) {
+  if (!name) {
+    console.error("Usage: hivemind skilify team add <username>");
+    process.exit(1);
+  }
+  const cfg = loadScopeConfig();
+  if (cfg.team.includes(name)) {
+    console.log(`'${name}' is already in the team list.`);
+    return;
+  }
+  const next = [...cfg.team, name].sort();
+  saveScopeConfig({ ...cfg, team: next });
+  console.log(`Added '${name}' to team. Team is now: ${next.join(", ")}`);
+}
+function teamRemove(name) {
+  if (!name) {
+    console.error("Usage: hivemind skilify team remove <username>");
+    process.exit(1);
+  }
+  const cfg = loadScopeConfig();
+  if (!cfg.team.includes(name)) {
+    console.log(`'${name}' is not in the team list.`);
+    return;
+  }
+  const next = cfg.team.filter((n) => n !== name);
+  saveScopeConfig({ ...cfg, team: next });
+  console.log(`Removed '${name}' from team. Team is now: ${next.length === 0 ? "(empty)" : next.join(", ")}`);
+}
+function teamList() {
+  const cfg = loadScopeConfig();
+  if (cfg.team.length === 0) {
+    console.log(`(team list is empty)`);
+    return;
+  }
+  for (const n of cfg.team)
+    console.log(n);
+}
+function usage() {
+  console.log("Usage:");
+  console.log("  hivemind skilify                            show current scope, team, install, and per-project state");
+  console.log("  hivemind skilify scope <me|team|org>        set the mining scope");
+  console.log("  hivemind skilify install <project|global>   set where new skills are written");
+  console.log("  hivemind skilify promote <skill-name>       move a project skill to the global location");
+  console.log("  hivemind skilify team add <username>        add a username to the team list");
+  console.log("  hivemind skilify team remove <username>     remove a username from the team list");
+  console.log("  hivemind skilify team list                  list current team members");
+  console.log("  hivemind skilify pull [skill-name] [opts]   fetch skills from Deeplake to local FS");
+  console.log("    Options for pull:");
+  console.log("      --to <project|global>     destination (default: global)");
+  console.log("      --user <name>             only skills authored by this user");
+  console.log("      --users <a,b,c>           only skills authored by these users");
+  console.log("      --all-users               all authors (default \u2014 equivalent to no filter)");
+  console.log("      --dry-run                 show what would be written, don't touch disk");
+  console.log("      --force                   overwrite even when local version >= remote");
+  console.log("  hivemind skilify status                     show per-project state");
+}
+function takeFlagValue(args, flag) {
+  const idx = args.indexOf(flag);
+  if (idx < 0)
+    return null;
+  const value = args[idx + 1];
+  if (value === void 0 || value.startsWith("--")) {
+    console.error(`${flag} requires a value`);
+    process.exit(1);
+  }
+  args.splice(idx, 2);
+  return value;
+}
+function takeBooleanFlag(args, flag) {
+  const idx = args.indexOf(flag);
+  if (idx < 0)
+    return false;
+  args.splice(idx, 1);
+  return true;
+}
+async function pullSkills(args) {
+  const work = [...args];
+  const toRaw = takeFlagValue(work, "--to") ?? "global";
+  const userOne = takeFlagValue(work, "--user");
+  const usersMany = takeFlagValue(work, "--users");
+  const allUsers = takeBooleanFlag(work, "--all-users");
+  const dryRun = takeBooleanFlag(work, "--dry-run");
+  const force = takeBooleanFlag(work, "--force");
+  const skillName = work[0];
+  if (toRaw !== "project" && toRaw !== "global") {
+    console.error(`Invalid --to '${toRaw}'. Use 'project' or 'global'.`);
+    process.exit(1);
+  }
+  let users = [];
+  if (allUsers)
+    users = [];
+  else if (userOne)
+    users = [userOne];
+  else if (usersMany)
+    users = usersMany.split(",").map((s) => s.trim()).filter(Boolean);
+  const config = loadConfig();
+  if (!config) {
+    console.error("Not logged in. Run: hivemind login");
+    process.exit(1);
+  }
+  const api = new DeeplakeApi(config.token, config.apiUrl, config.orgId, config.workspaceId, config.skillsTableName);
+  const query = (sql) => api.query(sql);
+  let summary;
+  try {
+    summary = await runPull({
+      query,
+      tableName: config.skillsTableName,
+      install: toRaw,
+      cwd: toRaw === "project" ? process.cwd() : void 0,
+      users,
+      skillName,
+      dryRun,
+      force
+    });
+  } catch (e) {
+    console.error(`pull failed: ${e?.message ?? e}`);
+    process.exit(1);
+  }
+  const dest = toRaw === "global" ? join18(homedir8(), ".claude", "skills") : `${process.cwd()}/.claude/skills`;
+  const filterDesc = users.length === 0 ? "all users" : users.join(", ");
+  console.log(`Destination: ${dest}`);
+  console.log(`Filter:      ${filterDesc}${skillName ? ` \xB7 skill='${skillName}'` : ""}${dryRun ? " \xB7 dry-run" : ""}${force ? " \xB7 force" : ""}`);
+  console.log(`Scanned ${summary.scanned} remote skill(s).`);
+  for (const e of summary.entries) {
+    const tag = e.action === "wrote" ? "\u2713 wrote" : e.action === "dryrun" ? "\u2192 would write" : "\xB7 skipped";
+    const ver = e.localVersion === null ? `v${e.remoteVersion} (new)` : `v${e.localVersion} \u2192 v${e.remoteVersion}`;
+    console.log(`  ${tag.padEnd(15)} ${e.name.padEnd(40)} ${ver.padEnd(20)} (${e.author}/${e.sourceAgent})`);
+  }
+  console.log(`Result: ${summary.wrote} written, ${summary.dryrun} dry-run, ${summary.skipped} skipped.`);
+}
+function runSkilifyCommand(args) {
+  const sub = args[0];
+  if (!sub || sub === "status") {
+    showStatus();
+    return;
+  }
+  if (sub === "scope") {
+    setScope(args[1] ?? "");
+    return;
+  }
+  if (sub === "install") {
+    setInstall(args[1] ?? "");
+    return;
+  }
+  if (sub === "promote") {
+    promoteSkill(args[1] ?? "", process.cwd());
+    return;
+  }
+  if (sub === "pull") {
+    pullSkills(args.slice(1)).catch((e) => {
+      console.error(`pull error: ${e?.message ?? e}`);
+      process.exit(1);
+    });
+    return;
+  }
+  if (sub === "team") {
+    const action = args[1];
+    if (action === "add") {
+      teamAdd(args[2] ?? "");
+      return;
+    }
+    if (action === "remove") {
+      teamRemove(args[2] ?? "");
+      return;
+    }
+    if (action === "list") {
+      teamList();
+      return;
+    }
+    console.error("Usage: hivemind skilify team <add|remove|list> [name]");
+    process.exit(1);
+  }
+  if (sub === "--help" || sub === "-h" || sub === "help") {
+    usage();
+    return;
+  }
+  console.error(`Unknown skilify subcommand: ${sub}`);
+  usage();
+  process.exit(1);
+}
+if (process.argv[1] && process.argv[1].endsWith("skilify.js")) {
+  runSkilifyCommand(process.argv.slice(2));
+}
+
 // dist/src/cli/update.js
 import { execFileSync as execFileSync4 } from "node:child_process";
-import { existsSync as existsSync12, readFileSync as readFileSync10, realpathSync } from "node:fs";
-import { dirname as dirname3, sep } from "node:path";
+import { existsSync as existsSync16, readFileSync as readFileSync14, realpathSync } from "node:fs";
+import { dirname as dirname4, sep } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // dist/src/utils/version-check.js
-import { readFileSync as readFileSync9 } from "node:fs";
-import { dirname as dirname2, join as join15 } from "node:path";
+import { readFileSync as readFileSync13 } from "node:fs";
+import { dirname as dirname3, join as join19 } from "node:path";
 function isNewer(latest, current) {
   const parse = (v) => v.split(".").map(Number);
   const [la, lb, lc] = parse(latest);
@@ -4697,24 +5271,24 @@ function detectInstallKind(argv1) {
       return argv1 ?? process.argv[1] ?? fileURLToPath2(import.meta.url);
     }
   })();
-  let dir = dirname3(realArgv1);
+  let dir = dirname4(realArgv1);
   let installDir = null;
   for (let i = 0; i < 10; i++) {
     const pkgPath = `${dir}${sep}package.json`;
     try {
-      const pkg = JSON.parse(readFileSync10(pkgPath, "utf-8"));
+      const pkg = JSON.parse(readFileSync14(pkgPath, "utf-8"));
       if (pkg.name === PKG_NAME || pkg.name === "hivemind") {
         installDir = dir;
         break;
       }
     } catch {
     }
-    const parent = dirname3(dir);
+    const parent = dirname4(dir);
     if (parent === dir)
       break;
     dir = parent;
   }
-  installDir ??= dirname3(realArgv1);
+  installDir ??= dirname4(realArgv1);
   if (realArgv1.includes(`${sep}_npx${sep}`) || realArgv1.includes(`${sep}.npx${sep}`)) {
     return { kind: "npx", installDir };
   }
@@ -4723,10 +5297,10 @@ function detectInstallKind(argv1) {
   }
   let gitDir = installDir;
   for (let i = 0; i < 6; i++) {
-    if (existsSync12(`${gitDir}${sep}.git`)) {
+    if (existsSync16(`${gitDir}${sep}.git`)) {
       return { kind: "local-dev", installDir };
     }
-    const parent = dirname3(gitDir);
+    const parent = dirname4(gitDir);
     if (parent === gitDir)
       break;
     gitDir = parent;
@@ -4879,6 +5453,19 @@ Semantic search (embeddings):
   Add --with-embeddings to "hivemind install" (or "hivemind <agent> install")
   to run "embeddings install" automatically after installing the agent(s).
 
+Skill management (mine + share reusable Claude skills across the org):
+  hivemind skilify                         Show scope, team, install, and per-project state.
+  hivemind skilify pull [skill-name]       Sync skills from the org table to local FS.
+                                           Options: --user <email>, --users a,b,c,
+                                           --all-users, --to <project|global>,
+                                           --dry-run, --force.
+  hivemind skilify scope <me|team|org>     Set the sharing scope for newly mined skills.
+  hivemind skilify install <project|global>  Set where new skills are written.
+  hivemind skilify promote <name>          Move a project skill to the global location.
+  hivemind skilify team add <username>     Add a username to the team list.
+  hivemind skilify team remove <username>  Remove a username from the team list.
+  hivemind skilify team list               List current team members.
+
 Account / org / workspace:
   hivemind whoami                          Show current user, org, workspace.
   hivemind logout                          Remove credentials.
@@ -5027,6 +5614,10 @@ async function main() {
   if (cmd === "update") {
     const code = await runUpdate({ dryRun: hasFlag(args.slice(1), "--dry-run") });
     process.exit(code);
+  }
+  if (cmd === "skilify") {
+    runSkilifyCommand(args.slice(1));
+    return;
   }
   if (cmd === "embeddings") {
     const sub = args[1];

@@ -1,0 +1,98 @@
+name: Publish smoke test (dry-run)
+
+# Manually-triggered workflow that exercises the full publish pipeline
+# WITHOUT actually uploading to npm or ClawHub. Use this to confirm:
+#
+#   - NPM_TOKEN is valid and the token type bypasses 2FA correctly
+#     (granular automation tokens DO; classic publish tokens with 2FA
+#     enabled DO NOT and will fail with EOTP)
+#   - CLAWHUB_TOKEN is valid and the CLI accepts it
+#   - The production GitHub Environment is wired up correctly (this
+#     workflow uses the same environment as the real publish job, so
+#     a successful run proves secret access works)
+#   - The build, pack, and provenance steps succeed end-to-end
+#
+# No bump, no GitHub Release, no public artifact — fully reversible.
+#
+# To run: GitHub UI → Actions → "Publish smoke test (dry-run)" → "Run
+# workflow" → pick a branch (usually main).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or commit SHA to smoke-test (default: main)"
+        required: false
+        default: "main"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  smoke-test:
+    name: Dry-run npm + ClawHub publish
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.12"
+          registry-url: "https://registry.npmjs.org"
+          scope: "@deeplake"
+          cache: "npm"
+
+      - name: Load secrets from 1Password
+        uses: 1Password/load-secrets-action@v4.0.0
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CLAWHUB_TOKEN: "op://GitHub Actions/hivemind/CLAWHUB_TOKEN"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build bundles
+        run: npm run build
+
+      - name: Pack-check (refuse forbidden filenames in tarball)
+        run: npm run pack:check
+
+      - name: npm publish --dry-run --provenance
+        # `--dry-run` skips the actual upload but exercises tarball
+        # creation, prepublishOnly, registry auth handshake, and (with
+        # `--provenance`) the OIDC/Sigstore signing flow. If the token
+        # is a classic 2FA-required type, this fails with EOTP — which
+        # is exactly the canary we want before the real publish.
+        run: npm publish --dry-run --provenance --access public
+
+      - name: Install ClawHub CLI
+        run: npm install -g clawhub
+
+      - name: Authenticate ClawHub CLI
+        run: clawhub login --token "$CLAWHUB_TOKEN" --no-browser
+
+      - name: clawhub package publish --dry-run
+        run: clawhub package publish ./openclaw --dry-run
+
+      - name: Summary
+        run: |
+          {
+            echo "### Smoke test passed"
+            echo ""
+            echo "- npm token: valid, registry handshake OK"
+            echo "- ClawHub token: valid"
+            echo "- Build + pack-check + provenance flow: OK"
+            echo ""
+            echo "No artifact was published. The real publish job will run on the next merge to \`main\`."
+          } >> "$GITHUB_STEP_SUMMARY"

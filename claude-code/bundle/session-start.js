@@ -119,6 +119,7 @@ function loadConfig() {
     apiUrl: process.env.HIVEMIND_API_URL ?? creds?.apiUrl ?? "https://api.deeplake.ai",
     tableName: process.env.HIVEMIND_TABLE ?? "memory",
     sessionsTableName: process.env.HIVEMIND_SESSIONS_TABLE ?? "sessions",
+    skillsTableName: process.env.HIVEMIND_SKILLS_TABLE ?? "skills",
     memoryPath: process.env.HIVEMIND_MEMORY_PATH ?? join2(home, ".deeplake", "memory")
   };
 }
@@ -145,6 +146,12 @@ function log(tag, msg) {
 // dist/src/utils/sql.js
 function sqlStr(value) {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/\0/g, "").replace(/[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+function sqlIdent(name) {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+    throw new Error(`Invalid SQL identifier: ${JSON.stringify(name)}`);
+  }
+  return name;
 }
 
 // dist/src/embeddings/columns.js
@@ -509,7 +516,7 @@ var DeeplakeApi = class {
   }
   /** Create the memory table if it doesn't already exist. Migrate columns on existing tables. */
   async ensureTable(name) {
-    const tbl = name ?? this.tableName;
+    const tbl = sqlIdent(name ?? this.tableName);
     const tables = await this.listTables();
     if (!tables.includes(tbl)) {
       log2(`table "${tbl}" not found, creating`);
@@ -523,17 +530,40 @@ var DeeplakeApi = class {
   }
   /** Create the sessions table (uses JSONB for message since every row is a JSON event). */
   async ensureSessionsTable(name) {
+    const safe = sqlIdent(name);
     const tables = await this.listTables();
-    if (!tables.includes(name)) {
-      log2(`table "${name}" not found, creating`);
-      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${name}" (id TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', filename TEXT NOT NULL DEFAULT '', message JSONB, message_embedding FLOAT4[], author TEXT NOT NULL DEFAULT '', mime_type TEXT NOT NULL DEFAULT 'application/json', size_bytes BIGINT NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '', creation_date TEXT NOT NULL DEFAULT '', last_update_date TEXT NOT NULL DEFAULT '') USING deeplake`, name);
-      log2(`table "${name}" created`);
-      if (!tables.includes(name))
-        this._tablesCache = [...tables, name];
+    if (!tables.includes(safe)) {
+      log2(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${safe}" (id TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', filename TEXT NOT NULL DEFAULT '', message JSONB, message_embedding FLOAT4[], author TEXT NOT NULL DEFAULT '', mime_type TEXT NOT NULL DEFAULT 'application/json', size_bytes BIGINT NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '', creation_date TEXT NOT NULL DEFAULT '', last_update_date TEXT NOT NULL DEFAULT '') USING deeplake`, safe);
+      log2(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
     }
-    await this.ensureEmbeddingColumn(name, MESSAGE_EMBEDDING_COL);
-    await this.ensureColumn(name, "agent", "TEXT NOT NULL DEFAULT ''");
-    await this.ensureLookupIndex(name, "path_creation_date", `("path", "creation_date")`);
+    await this.ensureEmbeddingColumn(safe, MESSAGE_EMBEDDING_COL);
+    await this.ensureColumn(safe, "agent", "TEXT NOT NULL DEFAULT ''");
+    await this.ensureLookupIndex(safe, "path_creation_date", `("path", "creation_date")`);
+  }
+  /**
+   * Create the skills table.
+   *
+   * One row per skill version. Workers INSERT a fresh row on every KEEP /
+   * MERGE rather than UPDATE-ing in place, so the full version history is
+   * recoverable. Uniqueness in the *current* state is by (project_key, name)
+   * — newer rows shadow older ones at read time (ORDER BY version DESC).
+   * This sidesteps the Deeplake UPDATE-coalescing quirk that bit the wiki
+   * worker.
+   */
+  async ensureSkillsTable(name) {
+    const safe = sqlIdent(name);
+    const tables = await this.listTables();
+    if (!tables.includes(safe)) {
+      log2(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${safe}" (id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', project TEXT NOT NULL DEFAULT '', project_key TEXT NOT NULL DEFAULT '', local_path TEXT NOT NULL DEFAULT '', install TEXT NOT NULL DEFAULT 'project', source_sessions TEXT NOT NULL DEFAULT '[]', source_agent TEXT NOT NULL DEFAULT '', scope TEXT NOT NULL DEFAULT 'me', author TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', trigger_text TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', version BIGINT NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '') USING deeplake`, safe);
+      log2(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
+    }
+    await this.ensureLookupIndex(safe, "project_key_name", `("project_key", "name")`);
   }
 };
 
@@ -670,7 +700,6 @@ async function autoUpdate(creds, opts) {
 // dist/src/hooks/session-start.js
 var log4 = (msg) => log("session-start", msg);
 var __bundleDir = dirname2(fileURLToPath(import.meta.url));
-var AUTH_CMD = join8(__bundleDir, "commands", "auth-login.js");
 var context = `DEEPLAKE MEMORY: You have TWO memory sources. ALWAYS check BOTH when the user asks you to recall, remember, or look up ANY information:
 
 1. Your built-in memory (~/.claude/) \u2014 personal per-project notes
@@ -692,15 +721,30 @@ Tool choice on this mount:
   \u274C \`grep\` without a \`summaries/\` or \`sessions/\` suffix \u2014 too noisy, drowns the answer.
 
 Organization management \u2014 each argument is SEPARATE (do NOT quote subcommands together):
-- node "HIVEMIND_AUTH_CMD" login                              \u2014 SSO login
-- node "HIVEMIND_AUTH_CMD" whoami                             \u2014 show current user/org
-- node "HIVEMIND_AUTH_CMD" org list                           \u2014 list organizations
-- node "HIVEMIND_AUTH_CMD" org switch <name-or-id>            \u2014 switch organization
-- node "HIVEMIND_AUTH_CMD" workspaces                         \u2014 list workspaces
-- node "HIVEMIND_AUTH_CMD" workspace <id>                     \u2014 switch workspace
-- node "HIVEMIND_AUTH_CMD" invite <email> <ADMIN|WRITE|READ>  \u2014 invite member (ALWAYS ask user which role before inviting)
-- node "HIVEMIND_AUTH_CMD" members                            \u2014 list members
-- node "HIVEMIND_AUTH_CMD" remove <user-id>                   \u2014 remove member
+- hivemind login                              \u2014 SSO login
+- hivemind whoami                             \u2014 show current user/org
+- hivemind org list                           \u2014 list organizations
+- hivemind org switch <name-or-id>            \u2014 switch organization
+- hivemind workspaces                         \u2014 list workspaces
+- hivemind workspace <id>                     \u2014 switch workspace
+- hivemind invite <email> <ADMIN|WRITE|READ>  \u2014 invite member (ALWAYS ask user which role before inviting)
+- hivemind members                            \u2014 list members
+- hivemind remove <user-id>                   \u2014 remove member
+
+Skill management (mine + share reusable Claude skills across the org):
+- hivemind skilify                                  \u2014 show scope, team, install, per-project state
+- hivemind skilify pull                             \u2014 sync project skills from the org table to local FS
+- hivemind skilify pull --user <email>              \u2014 only skills authored by that user
+- hivemind skilify pull --users <a,b,c>             \u2014 only skills from those authors
+- hivemind skilify pull --all-users                 \u2014 explicit "no author filter" (default)
+- hivemind skilify pull --to <project|global>       \u2014 install location (project=cwd/.claude/skills, global=~/.claude/skills)
+- hivemind skilify pull --dry-run                   \u2014 preview without touching disk
+- hivemind skilify pull --force                     \u2014 overwrite local files even if up-to-date (creates .bak)
+- hivemind skilify pull <skill-name>                \u2014 pull only that one skill (combines with --user)
+- hivemind skilify scope <me|team|org>              \u2014 sharing scope for newly mined skills
+- hivemind skilify install <project|global>         \u2014 default install location for new skills
+- hivemind skilify promote <skill-name>             \u2014 move a project skill to the global location
+- hivemind skilify team add|remove|list <name>      \u2014 manage team member list
 
 IMPORTANT: Only use bash commands (cat, ls, grep, echo, jq, head, tail, etc.) to interact with ~/.deeplake/memory/. Do NOT use python, python3, node, curl, or other interpreters \u2014 they are not available in the memory filesystem. Avoid bash brace expansions like \`{1..10}\` (not fully supported); spell out paths explicitly. Bash output is capped at 10MB total \u2014 avoid \`for f in *.json; do cat $f\` style loops on the whole sessions dir.
 
@@ -779,7 +823,7 @@ async function main() {
   const updateNotice = current ? `
 
 \u2705 Hivemind v${current}` : "";
-  const resolvedContext = context.replace(/HIVEMIND_AUTH_CMD/g, AUTH_CMD);
+  const resolvedContext = context;
   const additionalContext = creds?.token ? `${resolvedContext}
 
 Logged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${creds.workspaceId ?? "default"})${updateNotice}` : `${resolvedContext}

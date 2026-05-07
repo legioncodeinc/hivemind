@@ -97,6 +97,7 @@ function loadConfig() {
     apiUrl: process.env.HIVEMIND_API_URL ?? creds?.apiUrl ?? "https://api.deeplake.ai",
     tableName: process.env.HIVEMIND_TABLE ?? "memory",
     sessionsTableName: process.env.HIVEMIND_SESSIONS_TABLE ?? "sessions",
+    skillsTableName: process.env.HIVEMIND_SKILLS_TABLE ?? "skills",
     memoryPath: process.env.HIVEMIND_MEMORY_PATH ?? join(home, ".deeplake", "memory")
   };
 }
@@ -123,6 +124,12 @@ function log(tag, msg) {
 // dist/src/utils/sql.js
 function sqlStr(value) {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/\0/g, "").replace(/[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+function sqlIdent(name) {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+    throw new Error(`Invalid SQL identifier: ${JSON.stringify(name)}`);
+  }
+  return name;
 }
 
 // dist/src/embeddings/columns.js
@@ -496,7 +503,7 @@ var DeeplakeApi = class {
   }
   /** Create the memory table if it doesn't already exist. Migrate columns on existing tables. */
   async ensureTable(name) {
-    const tbl = name ?? this.tableName;
+    const tbl = sqlIdent(name ?? this.tableName);
     const tables = await this.listTables();
     if (!tables.includes(tbl)) {
       log2(`table "${tbl}" not found, creating`);
@@ -510,17 +517,40 @@ var DeeplakeApi = class {
   }
   /** Create the sessions table (uses JSONB for message since every row is a JSON event). */
   async ensureSessionsTable(name) {
+    const safe = sqlIdent(name);
     const tables = await this.listTables();
-    if (!tables.includes(name)) {
-      log2(`table "${name}" not found, creating`);
-      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${name}" (id TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', filename TEXT NOT NULL DEFAULT '', message JSONB, message_embedding FLOAT4[], author TEXT NOT NULL DEFAULT '', mime_type TEXT NOT NULL DEFAULT 'application/json', size_bytes BIGINT NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '', creation_date TEXT NOT NULL DEFAULT '', last_update_date TEXT NOT NULL DEFAULT '') USING deeplake`, name);
-      log2(`table "${name}" created`);
-      if (!tables.includes(name))
-        this._tablesCache = [...tables, name];
+    if (!tables.includes(safe)) {
+      log2(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${safe}" (id TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', filename TEXT NOT NULL DEFAULT '', message JSONB, message_embedding FLOAT4[], author TEXT NOT NULL DEFAULT '', mime_type TEXT NOT NULL DEFAULT 'application/json', size_bytes BIGINT NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '', creation_date TEXT NOT NULL DEFAULT '', last_update_date TEXT NOT NULL DEFAULT '') USING deeplake`, safe);
+      log2(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
     }
-    await this.ensureEmbeddingColumn(name, MESSAGE_EMBEDDING_COL);
-    await this.ensureColumn(name, "agent", "TEXT NOT NULL DEFAULT ''");
-    await this.ensureLookupIndex(name, "path_creation_date", `("path", "creation_date")`);
+    await this.ensureEmbeddingColumn(safe, MESSAGE_EMBEDDING_COL);
+    await this.ensureColumn(safe, "agent", "TEXT NOT NULL DEFAULT ''");
+    await this.ensureLookupIndex(safe, "path_creation_date", `("path", "creation_date")`);
+  }
+  /**
+   * Create the skills table.
+   *
+   * One row per skill version. Workers INSERT a fresh row on every KEEP /
+   * MERGE rather than UPDATE-ing in place, so the full version history is
+   * recoverable. Uniqueness in the *current* state is by (project_key, name)
+   * — newer rows shadow older ones at read time (ORDER BY version DESC).
+   * This sidesteps the Deeplake UPDATE-coalescing quirk that bit the wiki
+   * worker.
+   */
+  async ensureSkillsTable(name) {
+    const safe = sqlIdent(name);
+    const tables = await this.listTables();
+    if (!tables.includes(safe)) {
+      log2(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${safe}" (id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', project TEXT NOT NULL DEFAULT '', project_key TEXT NOT NULL DEFAULT '', local_path TEXT NOT NULL DEFAULT '', install TEXT NOT NULL DEFAULT 'project', source_sessions TEXT NOT NULL DEFAULT '[]', source_agent TEXT NOT NULL DEFAULT '', scope TEXT NOT NULL DEFAULT 'me', author TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', trigger_text TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', version BIGINT NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '') USING deeplake`, safe);
+      log2(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
+    }
+    await this.ensureLookupIndex(safe, "project_key_name", `("project_key", "name")`);
   }
 };
 
@@ -808,8 +838,8 @@ function embeddingsDisabled() {
 }
 
 // dist/src/hooks/cursor/capture.js
-import { fileURLToPath as fileURLToPath2 } from "node:url";
-import { dirname as dirname2, join as join9 } from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+import { dirname as dirname3, join as join13 } from "node:path";
 
 // dist/src/hooks/summary-state.js
 import { readFileSync as readFileSync4, writeFileSync as writeFileSync2, writeSync as writeSync2, mkdirSync as mkdirSync2, renameSync, existsSync as existsSync4, unlinkSync as unlinkSync2, openSync as openSync2, closeSync as closeSync2 } from "node:fs";
@@ -1066,10 +1096,312 @@ function bundleDirFromImportMeta(importMetaUrl) {
   return dirname(fileURLToPath(importMetaUrl));
 }
 
+// dist/src/skilify/spawn-skilify-worker.js
+import { spawn as spawn3 } from "node:child_process";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+import { dirname as dirname2, join as join10 } from "node:path";
+import { writeFileSync as writeFileSync4, mkdirSync as mkdirSync5, appendFileSync as appendFileSync3, chmodSync } from "node:fs";
+import { homedir as homedir8, tmpdir as tmpdir3 } from "node:os";
+
+// dist/src/skilify/gate-runner.js
+import { execFileSync } from "node:child_process";
+import { existsSync as existsSync5 } from "node:fs";
+import { homedir as homedir7 } from "node:os";
+import { join as join9 } from "node:path";
+function findAgentBin(agent) {
+  const which = (name) => {
+    try {
+      const out = execFileSync("which", [name], {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"]
+      });
+      return out.trim() || null;
+    } catch {
+      return null;
+    }
+  };
+  switch (agent) {
+    case "claude_code":
+      return which("claude") ?? join9(homedir7(), ".claude", "local", "claude");
+    case "codex":
+      return which("codex") ?? "/usr/local/bin/codex";
+    case "cursor":
+      return which("cursor-agent") ?? "/usr/local/bin/cursor-agent";
+    case "hermes":
+      return which("hermes") ?? join9(homedir7(), ".local", "bin", "hermes");
+    case "pi":
+      return which("pi") ?? join9(homedir7(), ".local", "bin", "pi");
+  }
+}
+
+// dist/src/skilify/spawn-skilify-worker.js
+var HOME2 = homedir8();
+var SKILIFY_LOG = join10(HOME2, ".claude", "hooks", "skilify.log");
+function skilifyLog(msg) {
+  try {
+    mkdirSync5(dirname2(SKILIFY_LOG), { recursive: true });
+    appendFileSync3(SKILIFY_LOG, `[${utcTimestamp()}] ${msg}
+`);
+  } catch {
+  }
+}
+function spawnSkilifyWorker(opts) {
+  const { config, cwd, projectKey, project, bundleDir, agent, scopeConfig, currentSessionId, reason } = opts;
+  const tmpDir = join10(tmpdir3(), `deeplake-skilify-${projectKey}-${Date.now()}`);
+  mkdirSync5(tmpDir, { recursive: true, mode: 448 });
+  const gateBin = findAgentBin(agent);
+  const configFile = join10(tmpDir, "config.json");
+  writeFileSync4(configFile, JSON.stringify({
+    apiUrl: config.apiUrl,
+    token: config.token,
+    orgId: config.orgId,
+    workspaceId: config.workspaceId,
+    sessionsTable: config.sessionsTableName,
+    skillsTable: config.skillsTableName,
+    userName: config.userName,
+    cwd,
+    projectKey,
+    project,
+    agent,
+    scope: scopeConfig.scope,
+    team: scopeConfig.team,
+    install: scopeConfig.install,
+    tmpDir,
+    gateBin,
+    cursorModel: process.env.HIVEMIND_CURSOR_MODEL,
+    hermesProvider: process.env.HIVEMIND_HERMES_PROVIDER,
+    hermesModel: process.env.HIVEMIND_HERMES_MODEL,
+    piProvider: process.env.HIVEMIND_PI_PROVIDER,
+    piModel: process.env.HIVEMIND_PI_MODEL,
+    skilifyLog: SKILIFY_LOG,
+    currentSessionId
+  }), { mode: 384 });
+  try {
+    chmodSync(configFile, 384);
+  } catch {
+  }
+  skilifyLog(`${reason}: spawning skilify worker for project=${project} key=${projectKey}`);
+  const workerPath = join10(bundleDir, "skilify-worker.js");
+  spawn3("nohup", ["node", workerPath, configFile], {
+    detached: true,
+    stdio: ["ignore", "ignore", "ignore"]
+  }).unref();
+  skilifyLog(`${reason}: spawned skilify worker for ${projectKey}`);
+}
+
+// dist/src/skilify/state.js
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync5, writeSync as writeSync3, mkdirSync as mkdirSync6, renameSync as renameSync2, existsSync as existsSync6, unlinkSync as unlinkSync3, openSync as openSync3, closeSync as closeSync3 } from "node:fs";
+import { execSync as execSync2 } from "node:child_process";
+import { homedir as homedir9 } from "node:os";
+import { createHash } from "node:crypto";
+import { join as join11, basename } from "node:path";
+var dlog2 = (msg) => log("skilify-state", msg);
+var STATE_DIR2 = join11(homedir9(), ".deeplake", "state", "skilify");
+var YIELD_BUF2 = new Int32Array(new SharedArrayBuffer(4));
+var TRIGGER_THRESHOLD = (() => {
+  const n = Number(process.env.HIVEMIND_SKILIFY_EVERY_N_TURNS ?? "");
+  return Number.isInteger(n) && n > 0 ? n : 20;
+})();
+function statePath2(projectKey) {
+  return join11(STATE_DIR2, `${projectKey}.json`);
+}
+function lockPath2(projectKey) {
+  return join11(STATE_DIR2, `${projectKey}.lock`);
+}
+function deriveProjectKey(cwd) {
+  const project = basename(cwd) || "unknown";
+  let signature = null;
+  try {
+    signature = execSync2("git config --get remote.origin.url", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim() || null;
+  } catch {
+  }
+  const input = signature ?? cwd;
+  const key = createHash("sha1").update(input).digest("hex").slice(0, 16);
+  return { key, project };
+}
+function readState2(projectKey) {
+  const p = statePath2(projectKey);
+  if (!existsSync6(p))
+    return null;
+  try {
+    return JSON.parse(readFileSync5(p, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function writeState2(projectKey, state) {
+  mkdirSync6(STATE_DIR2, { recursive: true });
+  const p = statePath2(projectKey);
+  const tmp = `${p}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync5(tmp, JSON.stringify(state, null, 2));
+  renameSync2(tmp, p);
+}
+function withRmwLock2(projectKey, fn) {
+  mkdirSync6(STATE_DIR2, { recursive: true });
+  const rmw = lockPath2(projectKey) + ".rmw";
+  const deadline = Date.now() + 2e3;
+  let fd = null;
+  while (fd === null) {
+    try {
+      fd = openSync3(rmw, "wx");
+    } catch (e) {
+      if (e.code !== "EEXIST")
+        throw e;
+      if (Date.now() > deadline) {
+        dlog2(`rmw lock deadline exceeded for ${projectKey}, reclaiming stale lock`);
+        try {
+          unlinkSync3(rmw);
+        } catch (unlinkErr) {
+          dlog2(`stale rmw lock unlink failed for ${projectKey}: ${unlinkErr.message}`);
+        }
+        continue;
+      }
+      Atomics.wait(YIELD_BUF2, 0, 0, 10);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    closeSync3(fd);
+    try {
+      unlinkSync3(rmw);
+    } catch (unlinkErr) {
+      dlog2(`rmw lock cleanup failed for ${projectKey}: ${unlinkErr.message}`);
+    }
+  }
+}
+function bumpStopCounter(cwd) {
+  const { key, project } = deriveProjectKey(cwd);
+  return withRmwLock2(key, () => {
+    const existing = readState2(key);
+    const next = existing ? { ...existing, counter: existing.counter + 1, updatedAt: Date.now() } : {
+      project,
+      projectKey: key,
+      counter: 1,
+      lastUuid: null,
+      lastDate: null,
+      skillsGenerated: [],
+      updatedAt: Date.now()
+    };
+    writeState2(key, next);
+    return next;
+  });
+}
+function resetCounter(projectKey) {
+  withRmwLock2(projectKey, () => {
+    const s = readState2(projectKey);
+    if (!s)
+      return;
+    writeState2(projectKey, { ...s, counter: 0, updatedAt: Date.now() });
+  });
+}
+function tryAcquireWorkerLock(projectKey, maxAgeMs = 10 * 60 * 1e3) {
+  mkdirSync6(STATE_DIR2, { recursive: true });
+  const p = lockPath2(projectKey);
+  if (existsSync6(p)) {
+    try {
+      const ageMs = Date.now() - parseInt(readFileSync5(p, "utf-8"), 10);
+      if (Number.isFinite(ageMs) && ageMs < maxAgeMs)
+        return false;
+    } catch (readErr) {
+      dlog2(`worker lock unreadable for ${projectKey}, treating as stale: ${readErr.message}`);
+    }
+    try {
+      unlinkSync3(p);
+    } catch (unlinkErr) {
+      dlog2(`could not unlink stale worker lock for ${projectKey}: ${unlinkErr.message}`);
+      return false;
+    }
+  }
+  try {
+    const fd = openSync3(p, "wx");
+    try {
+      writeSync3(fd, String(Date.now()));
+    } finally {
+      closeSync3(fd);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+function releaseWorkerLock(projectKey) {
+  const p = lockPath2(projectKey);
+  try {
+    unlinkSync3(p);
+  } catch {
+  }
+}
+
+// dist/src/skilify/scope-config.js
+import { existsSync as existsSync7, mkdirSync as mkdirSync7, readFileSync as readFileSync6, writeFileSync as writeFileSync6 } from "node:fs";
+import { homedir as homedir10 } from "node:os";
+import { join as join12 } from "node:path";
+var STATE_DIR3 = join12(homedir10(), ".deeplake", "state", "skilify");
+var CONFIG_PATH = join12(STATE_DIR3, "config.json");
+var DEFAULT = { scope: "me", team: [], install: "project" };
+function loadScopeConfig() {
+  if (!existsSync7(CONFIG_PATH))
+    return DEFAULT;
+  try {
+    const raw = JSON.parse(readFileSync6(CONFIG_PATH, "utf-8"));
+    const scope = raw.scope === "team" || raw.scope === "org" ? raw.scope : "me";
+    const team = Array.isArray(raw.team) ? raw.team.filter((s) => typeof s === "string") : [];
+    const install = raw.install === "global" ? "global" : "project";
+    return { scope, team, install };
+  } catch {
+    return DEFAULT;
+  }
+}
+
+// dist/src/skilify/triggers.js
+function tryStopCounterTrigger(opts) {
+  if (process.env.HIVEMIND_SKILIFY_WORKER === "1")
+    return;
+  if (!opts.cwd)
+    return;
+  try {
+    const state = bumpStopCounter(opts.cwd);
+    if (state.counter < TRIGGER_THRESHOLD)
+      return;
+    if (!tryAcquireWorkerLock(state.projectKey)) {
+      skilifyLog(`Stop: trigger suppressed (worker lock held) project=${state.project}`);
+      return;
+    }
+    skilifyLog(`Stop: threshold hit (counter=${state.counter}, N=${TRIGGER_THRESHOLD}) project=${state.project} agent=${opts.agent}`);
+    resetCounter(state.projectKey);
+    try {
+      spawnSkilifyWorker({
+        config: opts.config,
+        cwd: opts.cwd,
+        projectKey: state.projectKey,
+        project: state.project,
+        bundleDir: opts.bundleDir,
+        agent: opts.agent,
+        scopeConfig: loadScopeConfig(),
+        currentSessionId: opts.sessionId,
+        reason: "Stop"
+      });
+    } catch (e) {
+      skilifyLog(`Stop spawn failed: ${e?.message ?? e}`);
+      try {
+        releaseWorkerLock(state.projectKey);
+      } catch {
+      }
+    }
+  } catch (e) {
+    skilifyLog(`Stop trigger error: ${e?.message ?? e}`);
+  }
+}
+
 // dist/src/hooks/cursor/capture.js
 var log4 = (msg) => log("cursor-capture", msg);
 function resolveEmbedDaemonPath() {
-  return join9(dirname2(fileURLToPath2(import.meta.url)), "embeddings", "embed-daemon.js");
+  return join13(dirname3(fileURLToPath3(import.meta.url)), "embeddings", "embed-daemon.js");
 }
 var CAPTURE = process.env.HIVEMIND_CAPTURE !== "false";
 function resolveCwd(input) {
@@ -1157,6 +1489,15 @@ async function main() {
   }
   log4("capture ok \u2192 cloud");
   maybeTriggerPeriodicSummary(sessionId, cwd, config);
+  if (event === "afterAgentResponse" && process.env.HIVEMIND_WIKI_WORKER !== "1" && process.env.HIVEMIND_SKILIFY_WORKER !== "1") {
+    tryStopCounterTrigger({
+      config,
+      cwd,
+      bundleDir: bundleDirFromImportMeta(import.meta.url),
+      agent: "cursor",
+      sessionId
+    });
+  }
 }
 function maybeTriggerPeriodicSummary(sessionId, cwd, config) {
   if (process.env.HIVEMIND_WIKI_WORKER === "1")

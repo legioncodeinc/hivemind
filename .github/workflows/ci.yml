@@ -66,8 +66,17 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Build (typecheck + emit bundle artefacts)
+        # `build` runs `tsc && esbuild`, which is a strict superset of
+        # `typecheck` (the bare `tsc --noEmit` we used to run here). It
+        # ALSO produces the per-agent bundles AND `openclaw/dist/`. The
+        # latter is gitignored, so it doesn't exist after a fresh
+        # `actions/checkout` — and several bundle-scan tests under
+        # `claude-code/tests/skilify-session-start-injection.test.ts` read
+        # `openclaw/dist/index.js` and `openclaw/dist/skilify-worker.js`
+        # directly. Without this rebuild they fail with ENOENT (see PR #98
+        # — first CI run after the openclaw skilify wiring landed).
+        run: npm run build
 
       - name: Run tests with coverage
         # Per-file 80% thresholds for PR #60 files are declared in
@@ -213,3 +222,12 @@ jobs:
             echo "::error::bundle/ is out of date. Run 'npm run build' and commit the bundle/ directory."
             exit 1
           }
+
+      - name: Pack-check (refuse forbidden filenames in tarball)
+        # Regression guard: hard-fails CI if a PR widens package.json's
+        # `files` array (or adds a permissive .npmignore) such that
+        # credentials, CI workflows, or git internals would ship to npm.
+        # Mirrors the same gate inside release.yml's publish job, so a
+        # broken `files` array trips on the PR — never on a release run
+        # where tokens are reachable.
+        run: npm run pack:check

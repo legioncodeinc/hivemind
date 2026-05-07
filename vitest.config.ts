@@ -42,6 +42,20 @@ export default defineConfig({
         // unit tests don't make sense. These files have subprocess-spawn
         // coverage via claude-code/tests/shell-bundle-*.test.ts instead.
         "src/shell/deeplake-shell.ts",
+        // Skilify worker entry points: skilify-worker.ts parses cfg from
+        // process.argv[2] at top level then runs main() which spawns
+        // detached subprocesses; spawn-skilify-worker.ts is the spawner.
+        // Both are excluded from vitest because they need a live Deeplake
+        // workspace + a real agent CLI to exercise meaningfully.
+        // Coverage on the SHIPPED bundle is enforced indirectly by
+        // claude-code/tests/skilify-bundle-scan.test.ts (asserts the
+        // skilify-worker.js bundle exists per agent and contains the
+        // required entry strings + agent labels). For full e2e in
+        // development, see the manual matrix script described in the
+        // PR description (lives at /tmp/skilify-e2e-matrix.mjs in the
+        // author's worktree, not committed).
+        "src/skilify/skilify-worker.ts",
+        "src/skilify/spawn-skilify-worker.ts",
       ],
       // Per-file thresholds. Each PR that ships new files should append
       // its paths here with 80 / 80 / 80 / 80, so we prevent regressions
@@ -237,6 +251,22 @@ export default defineConfig({
         // + lines + functions held at 80; the gating + output-parsing logic
         // (the actually-load-bearing surface) is exhaustively tested.
         "src/hooks/shared/autoupdate.ts": { statements: 80, branches: 80, functions: 80, lines: 80 },
+        // feat/skilify — background skill-mining worker + CLI surface +
+        // per-agent gate dispatch + Deeplake skills table for org provenance.
+        // Most modules cleanly hit 90/90/90/90; the trio below sits a touch
+        // lower on branches because their happy paths are well-covered but a
+        // few error-recovery branches (lock-cleanup races, log-write failures
+        // inside detached subprocesses) are pragmatic to leave at 75-80.
+        "src/skilify/extractors/index.ts":  { statements: 90, branches: 90, functions: 90, lines: 90 },
+        "src/skilify/gate-parser.ts":       { statements: 90, branches: 90, functions: 90, lines: 90 },
+        "src/skilify/gate-runner.ts":       { statements: 90, branches: 60, functions: 90, lines: 90 },
+        "src/skilify/pull.ts":              { statements: 90, branches: 75, functions: 90, lines: 90 },
+        "src/skilify/scope-config.ts":      { statements: 90, branches: 90, functions: 90, lines: 90 },
+        "src/skilify/skill-writer.ts":      { statements: 90, branches: 80, functions: 90, lines: 90 },
+        "src/skilify/skills-table.ts":      { statements: 90, branches: 70, functions: 90, lines: 90 },
+        "src/skilify/state.ts":             { statements: 80, branches: 70, functions: 90, lines: 80 },
+        "src/skilify/triggers.ts":          { statements: 80, branches: 70, functions: 90, lines: 80 },
+        "src/commands/skilify.ts":          { statements: 80, branches: 70, functions: 80, lines: 80 },
       },
     },
   },

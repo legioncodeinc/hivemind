@@ -125,12 +125,13 @@ describe("hermes session-start hook — context payload", () => {
     expect(payload.additional_context).toBeUndefined();
   });
 
-  it("not-logged-in branch links to the auth-login command", async () => {
+  it("not-logged-in branch tells the user to run `hivemind login`", async () => {
     loadCredentialsMock.mockReturnValue(null);
     await runHook();
     const payload = JSON.parse(consoleLogMock.mock.calls[0][0] as string);
     expect(payload.context).toContain("Not logged in to Deeplake");
-    expect(payload.context).toContain("auth-login.js");
+    // Inject text uses the bare `hivemind <sub>` form (requires npm bin in PATH).
+    expect(payload.context).toContain("hivemind login");
   });
 
   it("falls back to orgId in the org line when orgName is missing", async () => {

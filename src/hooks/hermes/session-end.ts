@@ -10,6 +10,7 @@ import { log as _log } from "../../utils/debug.js";
 import { loadConfig } from "../../config.js";
 import { tryAcquireLock } from "../summary-state.js";
 import { bundleDirFromImportMeta, spawnHermesWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
+import { forceSessionEndTrigger } from "../../skilify/triggers.js";
 
 const log = (msg: string) => _log("hermes-session-end", msg);
 
@@ -29,18 +30,33 @@ async function main(): Promise<void> {
     wikiLog(`SessionEnd: periodic worker already running for ${sessionId}, skipping final`);
     return;
   }
+  const config = loadConfig();
+  if (!config) { wikiLog(`SessionEnd: no config, skipping summary`); return; }
+  const cwd = input.cwd ?? process.cwd();
+
+  // Independent try blocks per worker — a failure in wiki spawn must not
+  // suppress the skilify trigger and vice versa.
   try {
-    const config = loadConfig();
-    if (!config) { wikiLog(`SessionEnd: no config, skipping summary`); return; }
     spawnHermesWikiWorker({
       config,
       sessionId,
-      cwd: input.cwd ?? process.cwd(),
+      cwd,
       bundleDir: bundleDirFromImportMeta(import.meta.url),
       reason: "SessionEnd",
     });
   } catch (e: any) {
-    wikiLog(`SessionEnd: spawn failed: ${e?.message ?? e}`);
+    wikiLog(`SessionEnd: wiki spawn failed: ${e?.message ?? e}`);
+  }
+  try {
+    forceSessionEndTrigger({
+      config,
+      cwd,
+      bundleDir: bundleDirFromImportMeta(import.meta.url),
+      agent: "hermes",
+      sessionId,
+    });
+  } catch (e: any) {
+    wikiLog(`SessionEnd: skilify trigger failed: ${e?.message ?? e}`);
   }
 }
 

@@ -15,6 +15,7 @@ import { log as _log } from "../../utils/debug.js";
 import { loadConfig } from "../../config.js";
 import { tryAcquireLock } from "../summary-state.js";
 import { bundleDirFromImportMeta, spawnCursorWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
+import { forceSessionEndTrigger } from "../../skilify/triggers.js";
 
 const log = (msg: string) => _log("cursor-session-end", msg);
 
@@ -38,9 +39,12 @@ async function main(): Promise<void> {
     wikiLog(`SessionEnd: periodic worker already running for ${sessionId}, skipping final`);
     return;
   }
+  const config = loadConfig();
+  if (!config) { wikiLog(`SessionEnd: no config, skipping summary`); return; }
+
+  // Spawn the wiki and skilify workers independently — a failure of one
+  // must not suppress the other. Each is wrapped in its own try.
   try {
-    const config = loadConfig();
-    if (!config) { wikiLog(`SessionEnd: no config, skipping summary`); return; }
     spawnCursorWikiWorker({
       config,
       sessionId,
@@ -49,7 +53,18 @@ async function main(): Promise<void> {
       reason: "SessionEnd",
     });
   } catch (e: any) {
-    wikiLog(`SessionEnd: spawn failed: ${e?.message ?? e}`);
+    wikiLog(`SessionEnd: wiki spawn failed: ${e?.message ?? e}`);
+  }
+  try {
+    forceSessionEndTrigger({
+      config,
+      cwd: process.cwd(),
+      bundleDir: bundleDirFromImportMeta(import.meta.url),
+      agent: "cursor",
+      sessionId,
+    });
+  } catch (e: any) {
+    wikiLog(`SessionEnd: skilify trigger failed: ${e?.message ?? e}`);
   }
 }
 

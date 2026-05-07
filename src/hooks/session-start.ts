@@ -21,7 +21,10 @@ import { autoUpdate } from "./shared/autoupdate.js";
 const log = (msg: string) => _log("session-start", msg);
 
 const __bundleDir = dirname(fileURLToPath(import.meta.url));
-const AUTH_CMD = join(__bundleDir, "commands", "auth-login.js");
+// Hivemind requires its npm bin (`hivemind` from @deeplake/hivemind, declared in
+// package.json `bin`) to be on PATH. Inject text uses the bare `hivemind <sub>` form
+// — no per-agent path resolution needed. Marketplace-only installs without
+// `npm i -g @deeplake/hivemind` are unsupported (documented in README + RELEASE_CHECKLIST).
 
 const context = `DEEPLAKE MEMORY: You have TWO memory sources. ALWAYS check BOTH when the user asks you to recall, remember, or look up ANY information:
 
@@ -44,15 +47,30 @@ Tool choice on this mount:
   ❌ \`grep\` without a \`summaries/\` or \`sessions/\` suffix — too noisy, drowns the answer.
 
 Organization management — each argument is SEPARATE (do NOT quote subcommands together):
-- node "HIVEMIND_AUTH_CMD" login                              — SSO login
-- node "HIVEMIND_AUTH_CMD" whoami                             — show current user/org
-- node "HIVEMIND_AUTH_CMD" org list                           — list organizations
-- node "HIVEMIND_AUTH_CMD" org switch <name-or-id>            — switch organization
-- node "HIVEMIND_AUTH_CMD" workspaces                         — list workspaces
-- node "HIVEMIND_AUTH_CMD" workspace <id>                     — switch workspace
-- node "HIVEMIND_AUTH_CMD" invite <email> <ADMIN|WRITE|READ>  — invite member (ALWAYS ask user which role before inviting)
-- node "HIVEMIND_AUTH_CMD" members                            — list members
-- node "HIVEMIND_AUTH_CMD" remove <user-id>                   — remove member
+- hivemind login                              — SSO login
+- hivemind whoami                             — show current user/org
+- hivemind org list                           — list organizations
+- hivemind org switch <name-or-id>            — switch organization
+- hivemind workspaces                         — list workspaces
+- hivemind workspace <id>                     — switch workspace
+- hivemind invite <email> <ADMIN|WRITE|READ>  — invite member (ALWAYS ask user which role before inviting)
+- hivemind members                            — list members
+- hivemind remove <user-id>                   — remove member
+
+Skill management (mine + share reusable Claude skills across the org):
+- hivemind skilify                                  — show scope, team, install, per-project state
+- hivemind skilify pull                             — sync project skills from the org table to local FS
+- hivemind skilify pull --user <email>              — only skills authored by that user
+- hivemind skilify pull --users <a,b,c>             — only skills from those authors
+- hivemind skilify pull --all-users                 — explicit "no author filter" (default)
+- hivemind skilify pull --to <project|global>       — install location (project=cwd/.claude/skills, global=~/.claude/skills)
+- hivemind skilify pull --dry-run                   — preview without touching disk
+- hivemind skilify pull --force                     — overwrite local files even if up-to-date (creates .bak)
+- hivemind skilify pull <skill-name>                — pull only that one skill (combines with --user)
+- hivemind skilify scope <me|team|org>              — sharing scope for newly mined skills
+- hivemind skilify install <project|global>         — default install location for new skills
+- hivemind skilify promote <skill-name>             — move a project skill to the global location
+- hivemind skilify team add|remove|list <name>      — manage team member list
 
 IMPORTANT: Only use bash commands (cat, ls, grep, echo, jq, head, tail, etc.) to interact with ~/.deeplake/memory/. Do NOT use python, python3, node, curl, or other interpreters — they are not available in the memory filesystem. Avoid bash brace expansions like \`{1..10}\` (not fully supported); spell out paths explicitly. Bash output is capped at 10MB total — avoid \`for f in *.json; do cat $f\` style loops on the whole sessions dir.
 
@@ -170,7 +188,8 @@ async function main(): Promise<void> {
   const current = getInstalledVersion(__bundleDir, ".claude-plugin");
   const updateNotice = current ? `\n\n✅ Hivemind v${current}` : "";
 
-  const resolvedContext = context.replace(/HIVEMIND_AUTH_CMD/g, AUTH_CMD);
+  // No placeholder substitution needed — inject uses bare `hivemind <sub>` form.
+  const resolvedContext = context;
   const additionalContext = creds?.token
     ? `${resolvedContext}\n\nLogged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${creds.workspaceId ?? "default"})${updateNotice}`
     : `${resolvedContext}\n\n⚠️ Not logged in to Deeplake. Memory search will not work. Ask the user to run /hivemind:login to authenticate.${updateNotice}`;

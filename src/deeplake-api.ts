@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { log as _log } from "./utils/debug.js";
-import { sqlStr } from "./utils/sql.js";
+import { sqlStr, sqlIdent } from "./utils/sql.js";
 import { SUMMARY_EMBEDDING_COL, MESSAGE_EMBEDDING_COL } from "./embeddings/columns.js";
 import { deeplakeClientHeader } from "./utils/client-header.js";
 
@@ -428,7 +428,12 @@ export class DeeplakeApi {
 
   /** Create the memory table if it doesn't already exist. Migrate columns on existing tables. */
   async ensureTable(name?: string): Promise<void> {
-    const tbl = name ?? this.tableName;
+    // sqlIdent throws on anything outside [A-Za-z_][A-Za-z0-9_]* — protects
+    // against HIVEMIND_TABLE config injection (a stray quote would otherwise
+    // break CREATE TABLE / ALTER COLUMN / CREATE INDEX startup, and widen the
+    // SQL-injection surface for config-driven values). Mirror of the
+    // ensureSkillsTable guard (commit c0e77b8).
+    const tbl = sqlIdent(name ?? this.tableName);
     const tables = await this.listTables();
     if (!tables.includes(tbl)) {
       log(`table "${tbl}" not found, creating`);
@@ -475,11 +480,15 @@ export class DeeplakeApi {
 
   /** Create the sessions table (uses JSONB for message since every row is a JSON event). */
   async ensureSessionsTable(name: string): Promise<void> {
+    // sqlIdent throws on anything outside [A-Za-z_][A-Za-z0-9_]* — same
+    // injection guard rationale as ensureTable / ensureSkillsTable. The name
+    // here ultimately comes from HIVEMIND_SESSIONS_TABLE.
+    const safe = sqlIdent(name);
     const tables = await this.listTables();
-    if (!tables.includes(name)) {
-      log(`table "${name}" not found, creating`);
+    if (!tables.includes(safe)) {
+      log(`table "${safe}" not found, creating`);
       await this.createTableWithRetry(
-        `CREATE TABLE IF NOT EXISTS "${name}" (` +
+        `CREATE TABLE IF NOT EXISTS "${safe}" (` +
           `id TEXT NOT NULL DEFAULT '', ` +
           `path TEXT NOT NULL DEFAULT '', ` +
           `filename TEXT NOT NULL DEFAULT '', ` +
@@ -494,15 +503,61 @@ export class DeeplakeApi {
           `creation_date TEXT NOT NULL DEFAULT '', ` +
           `last_update_date TEXT NOT NULL DEFAULT ''` +
         `) USING deeplake`,
-        name,
+        safe,
       );
-      log(`table "${name}" created`);
-      if (!tables.includes(name)) this._tablesCache = [...tables, name];
+      log(`table "${safe}" created`);
+      if (!tables.includes(safe)) this._tablesCache = [...tables, safe];
     }
     // Always verify message_embedding is present (same rationale as ensureTable).
-    await this.ensureEmbeddingColumn(name, MESSAGE_EMBEDDING_COL);
+    await this.ensureEmbeddingColumn(safe, MESSAGE_EMBEDDING_COL);
     // Same fallback for the `agent` column (see ensureTable for rationale).
-    await this.ensureColumn(name, "agent", "TEXT NOT NULL DEFAULT ''");
-    await this.ensureLookupIndex(name, "path_creation_date", `("path", "creation_date")`);
+    await this.ensureColumn(safe, "agent", "TEXT NOT NULL DEFAULT ''");
+    await this.ensureLookupIndex(safe, "path_creation_date", `("path", "creation_date")`);
+  }
+
+  /**
+   * Create the skills table.
+   *
+   * One row per skill version. Workers INSERT a fresh row on every KEEP /
+   * MERGE rather than UPDATE-ing in place, so the full version history is
+   * recoverable. Uniqueness in the *current* state is by (project_key, name)
+   * — newer rows shadow older ones at read time (ORDER BY version DESC).
+   * This sidesteps the Deeplake UPDATE-coalescing quirk that bit the wiki
+   * worker.
+   */
+  async ensureSkillsTable(name: string): Promise<void> {
+    // Validate the table identifier before any SQL interpolation.
+    // `name` ultimately comes from HIVEMIND_SKILLS_TABLE — a stray quote
+    // or other invalid character would otherwise break startup AND widen
+    // the SQL-injection surface for config-driven values.
+    const safe = sqlIdent(name);
+    const tables = await this.listTables();
+    if (!tables.includes(safe)) {
+      log(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(
+        `CREATE TABLE IF NOT EXISTS "${safe}" (` +
+          `id TEXT NOT NULL DEFAULT '', ` +
+          `name TEXT NOT NULL DEFAULT '', ` +
+          `project TEXT NOT NULL DEFAULT '', ` +
+          `project_key TEXT NOT NULL DEFAULT '', ` +
+          `local_path TEXT NOT NULL DEFAULT '', ` +
+          `install TEXT NOT NULL DEFAULT 'project', ` +
+          `source_sessions TEXT NOT NULL DEFAULT '[]', ` +
+          `source_agent TEXT NOT NULL DEFAULT '', ` +
+          `scope TEXT NOT NULL DEFAULT 'me', ` +
+          `author TEXT NOT NULL DEFAULT '', ` +
+          `description TEXT NOT NULL DEFAULT '', ` +
+          `trigger_text TEXT NOT NULL DEFAULT '', ` +
+          `body TEXT NOT NULL DEFAULT '', ` +
+          `version BIGINT NOT NULL DEFAULT 1, ` +
+          `created_at TEXT NOT NULL DEFAULT '', ` +
+          `updated_at TEXT NOT NULL DEFAULT ''` +
+        `) USING deeplake`,
+        safe,
+      );
+      log(`table "${safe}" created`);
+      if (!tables.includes(safe)) this._tablesCache = [...tables, safe];
+    }
+    await this.ensureLookupIndex(safe, "project_key_name", `("project_key", "name")`);
   }
 }
