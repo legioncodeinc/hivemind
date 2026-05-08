@@ -43,6 +43,11 @@ const WIKI_WORKER_PATH = join(WIKI_WORKER_DIR, "wiki-worker.js");
 // reusable Claude skills from the just-finished session. Sibling of
 // wiki-worker.js so a single ensureDir + cleanup covers both.
 const SKILIFY_WORKER_PATH = join(WIKI_WORKER_DIR, "skilify-worker.js");
+// Autopull worker bundle, spawned synchronously by pi extension on
+// session_start to fetch all-author skills from the org table. Same
+// shared maybeAutoPull() codex/cursor/hermes call directly; pi can't
+// import the TS module so it routes through this child process.
+const AUTOPULL_WORKER_PATH = join(WIKI_WORKER_DIR, "autopull-worker.js");
 
 const HIVEMIND_BLOCK_START = "<!-- BEGIN hivemind-memory -->";
 const HIVEMIND_BLOCK_END = "<!-- END hivemind-memory -->";
@@ -135,6 +140,14 @@ export function installPi(): void {
     copyFileSync(srcSkilifyWorker, SKILIFY_WORKER_PATH);
   }
 
+  // 5. Autopull-worker bundle (spawned synchronously by extension on
+  //    session_start to pull all-author skills from the org). Same dir.
+  const srcAutopullWorker = join(pkgRoot(), "pi", "bundle", "autopull-worker.js");
+  if (existsSync(srcAutopullWorker)) {
+    ensureDir(WIKI_WORKER_DIR);
+    copyFileSync(srcAutopullWorker, AUTOPULL_WORKER_PATH);
+  }
+
   ensureDir(VERSION_DIR);
   writeVersionStamp(VERSION_DIR, getVersion());
 
@@ -145,6 +158,9 @@ export function installPi(): void {
   }
   if (existsSync(SKILIFY_WORKER_PATH)) {
     log(`  pi             skilify-worker installed -> ${SKILIFY_WORKER_PATH}`);
+  }
+  if (existsSync(AUTOPULL_WORKER_PATH)) {
+    log(`  pi             autopull-worker installed -> ${AUTOPULL_WORKER_PATH}`);
   }
 }
 

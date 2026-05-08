@@ -31,7 +31,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { connect } from "node:net";
-import { spawn, execSync } from "node:child_process";
+import { spawn, spawnSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
 // ---------- diagnostic logging --------------------------------------------------
@@ -209,173 +209,46 @@ const PI_WIKI_WORKER_PATH = join(homedir(), ".pi", "agent", "hivemind", "wiki-wo
 // Spawned on session_shutdown to mine reusable Claude skills from the just-
 // finished session. Same shared bundle used by CC/Codex/Cursor/Hermes.
 const PI_SKILIFY_WORKER_PATH = join(homedir(), ".pi", "agent", "hivemind", "skilify-worker.js");
-const SKILIFY_STATE_DIR = join(homedir(), ".deeplake", "state", "skilify");
-const SKILLS_TABLE = process.env.HIVEMIND_SKILLS_TABLE || "skills";
-const AUTOPULL_TIMESTAMP_FILE = join(SKILIFY_STATE_DIR, "autopull-last-run.json");
-const AUTOPULL_DEFAULT_INTERVAL_MIN = 30;
-const AUTOPULL_DEFAULT_TIMEOUT_MS = 5_000;
-const AUTOPULL_GLOBAL_SKILLS_ROOT = join(homedir(), ".claude", "skills");
-
-function autopullReadIntervalMs(): number {
-  const raw = process.env.HIVEMIND_AUTOPULL_INTERVAL_MIN;
-  if (raw === undefined || raw === "") return AUTOPULL_DEFAULT_INTERVAL_MIN * 60_000;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return AUTOPULL_DEFAULT_INTERVAL_MIN * 60_000;
-  return Math.trunc(n) * 60_000;
-}
-
-function autopullReadLastRun(): number | null {
-  try {
-    if (!existsSync(AUTOPULL_TIMESTAMP_FILE)) return null;
-    const raw = readFileSync(AUTOPULL_TIMESTAMP_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    return typeof parsed?.lastRunMs === "number" && Number.isFinite(parsed.lastRunMs) ? parsed.lastRunMs : null;
-  } catch { return null; }
-}
-
-function autopullWriteLastRun(now: number): void {
-  try {
-    mkdirSync(SKILIFY_STATE_DIR, { recursive: true });
-    const tmp = `${AUTOPULL_TIMESTAMP_FILE}.${process.pid}.${Date.now()}.tmp`;
-    writeFileSync(tmp, JSON.stringify({ lastRunMs: now }));
-    renameSync(tmp, AUTOPULL_TIMESTAMP_FILE);
-  } catch { /* non-fatal — next run will retry without a stale timestamp */ }
-}
+// Auto-pull worker installed alongside wiki-worker / skilify-worker by
+// `hivemind pi install`. Spawned synchronously on session_start to fetch
+// all-author skills from the org table. The worker is a thin wrapper
+// around the shared maybeAutoPull() that codex / cursor / hermes call
+// directly — pi can't import the TS module (raw .ts, zero deps), so it
+// routes through this child process. Keeps pi's pulled skills layout +
+// symlink fan-out in lockstep with the other agents automatically.
+const PI_AUTOPULL_WORKER_PATH = join(homedir(), ".pi", "agent", "hivemind", "autopull-worker.js");
 
 /**
- * Mirror of src/skilify/auto-pull.ts inlined for the pi extension (which ships
- * raw .ts with zero non-builtin runtime deps). Pulls all-author skills from
- * the org's skills table into ~/.claude/skills/<project_key>/<name>/SKILL.md.
- * Throttled, bounded by a 5s timeout, all failures swallowed.
+ * Synchronously run the bundled auto-pull worker. Bounded by a 6s
+ * wall-clock cap (the worker's internal timeout is 5s; the extra second
+ * is defence-in-depth for spawn overhead). Returns when the worker
+ * exits, regardless of exit code — maybeAutoPull is documented as
+ * never-rejecting and the worker swallows all failures, so a non-zero
+ * exit code can only mean an unrecoverable runtime error that we want
+ * to ignore here too. Pi's session_start blocks on this, mirroring the
+ * `await maybeAutoPull()` in the other agents.
  */
-async function autopullSkillsForPi(creds: Creds): Promise<void> {
-  if (process.env.HIVEMIND_AUTOPULL_DISABLED === "1") {
-    logHm(`autopull: disabled via HIVEMIND_AUTOPULL_DISABLED=1`);
+function runAutopullWorker(): void {
+  if (!existsSync(PI_AUTOPULL_WORKER_PATH)) {
+    logHm(`autopull: worker bundle missing at ${PI_AUTOPULL_WORKER_PATH} — skipping`);
     return;
   }
-  const intervalMs = autopullReadIntervalMs();
-  if (intervalMs < 0) {
-    logHm(`autopull: disabled via HIVEMIND_AUTOPULL_INTERVAL_MIN=-1`);
-    return;
-  }
-  const now = Date.now();
-  if (intervalMs > 0) {
-    const last = autopullReadLastRun();
-    if (last !== null && now - last < intervalMs) {
-      logHm(`autopull: throttled (last run ${now - last}ms ago, window ${intervalMs}ms)`);
-      return;
-    }
-  }
-
-  // Skill rows query — mirror buildPullSql with users=[].
-  const sql = `SELECT name, project, project_key, body, version, source_agent, scope, ` +
-    `author, description, trigger_text, source_sessions, install, ` +
-    `created_at, updated_at ` +
-    `FROM "${SKILLS_TABLE}" ` +
-    `ORDER BY project_key ASC, name ASC, version DESC`;
-
-  const queryWithTimeout = new Promise<unknown[]>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`autopull timeout after ${AUTOPULL_DEFAULT_TIMEOUT_MS}ms`)), AUTOPULL_DEFAULT_TIMEOUT_MS);
-    if (typeof t.unref === "function") t.unref();
-    dlQuery(creds, sql).then(
-      (rows) => { clearTimeout(t); resolve(rows); },
-      (err) => { clearTimeout(t); reject(err); },
-    );
-  });
-
-  let rows: unknown[];
   try {
-    rows = await queryWithTimeout;
-  } catch (e: any) {
-    const msg = e?.message ?? String(e);
-    if (/table does not exist|relation .* does not exist|no such table/i.test(msg)) {
-      logHm(`autopull: skills table missing — nothing to pull`);
+    const result = spawnSync(process.execPath, [PI_AUTOPULL_WORKER_PATH], {
+      stdio: "ignore",
+      timeout: 6_000,
+      env: process.env,
+    });
+    if (result.error) {
+      logHm(`autopull: spawn failed (swallowed): ${result.error.message}`);
+    } else if (result.signal) {
+      logHm(`autopull: worker killed by signal ${result.signal} (likely the 6s cap)`);
     } else {
-      logHm(`autopull: pull failed (swallowed): ${msg}`);
+      logHm(`autopull: worker exited code=${result.status}`);
     }
-    return;
+  } catch (e: any) {
+    logHm(`autopull: spawn threw (swallowed): ${e?.message ?? e}`);
   }
-
-  // Keep latest version per (project_key, name).
-  const seen = new Set<string>();
-  const latest: Record<string, unknown>[] = [];
-  for (const r of rows as Record<string, unknown>[]) {
-    const name = String(r?.name ?? "");
-    const projectKey = String(r?.project_key ?? "");
-    if (!name) continue;
-    const key = `${projectKey}\x00${name}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    latest.push(r);
-  }
-
-  let wrote = 0;
-  for (const row of latest) {
-    const name = String(row?.name ?? "");
-    // Same name validation as src/skilify/skill-writer.ts:assertValidSkillName —
-    // path-traversal guard. Bail on anything unusual.
-    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(name)) continue;
-    const projectKey = String(row?.project_key ?? "");
-    const skillDir = projectKey ? join(AUTOPULL_GLOBAL_SKILLS_ROOT, projectKey, name) : join(AUTOPULL_GLOBAL_SKILLS_ROOT, name);
-    const skillFile = join(skillDir, "SKILL.md");
-    const remoteVersion = Number(row?.version ?? 1);
-
-    // Local version — peek at the frontmatter.
-    let localVersion: number | null = null;
-    if (existsSync(skillFile)) {
-      try {
-        const text = readFileSync(skillFile, "utf-8");
-        const match = text.match(/^---\s*\n([\s\S]*?)\n---/);
-        if (match) {
-          const vline = match[1].split("\n").find(l => /^version:\s*/.test(l));
-          if (vline) {
-            const v = Number(vline.replace(/^version:\s*/, "").trim());
-            if (Number.isFinite(v)) localVersion = v;
-          }
-        }
-      } catch { /* fall through, treat as unknown */ }
-    }
-    if (localVersion !== null && remoteVersion <= localVersion) continue;
-
-    // Render frontmatter — mirror src/skilify/pull.ts:renderSkillFile.
-    let sources: string[] = [];
-    const ss = row?.source_sessions;
-    if (Array.isArray(ss)) sources = ss.map(String);
-    else if (typeof ss === "string") {
-      try { const parsed = JSON.parse(ss); if (Array.isArray(parsed)) sources = parsed.map(String); }
-      catch { /* keep empty */ }
-    }
-    const fmLines: string[] = ["---"];
-    fmLines.push(`name: ${name}`);
-    fmLines.push(`description: ${JSON.stringify(String(row?.description ?? ""))}`);
-    if (typeof row?.trigger_text === "string" && (row.trigger_text as string).length > 0) {
-      fmLines.push(`trigger: ${JSON.stringify(String(row.trigger_text))}`);
-    }
-    fmLines.push(`source_sessions:`);
-    for (const s of sources) fmLines.push(`  - ${s}`);
-    fmLines.push(`version: ${Number(row?.version ?? 1)}`);
-    fmLines.push(`created_by_agent: ${String(row?.source_agent ?? "unknown")}`);
-    fmLines.push(`created_at: ${String(row?.created_at ?? new Date().toISOString())}`);
-    fmLines.push(`updated_at: ${String(row?.updated_at ?? new Date().toISOString())}`);
-    fmLines.push("---");
-    const body = String(row?.body ?? "").trim();
-    const text = `${fmLines.join("\n")}\n\n${body}\n`;
-
-    try {
-      mkdirSync(skillDir, { recursive: true });
-      // Backup existing on overwrite.
-      if (existsSync(skillFile)) {
-        try { renameSync(skillFile, `${skillFile}.bak`); } catch { /* best effort */ }
-      }
-      writeFileSync(skillFile, text);
-      wrote += 1;
-    } catch (e: any) {
-      logHm(`autopull: write failed for ${name}: ${e?.message ?? e}`);
-    }
-  }
-
-  autopullWriteLastRun(now);
-  logHm(`autopull: scanned=${latest.length} wrote=${wrote}`);
 }
 
 interface SummaryState {
@@ -1018,12 +891,13 @@ export default function hivemindExtension(pi: ExtensionAPI): void {
       logHm(`session_start: sessions table visible=${visible} (probe took ${Date.now() - start}ms)`);
     }
 
-    // Auto-pull all-author skills into ~/.claude/skills/ so teammate-mined
-    // skills become available without anyone running `hivemind skilify pull`
-    // manually. Throttled (default 30 min, configurable via
-    // HIVEMIND_AUTOPULL_INTERVAL_MIN; -1 or HIVEMIND_AUTOPULL_DISABLED=1
-    // disables). 5s timeout, all failures swallowed inside the helper.
-    if (creds) await autopullSkillsForPi(creds);
+    // Auto-pull all-author skills via the bundled worker (same shared
+    // maybeAutoPull as codex / cursor / hermes — see runAutopullWorker
+    // above). Synchronous so freshly pulled skills are visible to pi
+    // before the first prompt; 6s upper bound. Throttling, layout, and
+    // per-agent symlink fan-out all live in the worker — no inline
+    // duplicate maintained here.
+    if (creds) runAutopullWorker();
 
     const additional = creds
       ? `${CONTEXT_PREAMBLE}\nLogged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${creds.workspaceId}).`
