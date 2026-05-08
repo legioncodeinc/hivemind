@@ -54,8 +54,8 @@ var init_index_marker_store = __esm({
 
 // dist/src/hooks/session-start.js
 import { fileURLToPath } from "node:url";
-import { dirname as dirname2, join as join8 } from "node:path";
-import { homedir as homedir4 } from "node:os";
+import { dirname as dirname3, join as join12 } from "node:path";
+import { homedir as homedir8 } from "node:os";
 
 // dist/src/commands/auth.js
 import { execSync } from "node:child_process";
@@ -697,9 +697,506 @@ async function autoUpdate(creds, opts) {
   log3(`agent=${opts.agent} dispatched (pid=${pid ?? "?"}) (${Date.now() - t0}ms total)`);
 }
 
+// dist/src/skilify/auto-pull.js
+import { existsSync as existsSync7, mkdirSync as mkdirSync7, readFileSync as readFileSync8, renameSync as renameSync3, writeFileSync as writeFileSync6 } from "node:fs";
+import { homedir as homedir7 } from "node:os";
+import { join as join11 } from "node:path";
+
+// dist/src/skilify/pull.js
+import { existsSync as existsSync6, readFileSync as readFileSync7, writeFileSync as writeFileSync5, mkdirSync as mkdirSync6, renameSync as renameSync2 } from "node:fs";
+import { homedir as homedir6 } from "node:os";
+import { join as join10 } from "node:path";
+
+// dist/src/skilify/skill-writer.js
+import { existsSync as existsSync4, mkdirSync as mkdirSync4, readFileSync as readFileSync5, readdirSync, statSync, writeFileSync as writeFileSync3 } from "node:fs";
+import { homedir as homedir4 } from "node:os";
+import { join as join8 } from "node:path";
+function assertValidSkillName(name) {
+  if (typeof name !== "string" || name.length === 0) {
+    throw new Error(`invalid skill name: empty or non-string`);
+  }
+  if (name.length > 100) {
+    throw new Error(`invalid skill name: too long (${name.length} chars)`);
+  }
+  if (name.includes("/") || name.includes("\\") || name.includes("..")) {
+    throw new Error(`invalid skill name: contains path separator or '..': ${name}`);
+  }
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
+    throw new Error(`invalid skill name: must be kebab-case (lowercase a-z, 0-9, hyphen): ${name}`);
+  }
+}
+function parseFrontmatter(text) {
+  if (!text.startsWith("---\n") && !text.startsWith("---\r\n"))
+    return null;
+  const end = text.indexOf("\n---", 4);
+  if (end < 0)
+    return null;
+  const head = text.slice(4, end).trim();
+  const body = text.slice(end + 4).replace(/^\r?\n/, "");
+  const fm = { source_sessions: [] };
+  let mode = "kv";
+  for (const raw of head.split(/\r?\n/)) {
+    if (mode === "sources") {
+      const m2 = raw.match(/^\s+-\s+(.+)$/);
+      if (m2) {
+        fm.source_sessions.push(m2[1].trim());
+        continue;
+      }
+      mode = "kv";
+    }
+    if (raw.startsWith("source_sessions:")) {
+      mode = "sources";
+      continue;
+    }
+    const m = raw.match(/^([a-zA-Z_]+):\s*(.*)$/);
+    if (!m)
+      continue;
+    const [, k, v] = m;
+    let val = v;
+    if (v.startsWith('"') && v.endsWith('"')) {
+      try {
+        val = JSON.parse(v);
+      } catch {
+      }
+    } else if (k === "version") {
+      const n = parseInt(v, 10);
+      if (Number.isFinite(n))
+        val = n;
+    }
+    fm[k] = val;
+  }
+  return { fm, body };
+}
+
+// dist/src/skilify/manifest.js
+import { existsSync as existsSync5, mkdirSync as mkdirSync5, readFileSync as readFileSync6, renameSync, writeFileSync as writeFileSync4 } from "node:fs";
+import { homedir as homedir5 } from "node:os";
+import { dirname as dirname2, join as join9 } from "node:path";
+function emptyManifest() {
+  return { version: 1, entries: [] };
+}
+function manifestPath() {
+  return join9(homedir5(), ".deeplake", "state", "skilify", "pulled.json");
+}
+function loadManifest(path = manifestPath()) {
+  if (!existsSync5(path))
+    return emptyManifest();
+  let raw;
+  try {
+    raw = readFileSync6(path, "utf-8");
+  } catch {
+    return emptyManifest();
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object")
+      return emptyManifest();
+    if (parsed.version !== 1 || !Array.isArray(parsed.entries))
+      return emptyManifest();
+    const entries = [];
+    for (const e of parsed.entries) {
+      if (!e || typeof e !== "object")
+        continue;
+      if (typeof e.dirName !== "string" || !e.dirName)
+        continue;
+      if (e.dirName.includes("/") || e.dirName.includes("\\") || e.dirName.includes(".."))
+        continue;
+      if (typeof e.name !== "string" || !e.name)
+        continue;
+      if (typeof e.author !== "string")
+        continue;
+      if (typeof e.installRoot !== "string" || !e.installRoot)
+        continue;
+      if (e.install !== "global" && e.install !== "project")
+        continue;
+      entries.push({
+        dirName: e.dirName,
+        name: e.name,
+        author: e.author,
+        projectKey: typeof e.projectKey === "string" ? e.projectKey : "",
+        remoteVersion: typeof e.remoteVersion === "number" ? e.remoteVersion : 1,
+        install: e.install,
+        installRoot: e.installRoot,
+        pulledAt: typeof e.pulledAt === "string" ? e.pulledAt : (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+    return { version: 1, entries };
+  } catch {
+    return emptyManifest();
+  }
+}
+function saveManifest(m, path = manifestPath()) {
+  mkdirSync5(dirname2(path), { recursive: true });
+  const tmp = `${path}.tmp`;
+  writeFileSync4(tmp, JSON.stringify(m, null, 2) + "\n", { mode: 384 });
+  renameSync(tmp, path);
+}
+function recordPull(entry, path = manifestPath()) {
+  const m = loadManifest(path);
+  const idx = m.entries.findIndex((e) => e.install === entry.install && e.installRoot === entry.installRoot && e.dirName === entry.dirName);
+  if (idx >= 0)
+    m.entries[idx] = entry;
+  else
+    m.entries.push(entry);
+  saveManifest(m, path);
+}
+
+// dist/src/skilify/pull.js
+function assertValidAuthor(author) {
+  if (!author)
+    throw new Error("author is empty");
+  if (author.length > 64)
+    throw new Error(`author too long (${author.length}): ${author.slice(0, 32)}\u2026`);
+  if (!/^[A-Za-z0-9_.\-@]+$/.test(author)) {
+    throw new Error(`author contains invalid characters: ${author}`);
+  }
+}
+function esc(s) {
+  return s.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+function buildPullSql(args) {
+  const where = [];
+  if (args.users.length > 0) {
+    const list = args.users.map((u) => `'${esc(u)}'`).join(", ");
+    where.push(`author IN (${list})`);
+  }
+  if (args.skillName) {
+    where.push(`name = '${esc(args.skillName)}'`);
+  }
+  const whereClause = where.length > 0 ? ` WHERE ${where.join(" AND ")}` : "";
+  return `SELECT name, project, project_key, body, version, source_agent, scope, author, description, trigger_text, source_sessions, install, created_at, updated_at FROM "${args.tableName}"${whereClause} ORDER BY project_key ASC, name ASC, version DESC`;
+}
+function isMissingTableError(message) {
+  if (!message)
+    return false;
+  return /Table does not exist|relation .* does not exist|no such table/i.test(message);
+}
+function resolvePullDestination(install, cwd) {
+  if (install === "global")
+    return join10(homedir6(), ".claude", "skills");
+  if (!cwd)
+    throw new Error("install=project requires a cwd");
+  return join10(cwd, ".claude", "skills");
+}
+function selectLatestPerName(rows) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const r of rows) {
+    const name = String(r.name ?? "");
+    const projectKey = String(r.project_key ?? "");
+    if (!name)
+      continue;
+    const key = `${projectKey}\0${name}`;
+    if (seen.has(key))
+      continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+function renderSkillFile(row) {
+  const sources = parseSourceSessions(row.source_sessions);
+  const fm = {
+    name: String(row.name ?? ""),
+    description: String(row.description ?? ""),
+    trigger: typeof row.trigger_text === "string" && row.trigger_text.length > 0 ? String(row.trigger_text) : void 0,
+    source_sessions: sources,
+    version: Number(row.version ?? 1),
+    created_by_agent: String(row.source_agent ?? "unknown"),
+    created_at: String(row.created_at ?? (/* @__PURE__ */ new Date()).toISOString()),
+    updated_at: String(row.updated_at ?? (/* @__PURE__ */ new Date()).toISOString())
+  };
+  const body = String(row.body ?? "").trim();
+  return `${renderFrontmatter(fm)}
+
+${body}
+`;
+}
+function parseSourceSessions(v) {
+  if (Array.isArray(v))
+    return v.map(String);
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      if (Array.isArray(parsed))
+        return parsed.map(String);
+    } catch {
+    }
+  }
+  return [];
+}
+function renderFrontmatter(fm) {
+  const lines = ["---"];
+  lines.push(`name: ${fm.name}`);
+  lines.push(`description: ${JSON.stringify(fm.description)}`);
+  if (fm.trigger)
+    lines.push(`trigger: ${JSON.stringify(fm.trigger)}`);
+  lines.push(`source_sessions:`);
+  for (const s of fm.source_sessions)
+    lines.push(`  - ${s}`);
+  lines.push(`version: ${fm.version}`);
+  lines.push(`created_by_agent: ${fm.created_by_agent}`);
+  lines.push(`created_at: ${fm.created_at}`);
+  lines.push(`updated_at: ${fm.updated_at}`);
+  lines.push("---");
+  return lines.join("\n");
+}
+function readLocalVersion(path) {
+  if (!existsSync6(path))
+    return null;
+  try {
+    const text = readFileSync7(path, "utf-8");
+    const parsed = parseFrontmatter(text);
+    if (!parsed)
+      return null;
+    const v = parsed.fm.version;
+    return typeof v === "number" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function decideAction(args) {
+  const shouldWrite = args.localVersion === null || args.remoteVersion > args.localVersion || args.force;
+  if (!shouldWrite)
+    return "skipped";
+  return args.dryRun ? "dryrun" : "wrote";
+}
+async function runPull(opts) {
+  const sql = buildPullSql({
+    tableName: opts.tableName,
+    users: opts.users,
+    skillName: opts.skillName
+  });
+  let rows = [];
+  try {
+    rows = await opts.query(sql);
+  } catch (e) {
+    if (isMissingTableError(e?.message))
+      rows = [];
+    else
+      throw e;
+  }
+  const latest = selectLatestPerName(rows);
+  const root = resolvePullDestination(opts.install, opts.cwd);
+  const summary = { scanned: latest.length, wrote: 0, skipped: 0, dryrun: 0, entries: [] };
+  for (const row of latest) {
+    const name = String(row.name ?? "");
+    if (!name)
+      continue;
+    try {
+      assertValidSkillName(name);
+    } catch (e) {
+      summary.entries.push({
+        name,
+        remoteVersion: Number(row.version ?? 1),
+        localVersion: null,
+        action: "skipped",
+        destination: "(invalid name \u2014 skipped)",
+        author: String(row.author ?? ""),
+        sourceAgent: String(row.source_agent ?? "")
+      });
+      summary.skipped++;
+      continue;
+    }
+    const author = String(row.author ?? "");
+    if (!author) {
+      summary.entries.push({
+        name,
+        remoteVersion: Number(row.version ?? 1),
+        localVersion: null,
+        action: "skipped",
+        destination: "(empty author \u2014 skipped)",
+        author: "",
+        sourceAgent: String(row.source_agent ?? "")
+      });
+      summary.skipped++;
+      continue;
+    }
+    let dirName;
+    try {
+      assertValidAuthor(author);
+      dirName = `${name}--${author}`;
+    } catch (e) {
+      summary.entries.push({
+        name,
+        remoteVersion: Number(row.version ?? 1),
+        localVersion: null,
+        action: "skipped",
+        destination: `(invalid author '${author}' \u2014 skipped)`,
+        author,
+        sourceAgent: String(row.source_agent ?? "")
+      });
+      summary.skipped++;
+      continue;
+    }
+    const skillDir = join10(root, dirName);
+    const skillFile = join10(skillDir, "SKILL.md");
+    const remoteVersion = Number(row.version ?? 1);
+    const localVersion = readLocalVersion(skillFile);
+    const action = decideAction({
+      remoteVersion,
+      localVersion,
+      force: opts.force ?? false,
+      dryRun: opts.dryRun ?? false
+    });
+    let manifestError;
+    if (action === "wrote") {
+      mkdirSync6(skillDir, { recursive: true });
+      if (existsSync6(skillFile)) {
+        try {
+          renameSync2(skillFile, `${skillFile}.bak`);
+        } catch {
+        }
+      }
+      writeFileSync5(skillFile, renderSkillFile(row));
+      try {
+        recordPull({
+          dirName,
+          name,
+          author,
+          projectKey: String(row.project_key ?? ""),
+          remoteVersion,
+          install: opts.install,
+          installRoot: root,
+          pulledAt: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      } catch (e) {
+        manifestError = e?.message ?? String(e);
+      }
+    }
+    summary.entries.push({
+      name,
+      remoteVersion,
+      localVersion,
+      action,
+      destination: skillFile,
+      author: String(row.author ?? ""),
+      sourceAgent: String(row.source_agent ?? ""),
+      manifestError
+    });
+    if (action === "wrote")
+      summary.wrote++;
+    else if (action === "dryrun")
+      summary.dryrun++;
+    else
+      summary.skipped++;
+  }
+  return summary;
+}
+
+// dist/src/skilify/auto-pull.js
+var log4 = (msg) => log("skilify-autopull", msg);
+function stateDir() {
+  return join11(homedir7(), ".deeplake", "state", "skilify");
+}
+function timestampFile() {
+  return join11(stateDir(), "autopull-last-run.json");
+}
+var DEFAULT_INTERVAL_MIN = 30;
+var DEFAULT_TIMEOUT_MS = 5e3;
+function readIntervalMs() {
+  const raw = process.env.HIVEMIND_AUTOPULL_INTERVAL_MIN;
+  if (raw === void 0 || raw === "")
+    return DEFAULT_INTERVAL_MIN * 6e4;
+  const n = Number(raw);
+  if (!Number.isFinite(n))
+    return DEFAULT_INTERVAL_MIN * 6e4;
+  return Math.trunc(n) * 6e4;
+}
+function readLastRun() {
+  const path = timestampFile();
+  if (!existsSync7(path))
+    return null;
+  try {
+    const raw = readFileSync8(path, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.lastRunMs !== "number" || !Number.isFinite(parsed.lastRunMs))
+      return null;
+    return parsed.lastRunMs;
+  } catch {
+    return null;
+  }
+}
+function writeLastRun(lastRunMs) {
+  const dir = stateDir();
+  const path = timestampFile();
+  mkdirSync7(dir, { recursive: true });
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync6(tmp, JSON.stringify({ lastRunMs }));
+  renameSync3(tmp, path);
+}
+function withTimeout(p, ms) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`autopull timeout after ${ms}ms`)), ms);
+    if (typeof timer.unref === "function")
+      timer.unref();
+  });
+  return Promise.race([p, timeout]).finally(() => {
+    if (timer)
+      clearTimeout(timer);
+  });
+}
+async function maybeAutoPull(deps = {}) {
+  const now = (deps.nowMs ?? Date.now)();
+  if (process.env.HIVEMIND_AUTOPULL_DISABLED === "1") {
+    log4("disabled via HIVEMIND_AUTOPULL_DISABLED=1");
+    return { pulled: 0, skipped: true, reason: "disabled" };
+  }
+  const intervalMs = readIntervalMs();
+  if (intervalMs < 0) {
+    log4("disabled via HIVEMIND_AUTOPULL_INTERVAL_MIN=-1");
+    return { pulled: 0, skipped: true, reason: "disabled" };
+  }
+  if (intervalMs > 0) {
+    const last = readLastRun();
+    if (last !== null && now - last < intervalMs) {
+      const remainingMs = intervalMs - (now - last);
+      log4(`throttled (last run ${now - last}ms ago, window ${intervalMs}ms, ${remainingMs}ms remaining)`);
+      return { pulled: 0, skipped: true, reason: "throttled" };
+    }
+  }
+  const loadFn = deps.loadConfigFn ?? loadConfig;
+  const config = loadFn();
+  if (!config) {
+    log4("skipped: not logged in");
+    return { pulled: 0, skipped: true, reason: "not-logged-in" };
+  }
+  let query;
+  if (deps.queryFn) {
+    query = deps.queryFn;
+  } else {
+    const api = new DeeplakeApi(config.token, config.apiUrl, config.orgId, config.workspaceId, config.skillsTableName);
+    query = (sql) => api.query(sql);
+  }
+  const install = deps.install ?? "global";
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  try {
+    const summary = await withTimeout(runPull({
+      query,
+      tableName: config.skillsTableName,
+      install,
+      cwd: install === "project" ? deps.cwd ?? process.cwd() : void 0,
+      users: [],
+      dryRun: false,
+      force: false
+    }), timeoutMs);
+    try {
+      writeLastRun(now);
+    } catch (e) {
+      log4(`writeLastRun failed (non-fatal): ${e?.message ?? e}`);
+    }
+    log4(`pulled scanned=${summary.scanned} wrote=${summary.wrote} skipped=${summary.skipped}`);
+    return { pulled: summary.wrote, skipped: false };
+  } catch (e) {
+    log4(`pull failed (swallowed): ${e?.message ?? e}`);
+    return { pulled: 0, skipped: true, reason: "error" };
+  }
+}
+
 // dist/src/hooks/session-start.js
-var log4 = (msg) => log("session-start", msg);
-var __bundleDir = dirname2(fileURLToPath(import.meta.url));
+var log5 = (msg) => log("session-start", msg);
+var __bundleDir = dirname3(fileURLToPath(import.meta.url));
 var context = `DEEPLAKE MEMORY: You have TWO memory sources. ALWAYS check BOTH when the user asks you to recall, remember, or look up ANY information:
 
 1. Your built-in memory (~/.claude/) \u2014 personal per-project notes
@@ -755,8 +1252,8 @@ IMPORTANT: Only use bash commands (cat, ls, grep, echo, jq, head, tail, etc.) to
 LIMITS: Do NOT spawn subagents to read deeplake memory. If a file returns empty after 2 attempts, skip it and move on. Report what you found rather than exhaustively retrying.
 
 Debugging: Set HIVEMIND_DEBUG=1 to enable verbose logging to ~/.deeplake/hook-debug.log`;
-var HOME = homedir4();
-var { log: wikiLog } = makeWikiLogger(join8(HOME, ".claude", "hooks"));
+var HOME = homedir8();
+var { log: wikiLog } = makeWikiLogger(join12(HOME, ".claude", "hooks"));
 async function createPlaceholder(api, table, sessionId, cwd, userName, orgName, workspaceId) {
   const summaryPath = `/summaries/${userName}/${sessionId}.md`;
   const existing = await api.query(`SELECT path FROM "${table}" WHERE path = '${sqlStr(summaryPath)}' LIMIT 1`);
@@ -783,19 +1280,19 @@ async function main() {
   if (process.env.HIVEMIND_WIKI_WORKER === "1")
     return;
   const __hookT0 = Date.now();
-  log4(`hook entered (pid=${process.pid})`);
+  log5(`hook entered (pid=${process.pid})`);
   const input = await readStdin();
   let creds = loadCredentials();
   if (!creds?.token) {
-    log4("no credentials found \u2014 run /hivemind:login to authenticate");
+    log5("no credentials found \u2014 run /hivemind:login to authenticate");
   } else {
-    log4(`credentials loaded: org=${creds.orgName ?? creds.orgId}`);
+    log5(`credentials loaded: org=${creds.orgName ?? creds.orgId}`);
     if (creds.token && !creds.userName) {
       try {
         const { userInfo: userInfo2 } = await import("node:os");
         creds.userName = userInfo2().username ?? "unknown";
         saveCredentials(creds);
-        log4(`backfilled and persisted userName: ${creds.userName}`);
+        log5(`backfilled and persisted userName: ${creds.userName}`);
       } catch {
       }
     }
@@ -813,16 +1310,18 @@ async function main() {
         await api.ensureSessionsTable(sessionsTable);
         if (captureEnabled) {
           await createPlaceholder(api, table, input.session_id, input.cwd ?? "", config.userName, config.orgName, config.workspaceId);
-          log4("placeholder created");
+          log5("placeholder created");
         } else {
-          log4("placeholder skipped (HIVEMIND_CAPTURE=false)");
+          log5("placeholder skipped (HIVEMIND_CAPTURE=false)");
         }
       }
     } catch (e) {
-      log4(`placeholder failed: ${e.message}`);
+      log5(`placeholder failed: ${e.message}`);
       wikiLog(`SessionStart: placeholder failed for ${input.session_id}: ${e.message}`);
     }
   }
+  const pullResult = await maybeAutoPull();
+  log5(`autopull: pulled=${pullResult.pulled} skipped=${pullResult.skipped}`);
   const current = getInstalledVersion(__bundleDir, ".claude-plugin");
   const updateNotice = current ? `
 
@@ -839,9 +1338,9 @@ Logged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${cred
       additionalContext
     }
   }));
-  log4(`hook done (${Date.now() - __hookT0}ms total)`);
+  log5(`hook done (${Date.now() - __hookT0}ms total)`);
 }
 main().catch((e) => {
-  log4(`fatal: ${e.message}`);
+  log5(`fatal: ${e.message}`);
   process.exit(0);
 });

@@ -545,7 +545,7 @@ function uninstallCursor() {
 import { existsSync as existsSync6, writeFileSync as writeFileSync2, readFileSync as readFileSync4, rmSync as rmSync2, unlinkSync as unlinkSync4 } from "node:fs";
 import { join as join7 } from "node:path";
 
-// node_modules/js-yaml/dist/js-yaml.mjs
+// ../../../node_modules/js-yaml/dist/js-yaml.mjs
 function isNothing(subject) {
   return typeof subject === "undefined" || subject === null;
 }
@@ -5845,6 +5845,12 @@ Skill management (mine + share reusable Claude skills across the org):
                                            Options: --user <email>, --users a,b,c,
                                            --all-users, --to <project|global>,
                                            --dry-run, --force.
+                                           Note: every agent's SessionStart hook
+                                           auto-runs 'pull --all-users --to global'
+                                           (throttled to once per 30 min by default).
+                                           Set HIVEMIND_AUTOPULL_INTERVAL_MIN=0 to
+                                           force every session, =-1 (or
+                                           HIVEMIND_AUTOPULL_DISABLED=1) to disable.
   hivemind skilify unpull                  Remove skills previously installed by pull.
                                            Options: --user, --users, --not-mine,
                                            --to <project|global>, --dry-run,
