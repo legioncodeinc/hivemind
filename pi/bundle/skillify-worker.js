@@ -514,6 +514,14 @@ function runGate(opts) {
   }
 }
 
+// dist/src/skillify/scope-promotion.js
+function isCrossAuthorMergeVerdict(args) {
+  return args.verdict === "MERGE" && args.resultAuthor !== void 0 && args.resultAuthor !== args.userName;
+}
+function resolveRecordScope(args) {
+  return args.isCrossAuthorMerge && args.configScope === "me" ? "team" : args.configScope;
+}
+
 // dist/src/skillify/state.js
 import { readFileSync as readFileSync2, writeFileSync as writeFileSync2, writeSync, mkdirSync as mkdirSync2, renameSync as renameSync2, existsSync as existsSync4, unlinkSync, openSync, closeSync } from "node:fs";
 import { execSync } from "node:child_process";
@@ -934,8 +942,15 @@ async function main() {
     const sourceSessions = usable.map((c) => (c.path.split("/").pop() ?? "").replace(/\.[^.]+$/, ""));
     async function recordToDeeplake(result, verdict2) {
       const author = result.author ?? cfg.userName;
-      const isCrossAuthorMerge = verdict2.verdict === "MERGE" && result.author !== void 0 && result.author !== cfg.userName;
-      const scope = isCrossAuthorMerge ? "team" : cfg.scope;
+      const isCrossAuthorMerge = isCrossAuthorMergeVerdict({
+        verdict: verdict2.verdict,
+        resultAuthor: result.author,
+        userName: cfg.userName
+      });
+      const scope = resolveRecordScope({
+        configScope: cfg.scope,
+        isCrossAuthorMerge
+      });
       const contributors = result.contributors;
       try {
         await insertSkillRow({

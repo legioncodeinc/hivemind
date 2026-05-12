@@ -25,6 +25,7 @@ import { renderExistingSkillsBlock } from "./existing-skills.js";
 import { insertSkillRow } from "./skills-table.js";
 import { parseVerdict, type Verdict } from "./gate-parser.js";
 import { runGate, type Agent } from "./gate-runner.js";
+import { isCrossAuthorMergeVerdict, resolveRecordScope } from "./scope-promotion.js";
 import {
   resetCounter,
   recordSkill,
@@ -444,12 +445,19 @@ async function main(): Promise<void> {
       // known (preserves lineage across merges); falls back to the current
       // user for a fresh KEEP or a legacy local file with no frontmatter author.
       const author = result.author ?? cfg.userName;
-      // Auto-promote: any MERGE where the editor isn't the original author
-      // makes the skill team-scoped going forward. KEEP and same-author
-      // MERGE leave scope at the worker's configured value.
-      const isCrossAuthorMerge =
-        verdict.verdict === "MERGE" && result.author !== undefined && result.author !== cfg.userName;
-      const scope: "me" | "team" | "org" = isCrossAuthorMerge ? "team" : cfg.scope;
+      // Auto-promote: cross-author MERGE bumps `scope=me` to `scope=team`.
+      // Pure helpers in ./scope-promotion.ts pin the policy (one-directional
+      // promotion, no `org -> team` downgrade) so the regression tests can
+      // exercise it without standing up the whole worker.
+      const isCrossAuthorMerge = isCrossAuthorMergeVerdict({
+        verdict: verdict.verdict,
+        resultAuthor: result.author,
+        userName: cfg.userName,
+      });
+      const scope = resolveRecordScope({
+        configScope: cfg.scope,
+        isCrossAuthorMerge,
+      });
       // Contributors come from the skill-writer (it merges previous list
       // with the editor). For a legacy KEEP without author, the list is
       // empty; downstream readers fall back to [author] in that case.
