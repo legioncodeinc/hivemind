@@ -680,7 +680,7 @@ function toolResultByteLength(content) {
 }
 
 // dist/src/notifications/usage-tracker.js
-import { appendFileSync as appendFileSync4, existsSync as existsSync8, mkdirSync as mkdirSync7, readFileSync as readFileSync6 } from "node:fs";
+import { appendFileSync as appendFileSync4, existsSync as existsSync8, mkdirSync as mkdirSync7, readFileSync as readFileSync6, readdirSync } from "node:fs";
 import { dirname as dirname3, join as join11 } from "node:path";
 import { homedir as homedir10 } from "node:os";
 var log3 = (msg) => log("usage-tracker", msg);

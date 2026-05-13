@@ -180,3 +180,65 @@ describe("usage-tracker — statsFilePath", () => {
     }
   });
 });
+
+describe("countUserGeneratedSkills", () => {
+  it("returns 0 when ~/.deeplake/state/skillify/ does not exist", async () => {
+    const { countUserGeneratedSkills } = await import("../../src/notifications/usage-tracker.js");
+    expect(countUserGeneratedSkills()).toBe(0);
+  });
+
+  it("sums skillsGenerated across all per-project state files", async () => {
+    const dir = join(TEMP_HOME, ".deeplake", "state", "skillify");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "projA.json"), JSON.stringify({ skillsGenerated: ["a", "b", "c"] }), "utf-8");
+    writeFileSync(join(dir, "projB.json"), JSON.stringify({ skillsGenerated: ["d", "e"] }), "utf-8");
+    writeFileSync(join(dir, "projC.json"), JSON.stringify({ skillsGenerated: [] }), "utf-8");
+    const { countUserGeneratedSkills } = await import("../../src/notifications/usage-tracker.js");
+    expect(countUserGeneratedSkills()).toBe(5);
+  });
+
+  it("skips config.json (skillify settings file, not a project state)", async () => {
+    const dir = join(TEMP_HOME, ".deeplake", "state", "skillify");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ scope: "team", team: ["e"], install: "project" }), "utf-8");
+    writeFileSync(join(dir, "projA.json"), JSON.stringify({ skillsGenerated: ["a"] }), "utf-8");
+    const { countUserGeneratedSkills } = await import("../../src/notifications/usage-tracker.js");
+    expect(countUserGeneratedSkills()).toBe(1);
+  });
+
+  it("skips non-.json files in the directory", async () => {
+    const dir = join(TEMP_HOME, ".deeplake", "state", "skillify");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "stray.txt"), "ignore me", "utf-8");
+    writeFileSync(join(dir, "projA.json"), JSON.stringify({ skillsGenerated: ["a", "b"] }), "utf-8");
+    const { countUserGeneratedSkills } = await import("../../src/notifications/usage-tracker.js");
+    expect(countUserGeneratedSkills()).toBe(2);
+  });
+
+  it("treats a missing skillsGenerated field as 0 contribution", async () => {
+    const dir = join(TEMP_HOME, ".deeplake", "state", "skillify");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "projA.json"), JSON.stringify({ counter: 5 /* no skillsGenerated */ }), "utf-8");
+    writeFileSync(join(dir, "projB.json"), JSON.stringify({ skillsGenerated: ["a"] }), "utf-8");
+    const { countUserGeneratedSkills } = await import("../../src/notifications/usage-tracker.js");
+    expect(countUserGeneratedSkills()).toBe(1);
+  });
+
+  it("treats a non-array skillsGenerated as 0 contribution (defensive)", async () => {
+    const dir = join(TEMP_HOME, ".deeplake", "state", "skillify");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "projA.json"), JSON.stringify({ skillsGenerated: "wrong-type" }), "utf-8");
+    writeFileSync(join(dir, "projB.json"), JSON.stringify({ skillsGenerated: ["good"] }), "utf-8");
+    const { countUserGeneratedSkills } = await import("../../src/notifications/usage-tracker.js");
+    expect(countUserGeneratedSkills()).toBe(1);
+  });
+
+  it("skips malformed JSON without aborting the count", async () => {
+    const dir = join(TEMP_HOME, ".deeplake", "state", "skillify");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "broken.json"), "{not json", "utf-8");
+    writeFileSync(join(dir, "good.json"), JSON.stringify({ skillsGenerated: ["x", "y"] }), "utf-8");
+    const { countUserGeneratedSkills } = await import("../../src/notifications/usage-tracker.js");
+    expect(countUserGeneratedSkills()).toBe(2);
+  });
+});

@@ -128,3 +128,62 @@ describe("fetchLocalUsageNotifications — emits a notification", () => {
     expect(fullText).not.toMatch(/\d+%\s*(off|cheaper|reduction|less|saved)/i);
   });
 });
+
+describe("fetchLocalUsageNotifications — skills-generated segment", () => {
+  it("appends 'N skills generated' to body when skillify state has skills", () => {
+    appendUsageRecord(rec({ sessionId: "s-1", memorySearchBytes: 4000, memorySearchCount: 2 }));
+    appendUsageRecord(rec({ sessionId: "s-2", memorySearchBytes: 4000, memorySearchCount: 2 }));
+    // Bootstrap skillify state with 3 skills across 2 projects.
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const dir = path.join(TEMP_HOME, ".deeplake", "state", "skillify");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "projA.json"), JSON.stringify({ skillsGenerated: ["a", "b"] }), "utf-8");
+    fs.writeFileSync(path.join(dir, "projB.json"), JSON.stringify({ skillsGenerated: ["c"] }), "utf-8");
+
+    const out = fetchLocalUsageNotifications("sess-abc");
+    expect(out).toHaveLength(1);
+    expect(out[0].body).toContain("3 skills generated");
+    // Order: sessions, memory searches, skills (last)
+    expect(out[0].body).toMatch(/2 sessions · 4 memory searches · 3 skills generated$/);
+  });
+
+  it("singular 'skill generated' phrasing when only 1 was mined", () => {
+    appendUsageRecord(rec({ sessionId: "s-1", memorySearchBytes: 4000, memorySearchCount: 1 }));
+    appendUsageRecord(rec({ sessionId: "s-2", memorySearchBytes: 4000, memorySearchCount: 1 }));
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const dir = path.join(TEMP_HOME, ".deeplake", "state", "skillify");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "projA.json"), JSON.stringify({ skillsGenerated: ["only-one"] }), "utf-8");
+
+    const out = fetchLocalUsageNotifications("sess-abc");
+    expect(out[0].body).toContain("1 skill generated");
+    expect(out[0].body).not.toContain("1 skills generated");
+  });
+
+  it("OMITS the skills segment when skillify state is missing (avoid '0 skills' indictment)", () => {
+    appendUsageRecord(rec({ sessionId: "s-1", memorySearchBytes: 4000, memorySearchCount: 2 }));
+    appendUsageRecord(rec({ sessionId: "s-2", memorySearchBytes: 4000, memorySearchCount: 2 }));
+    // No skillify state dir at all.
+    const out = fetchLocalUsageNotifications("sess-abc");
+    expect(out[0].body).not.toContain("skills generated");
+    // Body still has the other two segments.
+    expect(out[0].body).toContain("2 sessions");
+    expect(out[0].body).toContain("4 memory searches");
+  });
+
+  it("OMITS the skills segment when skillify state exists but no skills mined yet", () => {
+    appendUsageRecord(rec({ sessionId: "s-1", memorySearchBytes: 4000, memorySearchCount: 2 }));
+    appendUsageRecord(rec({ sessionId: "s-2", memorySearchBytes: 4000, memorySearchCount: 2 }));
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const dir = path.join(TEMP_HOME, ".deeplake", "state", "skillify");
+    fs.mkdirSync(dir, { recursive: true });
+    // Fresh project, counter has incremented but no skills mined yet.
+    fs.writeFileSync(path.join(dir, "projA.json"), JSON.stringify({ counter: 5, skillsGenerated: [] }), "utf-8");
+
+    const out = fetchLocalUsageNotifications("sess-abc");
+    expect(out[0].body).not.toContain("skills generated");
+  });
+});

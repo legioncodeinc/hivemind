@@ -30,7 +30,7 @@
  */
 
 import type { Notification } from "../types.js";
-import { readUsageRecords, sumMetric } from "../usage-tracker.js";
+import { countUserGeneratedSkills, readUsageRecords, sumMetric } from "../usage-tracker.js";
 import { log as _log } from "../../utils/debug.js";
 
 const log = (msg: string) => _log("notifications-local-usage", msg);
@@ -90,11 +90,21 @@ export function fetchLocalUsageNotifications(sessionId: string | undefined): Not
 
   const sessionCount = records.length;
   const memorySearches = sumMetric(records, "memorySearchCount");
+  // Skills the user has generated across all their projects — purely local
+  // count from ~/.deeplake/state/skillify/<projectKey>.json. Omitted from
+  // the body when 0 to avoid a "0 skills generated" indictment on fresh
+  // installs (same rationale as skipping the whole recap when Y is 0).
+  const skillsGenerated = countUserGeneratedSkills();
 
   const title = `Hivemind has saved you ~${formatTokens(zTokens)} tokens`;
-  const body =
-    `   ${sessionCount} ${sessionCount === 1 ? "session" : "sessions"} · ` +
-    `${memorySearches} memory ${memorySearches === 1 ? "search" : "searches"}`;
+  const segments = [
+    `${sessionCount} ${sessionCount === 1 ? "session" : "sessions"}`,
+    `${memorySearches} memory ${memorySearches === 1 ? "search" : "searches"}`,
+  ];
+  if (skillsGenerated > 0) {
+    segments.push(`${skillsGenerated} ${skillsGenerated === 1 ? "skill" : "skills"} generated`);
+  }
+  const body = `   ${segments.join(" · ")}`;
 
   return [
     {

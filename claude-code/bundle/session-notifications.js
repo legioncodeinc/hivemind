@@ -284,7 +284,7 @@ async function fetchBackendNotifications(creds) {
 }
 
 // dist/src/notifications/usage-tracker.js
-import { appendFileSync as appendFileSync2, existsSync, mkdirSync as mkdirSync4, readFileSync as readFileSync4 } from "node:fs";
+import { appendFileSync as appendFileSync2, existsSync, mkdirSync as mkdirSync4, readFileSync as readFileSync4, readdirSync } from "node:fs";
 import { dirname, join as join5 } from "node:path";
 import { homedir as homedir5 } from "node:os";
 var log5 = (msg) => log("usage-tracker", msg);
@@ -329,6 +329,29 @@ function sumMetric(records, key) {
   }
   return total;
 }
+function countUserGeneratedSkills() {
+  const dir = join5(homedir5(), ".deeplake", "state", "skillify");
+  if (!existsSync(dir))
+    return 0;
+  let total = 0;
+  try {
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith(".json") || name === "config.json")
+        continue;
+      try {
+        const raw = readFileSync4(join5(dir, name), "utf-8");
+        const s = JSON.parse(raw);
+        if (Array.isArray(s.skillsGenerated))
+          total += s.skillsGenerated.length;
+      } catch {
+      }
+    }
+  } catch (e) {
+    log5(`countUserGeneratedSkills readdir failed: ${e?.message ?? String(e)}`);
+    return 0;
+  }
+  return total;
+}
 
 // dist/src/notifications/sources/local-usage.js
 var log6 = (msg) => log("notifications-local-usage", msg);
@@ -369,8 +392,16 @@ function fetchLocalUsageNotifications(sessionId) {
   const zTokens = (SAVINGS_MULTIPLIER - 1) * yTokens;
   const sessionCount = records.length;
   const memorySearches = sumMetric(records, "memorySearchCount");
+  const skillsGenerated = countUserGeneratedSkills();
   const title = `Hivemind has saved you ~${formatTokens(zTokens)} tokens`;
-  const body = `   ${sessionCount} ${sessionCount === 1 ? "session" : "sessions"} \xB7 ${memorySearches} memory ${memorySearches === 1 ? "search" : "searches"}`;
+  const segments = [
+    `${sessionCount} ${sessionCount === 1 ? "session" : "sessions"}`,
+    `${memorySearches} memory ${memorySearches === 1 ? "search" : "searches"}`
+  ];
+  if (skillsGenerated > 0) {
+    segments.push(`${skillsGenerated} ${skillsGenerated === 1 ? "skill" : "skills"} generated`);
+  }
+  const body = `   ${segments.join(" \xB7 ")}`;
   return [
     {
       id: "local-usage:savings-recap",

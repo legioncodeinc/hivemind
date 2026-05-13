@@ -11,7 +11,7 @@
  * skips this session.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { log as _log } from "../utils/debug.js";
@@ -111,6 +111,43 @@ export function sumMetric(records: UsageRecord[], key: keyof UsageRecord): numbe
   for (const r of records) {
     const v = r[key];
     if (typeof v === "number" && Number.isFinite(v)) total += v;
+  }
+  return total;
+}
+
+/**
+ * Count skills mined from this user's sessions, summed across all projects.
+ *
+ * Skillify maintains per-project state at
+ *   ~/.deeplake/state/skillify/<projectKey>.json
+ * with a `skillsGenerated: string[]` field. Each entry is a skill name
+ * mined from a session in that project. We sum across all project files
+ * to get the user's lifetime "skills generated" count.
+ *
+ * Purely local — no network, no SQL, no LLM. Fail-soft on every step:
+ * unreadable file = 0 contribution, missing dir = 0, parse error = skip.
+ *
+ * Skips `config.json` (which holds skillify scope/team/install settings,
+ * not a project state file).
+ */
+export function countUserGeneratedSkills(): number {
+  const dir = join(homedir(), ".deeplake", "state", "skillify");
+  if (!existsSync(dir)) return 0;
+  let total = 0;
+  try {
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith(".json") || name === "config.json") continue;
+      try {
+        const raw = readFileSync(join(dir, name), "utf-8");
+        const s = JSON.parse(raw) as { skillsGenerated?: unknown };
+        if (Array.isArray(s.skillsGenerated)) total += s.skillsGenerated.length;
+      } catch {
+        // unreadable / malformed — skip this project, keep counting others
+      }
+    }
+  } catch (e: any) {
+    log(`countUserGeneratedSkills readdir failed: ${e?.message ?? String(e)}`);
+    return 0;
   }
   return total;
 }
