@@ -20,6 +20,7 @@ import { makeWikiLogger } from "../utils/wiki-log.js";
 import { autoUpdate } from "./shared/autoupdate.js";
 import { autoPullSkills } from "../skillify/auto-pull.js";
 import { renderSkillifyCommands } from "../cli/skillify-spec.js";
+import { countLocalManifestEntries } from "../skillify/local-manifest.js";
 const log = (msg: string) => _log("session-start", msg);
 
 const __bundleDir = dirname(fileURLToPath(import.meta.url));
@@ -191,9 +192,18 @@ async function main(): Promise<void> {
 
   // No placeholder substitution needed — inject uses bare `hivemind <sub>` form.
   const resolvedContext = context;
+  // When the user hasn't signed in but has mined skills locally with
+  // `hivemind skillify mine-local`, surface the count so the model can
+  // mention the next sharing step. Stays empty (and silent) when no
+  // manifest exists, so first-time non-mined users don't see an
+  // unhelpful "0 skills" line.
+  const localMined = countLocalManifestEntries();
+  const localMinedNote = localMined > 0
+    ? `\n\n${localMined} local skill${localMined === 1 ? "" : "s"} from past 'hivemind skillify mine-local' run(s) live in ~/.claude/skills/. Run 'hivemind login' to start sharing new mining results with your team.`
+    : "";
   const additionalContext = creds?.token
     ? `${resolvedContext}\n\nLogged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${creds.workspaceId ?? "default"})${updateNotice}`
-    : `${resolvedContext}\n\n⚠️ Not logged in to Deeplake. Memory search will not work. Ask the user to run /hivemind:login to authenticate.${updateNotice}`;
+    : `${resolvedContext}\n\n⚠️ Not logged in to Deeplake. Memory search will not work. Ask the user to run /hivemind:login to authenticate.${localMinedNote}${updateNotice}`;
 
   console.log(JSON.stringify({
     hookSpecificOutput: {

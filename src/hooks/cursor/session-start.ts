@@ -25,6 +25,7 @@ import { loadConfig } from "../../config.js";
 import { DeeplakeApi } from "../../deeplake-api.js";
 import { sqlStr } from "../../utils/sql.js";
 import { renderSkillifyCommands } from "../../cli/skillify-spec.js";
+import { countLocalManifestEntries } from "../../skillify/local-manifest.js";
 import { readStdin } from "../../utils/stdin.js";
 import { log as _log } from "../../utils/debug.js";
 import { getInstalledVersion } from "../../utils/version-check.js";
@@ -169,9 +170,13 @@ async function main(): Promise<void> {
   if (current) versionNotice = `\nHivemind v${current}`;
 
   // No placeholder substitution — inject already uses bare `hivemind <sub>` form.
+  const localMined = countLocalManifestEntries();
+  const localMinedNote = localMined > 0
+    ? `\n${localMined} local skill${localMined === 1 ? "" : "s"} from past 'hivemind skillify mine-local' run(s) live in ~/.claude/skills/. Run 'hivemind login' to start sharing new mining results with your team.`
+    : "";
   const additionalContext = creds?.token
     ? `${context}\nLogged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${creds.workspaceId ?? "default"})${versionNotice}`
-    : `${context}\nNot logged in to Deeplake. Run: hivemind login${versionNotice}`;
+    : `${context}\nNot logged in to Deeplake. Run: hivemind login${localMinedNote}${versionNotice}`;
 
   console.log(JSON.stringify({ additional_context: additionalContext }));
 }

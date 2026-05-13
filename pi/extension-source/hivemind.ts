@@ -676,6 +676,24 @@ function textResult(text: string) {
 
 // ---------- main extension -----------------------------------------------------
 
+// MIRROR of src/skillify/local-manifest.ts countLocalManifestEntries.
+//
+// pi's extension cannot import from src/. Read the manifest inline so the
+// SessionStart hook can surface "you have N local skills" when the user
+// isn't signed in. Returns 0 on any error (missing file, parse failure)
+// so the message is silently omitted in those cases.
+const PI_LOCAL_MANIFEST_PATH = join(homedir(), ".claude", "hivemind", "local-mined.json");
+
+function piCountLocalManifestEntries(): number {
+  try {
+    if (!existsSync(PI_LOCAL_MANIFEST_PATH)) return 0;
+    const data = JSON.parse(readFileSync(PI_LOCAL_MANIFEST_PATH, "utf-8"));
+    return Array.isArray(data?.entries) ? data.entries.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
 // MIRROR of src/cli/skillify-spec.ts SKILLIFY_COMMANDS.
 //
 // pi extensions are shipped as a single self-contained .ts file loaded by
@@ -919,9 +937,13 @@ export default function hivemindExtension(pi: ExtensionAPI): void {
     // duplicate maintained here.
     if (creds) runAutopullWorker();
 
+    const localMined = piCountLocalManifestEntries();
+    const localMinedNote = localMined > 0
+      ? `\n${localMined} local skill${localMined === 1 ? "" : "s"} from past 'hivemind skillify mine-local' run(s) live in ~/.claude/skills/. Run 'hivemind login' to start sharing new mining results with your team.`
+      : "";
     const additional = creds
       ? `${CONTEXT_PREAMBLE}\nLogged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${creds.workspaceId}).`
-      : `${CONTEXT_PREAMBLE}\nNot logged in to Deeplake. Run \`hivemind login\` to authenticate.`;
+      : `${CONTEXT_PREAMBLE}\nNot logged in to Deeplake. Run \`hivemind login\` to authenticate.${localMinedNote}`;
     return { additionalContext: additional };
   });
 

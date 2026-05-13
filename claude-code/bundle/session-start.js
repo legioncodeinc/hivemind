@@ -54,8 +54,8 @@ var init_index_marker_store = __esm({
 
 // dist/src/hooks/session-start.js
 import { fileURLToPath } from "node:url";
-import { dirname as dirname4, join as join13 } from "node:path";
-import { homedir as homedir9 } from "node:os";
+import { dirname as dirname5, join as join14 } from "node:path";
+import { homedir as homedir10 } from "node:os";
 
 // dist/src/commands/auth.js
 import { execSync } from "node:child_process";
@@ -1329,9 +1329,28 @@ function renderSkillifyCommands() {
   return SKILLIFY_COMMANDS.map((c) => `- ${c.cmd.padEnd(maxLen + 2)} \u2014 ${c.desc}`).join("\n");
 }
 
+// dist/src/skillify/local-manifest.js
+import { existsSync as existsSync9, mkdirSync as mkdirSync7, readFileSync as readFileSync8, writeFileSync as writeFileSync6 } from "node:fs";
+import { homedir as homedir9 } from "node:os";
+import { dirname as dirname4, join as join13 } from "node:path";
+var LOCAL_MANIFEST_PATH = join13(homedir9(), ".claude", "hivemind", "local-mined.json");
+function readLocalManifest(path = LOCAL_MANIFEST_PATH) {
+  if (!existsSync9(path))
+    return null;
+  try {
+    return JSON.parse(readFileSync8(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function countLocalManifestEntries(path = LOCAL_MANIFEST_PATH) {
+  const m = readLocalManifest(path);
+  return Array.isArray(m?.entries) ? m.entries.length : 0;
+}
+
 // dist/src/hooks/session-start.js
 var log5 = (msg) => log("session-start", msg);
-var __bundleDir = dirname4(fileURLToPath(import.meta.url));
+var __bundleDir = dirname5(fileURLToPath(import.meta.url));
 var context = `DEEPLAKE MEMORY: You have TWO memory sources. ALWAYS check BOTH when the user asks you to recall, remember, or look up ANY information:
 
 1. Your built-in memory (~/.claude/) \u2014 personal per-project notes
@@ -1371,8 +1390,8 @@ IMPORTANT: Only use bash commands (cat, ls, grep, echo, jq, head, tail, etc.) to
 LIMITS: Do NOT spawn subagents to read deeplake memory. If a file returns empty after 2 attempts, skip it and move on. Report what you found rather than exhaustively retrying.
 
 Debugging: Set HIVEMIND_DEBUG=1 to enable verbose logging to ~/.deeplake/hook-debug.log`;
-var HOME = homedir9();
-var { log: wikiLog } = makeWikiLogger(join13(HOME, ".claude", "hooks"));
+var HOME = homedir10();
+var { log: wikiLog } = makeWikiLogger(join14(HOME, ".claude", "hooks"));
 async function createPlaceholder(api, table, sessionId, cwd, userName, orgName, workspaceId) {
   const summaryPath = `/summaries/${userName}/${sessionId}.md`;
   const existing = await api.query(`SELECT path FROM "${table}" WHERE path = '${sqlStr(summaryPath)}' LIMIT 1`);
@@ -1446,11 +1465,15 @@ async function main() {
 
 \u2705 Hivemind v${current}` : "";
   const resolvedContext = context;
+  const localMined = countLocalManifestEntries();
+  const localMinedNote = localMined > 0 ? `
+
+${localMined} local skill${localMined === 1 ? "" : "s"} from past 'hivemind skillify mine-local' run(s) live in ~/.claude/skills/. Run 'hivemind login' to start sharing new mining results with your team.` : "";
   const additionalContext = creds?.token ? `${resolvedContext}
 
 Logged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${creds.workspaceId ?? "default"})${updateNotice}` : `${resolvedContext}
 
-\u26A0\uFE0F Not logged in to Deeplake. Memory search will not work. Ask the user to run /hivemind:login to authenticate.${updateNotice}`;
+\u26A0\uFE0F Not logged in to Deeplake. Memory search will not work. Ask the user to run /hivemind:login to authenticate.${localMinedNote}${updateNotice}`;
   console.log(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: "SessionStart",

@@ -5824,18 +5824,18 @@ import { existsSync as existsSync21, mkdirSync as mkdirSync8, readFileSync as re
 import { homedir as homedir14 } from "node:os";
 import { dirname as dirname4, join as join24 } from "node:path";
 var LOCAL_MANIFEST_PATH = join24(homedir14(), ".claude", "hivemind", "local-mined.json");
-function readLocalManifest() {
-  if (!existsSync21(LOCAL_MANIFEST_PATH))
+function readLocalManifest(path = LOCAL_MANIFEST_PATH) {
+  if (!existsSync21(path))
     return null;
   try {
-    return JSON.parse(readFileSync14(LOCAL_MANIFEST_PATH, "utf-8"));
+    return JSON.parse(readFileSync14(path, "utf-8"));
   } catch {
     return null;
   }
 }
-function writeLocalManifest(m) {
-  mkdirSync8(dirname4(LOCAL_MANIFEST_PATH), { recursive: true });
-  writeFileSync10(LOCAL_MANIFEST_PATH, JSON.stringify(m, null, 2));
+function writeLocalManifest(m, path = LOCAL_MANIFEST_PATH) {
+  mkdirSync8(dirname4(path), { recursive: true });
+  writeFileSync10(path, JSON.stringify(m, null, 2));
 }
 
 // dist/src/commands/mine-local.js

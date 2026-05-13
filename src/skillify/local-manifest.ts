@@ -44,20 +44,24 @@ export interface LocalManifest {
 
 export const LOCAL_MANIFEST_PATH = join(homedir(), ".claude", "hivemind", "local-mined.json");
 
-/** Read the manifest. Returns null when the file doesn't exist or is malformed. */
-export function readLocalManifest(): LocalManifest | null {
-  if (!existsSync(LOCAL_MANIFEST_PATH)) return null;
+/**
+ * Read the manifest. Returns null when the file doesn't exist or is
+ * malformed. `path` defaults to LOCAL_MANIFEST_PATH; tests inject a
+ * tmpdir path so they don't have to mutate the developer's HOME.
+ */
+export function readLocalManifest(path: string = LOCAL_MANIFEST_PATH): LocalManifest | null {
+  if (!existsSync(path)) return null;
   try {
-    return JSON.parse(readFileSync(LOCAL_MANIFEST_PATH, "utf-8")) as LocalManifest;
+    return JSON.parse(readFileSync(path, "utf-8")) as LocalManifest;
   } catch {
     return null;
   }
 }
 
 /** Write the manifest, creating parent directories as needed. */
-export function writeLocalManifest(m: LocalManifest): void {
-  mkdirSync(dirname(LOCAL_MANIFEST_PATH), { recursive: true });
-  writeFileSync(LOCAL_MANIFEST_PATH, JSON.stringify(m, null, 2));
+export function writeLocalManifest(m: LocalManifest, path: string = LOCAL_MANIFEST_PATH): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(m, null, 2));
 }
 
 /**
@@ -65,7 +69,9 @@ export function writeLocalManifest(m: LocalManifest): void {
  * mined skills without forcing callers to handle null/error branches.
  * Returns 0 if the manifest is missing, malformed, or has no entries.
  */
-export function countLocalManifestEntries(): number {
-  const m = readLocalManifest();
-  return m?.entries?.length ?? 0;
+export function countLocalManifestEntries(path: string = LOCAL_MANIFEST_PATH): number {
+  const m = readLocalManifest(path);
+  // Defend against malformed manifests where `entries` is present but not
+  // an array (e.g. a string like "oops" would otherwise leak `.length`).
+  return Array.isArray(m?.entries) ? m!.entries.length : 0;
 }

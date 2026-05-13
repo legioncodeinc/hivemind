@@ -16,6 +16,7 @@ import { dirname, join } from "node:path";
 import { loadCredentials } from "../../commands/auth.js";
 import { readStdin } from "../../utils/stdin.js";
 import { renderSkillifyCommands } from "../../cli/skillify-spec.js";
+import { countLocalManifestEntries } from "../../skillify/local-manifest.js";
 import { log as _log } from "../../utils/debug.js";
 import { getInstalledVersion } from "../../utils/version-check.js";
 import { autoPullSkills } from "../../skillify/auto-pull.js";
@@ -111,9 +112,16 @@ async function main(): Promise<void> {
   }
 
   // No placeholder substitution — inject already uses bare `hivemind <sub>` form.
+  // Local mining count: shown only when the user is not signed in AND has
+  // already run `hivemind skillify mine-local`. Encourages sign-in to share
+  // future results with the team. See src/skillify/local-manifest.ts.
+  const localMined = countLocalManifestEntries();
+  const localMinedNote = localMined > 0
+    ? `\n${localMined} local skill${localMined === 1 ? "" : "s"} from past 'hivemind skillify mine-local' run(s) live in ~/.claude/skills/. Run 'hivemind login' to start sharing new mining results with your team.`
+    : "";
   const additionalContext = creds?.token
     ? `${context}\nLogged in to Deeplake as org: ${creds.orgName ?? creds.orgId} (workspace: ${creds.workspaceId ?? "default"})${versionNotice}`
-    : `${context}\nNot logged in to Deeplake. Run: hivemind login${versionNotice}`;
+    : `${context}\nNot logged in to Deeplake. Run: hivemind login${localMinedNote}${versionNotice}`;
 
   // Codex SessionStart: plain text on stdout is added as developer context.
   // JSON { additionalContext } format is rejected by Codex 0.118.0.
