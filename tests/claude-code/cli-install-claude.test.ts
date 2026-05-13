@@ -469,3 +469,53 @@ describe("syncHivemindHooksToSettings — Windows path handling (CodeRabbit PR#1
     expect(hooks[0].timeout).toBe(10);
   });
 });
+
+describe("syncHivemindHooksToSettings — non-string command branch coverage", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const os = require("node:os");
+  let TEMP_HOME = "";
+  let ORIGINAL_HOME: string | undefined;
+  beforeEach(() => {
+    TEMP_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "hivemind-sync-test-cmd-"));
+    ORIGINAL_HOME = process.env.HOME;
+    process.env.HOME = TEMP_HOME;
+    execFileSyncMock.mockReset();
+  });
+  afterEach(() => {
+    if (ORIGINAL_HOME !== undefined) process.env.HOME = ORIGINAL_HOME;
+    else delete process.env.HOME;
+    fs.rmSync(TEMP_HOME, { recursive: true, force: true });
+  });
+
+  it("isHivemindMatcher false-branch: hook entry whose command is not a string is treated as non-hivemind", async () => {
+    // The Windows-path normalization fix added a `typeof !== "string"` short-circuit;
+    // exercise that branch by seeding settings.json with a matcher whose hook lacks
+    // a string `command`. It should be PRESERVED (not recognized as hivemind), so
+    // after sync we have BOTH the original entry and the new canonical hivemind one.
+    const dir = path.join(TEMP_HOME, ".claude", "plugins", "marketplaces", "hivemind", "claude-code", "hooks");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "hooks.json"), JSON.stringify({
+      hooks: { PostToolUse: [{ hooks: [
+        { type: "command", command: 'node "${CLAUDE_PLUGIN_ROOT}/bundle/capture.js"', timeout: 15 },
+      ] }] },
+    }), "utf-8");
+
+    const settingsDir = path.join(TEMP_HOME, ".claude");
+    fs.mkdirSync(settingsDir, { recursive: true });
+    fs.writeFileSync(path.join(settingsDir, "settings.json"), JSON.stringify({
+      hooks: { PostToolUse: [{ hooks: [
+        // Non-string command — must NOT be recognized as a hivemind matcher.
+        { type: "command", command: null, timeout: 30 },
+      ] }] },
+    }), "utf-8");
+
+    const { syncHivemindHooksToSettings } = await importFresh();
+    syncHivemindHooksToSettings();
+
+    const s = JSON.parse(fs.readFileSync(path.join(settingsDir, "settings.json"), "utf-8"));
+    // We expect 2 matchers: the preserved non-hivemind one + the new canonical hivemind one.
+    expect(s.hooks.PostToolUse).toHaveLength(2);
+    expect(s.hooks.PostToolUse[0].hooks[0].command).toBeNull();
+  });
+});
