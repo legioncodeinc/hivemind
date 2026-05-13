@@ -40,6 +40,13 @@ import { extractJsonBlock } from "../skillify/gate-parser.js";
 import { resolveSkillsRoot, writeNewSkill, listSkills, parseFrontmatter } from "../skillify/skill-writer.js";
 import { detectAgentSkillsRoots } from "../skillify/agent-roots.js";
 import { fanOutSymlinks } from "../skillify/pull.js";
+import {
+  LOCAL_MANIFEST_PATH,
+  readLocalManifest,
+  writeLocalManifest,
+  type LocalManifest,
+  type LocalManifestEntry,
+} from "../skillify/local-manifest.js";
 
 const EPSILON = 0.3;
 const DEFAULT_N = 8;
@@ -53,25 +60,14 @@ const GATE_CONCURRENCY = 4;
 const IN_FLIGHT_MAX_AGE_MS = 60_000;
 const GATE_TIMEOUT_MS = 240_000;
 
-const MANIFEST_PATH = join(homedir(), ".claude", "hivemind", "local-mined.json");
-
-interface ManifestEntry {
-  skill_name: string;
-  canonical_path: string;
-  /** Symlink targets created in other agents' skill roots (see fanOutSymlinks). */
-  symlinks: string[];
-  source_session_ids: string[];
-  source_session_paths: string[];
-  source_agent: string;
-  gate_agent: string;
-  created_at: string;
-  uploaded: boolean;
-}
-
-interface Manifest {
-  created_at: string;
-  entries: ManifestEntry[];
-}
+// MANIFEST_PATH + types + read/write helpers now live in
+// src/skillify/local-manifest.ts so the SessionStart hooks can consume
+// them without dragging the rest of this orchestrator's transitive deps
+// (gate runner, parallelMap, etc.) into the hook bundle. Local aliases
+// kept for readability inside this file only.
+const MANIFEST_PATH = LOCAL_MANIFEST_PATH;
+type ManifestEntry = LocalManifestEntry;
+type Manifest = LocalManifest;
 
 /**
  * Run the gate by piping the prompt to the agent CLI's stdin instead of
@@ -163,16 +159,10 @@ function runGateViaStdin(opts: {
   });
 }
 
-function loadManifest(): Manifest | null {
-  if (!existsSync(MANIFEST_PATH)) return null;
-  try { return JSON.parse(readFileSync(MANIFEST_PATH, "utf-8")) as Manifest; }
-  catch { return null; }
-}
-
-function saveManifest(m: Manifest): void {
-  mkdirSync(dirname(MANIFEST_PATH), { recursive: true });
-  writeFileSync(MANIFEST_PATH, JSON.stringify(m, null, 2));
-}
+// Read/write delegate to the shared module so future callers (SessionStart
+// hooks, push-local) hit the same code path.
+const loadManifest = readLocalManifest;
+const saveManifest = writeLocalManifest;
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;

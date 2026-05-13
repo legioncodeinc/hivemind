@@ -4719,9 +4719,9 @@ if (process.argv[1] && process.argv[1].endsWith("auth-login.js")) {
 }
 
 // dist/src/commands/skillify.js
-import { readdirSync as readdirSync5, existsSync as existsSync22, readFileSync as readFileSync15, mkdirSync as mkdirSync9, renameSync as renameSync4 } from "node:fs";
-import { homedir as homedir15 } from "node:os";
-import { dirname as dirname5, join as join25 } from "node:path";
+import { readdirSync as readdirSync5, existsSync as existsSync23, readFileSync as readFileSync16, mkdirSync as mkdirSync10, renameSync as renameSync4 } from "node:fs";
+import { homedir as homedir16 } from "node:os";
+import { dirname as dirname6, join as join26 } from "node:path";
 
 // dist/src/skillify/scope-config.js
 import { existsSync as existsSync13, mkdirSync as mkdirSync4, readFileSync as readFileSync9, writeFileSync as writeFileSync6 } from "node:fs";
@@ -5546,9 +5546,9 @@ function decideTargetForManifestEntry(entry, opts, userFilter, haveUserFilter) {
 
 // dist/src/commands/mine-local.js
 import { spawn } from "node:child_process";
-import { existsSync as existsSync21, mkdirSync as mkdirSync8, readFileSync as readFileSync14, writeFileSync as writeFileSync10 } from "node:fs";
-import { homedir as homedir14 } from "node:os";
-import { basename, dirname as dirname4, join as join24 } from "node:path";
+import { existsSync as existsSync22, mkdirSync as mkdirSync9, readFileSync as readFileSync15, writeFileSync as writeFileSync11 } from "node:fs";
+import { homedir as homedir15 } from "node:os";
+import { basename, dirname as dirname5, join as join25 } from "node:path";
 
 // dist/src/skillify/local-source.js
 import { readdirSync as readdirSync4, readFileSync as readFileSync13, existsSync as existsSync19, statSync as statSync4 } from "node:fs";
@@ -5819,6 +5819,25 @@ function extractJsonBlock(s) {
   return null;
 }
 
+// dist/src/skillify/local-manifest.js
+import { existsSync as existsSync21, mkdirSync as mkdirSync8, readFileSync as readFileSync14, writeFileSync as writeFileSync10 } from "node:fs";
+import { homedir as homedir14 } from "node:os";
+import { dirname as dirname4, join as join24 } from "node:path";
+var LOCAL_MANIFEST_PATH = join24(homedir14(), ".claude", "hivemind", "local-mined.json");
+function readLocalManifest() {
+  if (!existsSync21(LOCAL_MANIFEST_PATH))
+    return null;
+  try {
+    return JSON.parse(readFileSync14(LOCAL_MANIFEST_PATH, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function writeLocalManifest(m) {
+  mkdirSync8(dirname4(LOCAL_MANIFEST_PATH), { recursive: true });
+  writeFileSync10(LOCAL_MANIFEST_PATH, JSON.stringify(m, null, 2));
+}
+
 // dist/src/commands/mine-local.js
 var EPSILON = 0.3;
 var DEFAULT_N = 8;
@@ -5828,7 +5847,7 @@ var PER_SESSION_PROMPT_CAP = 12e4;
 var GATE_CONCURRENCY = 4;
 var IN_FLIGHT_MAX_AGE_MS = 6e4;
 var GATE_TIMEOUT_MS = 24e4;
-var MANIFEST_PATH = join24(homedir14(), ".claude", "hivemind", "local-mined.json");
+var MANIFEST_PATH = LOCAL_MANIFEST_PATH;
 function runGateViaStdin(opts) {
   return new Promise((resolve) => {
     if (opts.agent !== "claude_code") {
@@ -5840,7 +5859,7 @@ function runGateViaStdin(opts) {
       });
       return;
     }
-    if (!existsSync21(opts.bin)) {
+    if (!existsSync22(opts.bin)) {
       resolve({
         stdout: "",
         stderr: "",
@@ -5908,19 +5927,8 @@ function runGateViaStdin(opts) {
     child.stdin.end(opts.prompt);
   });
 }
-function loadManifest2() {
-  if (!existsSync21(MANIFEST_PATH))
-    return null;
-  try {
-    return JSON.parse(readFileSync14(MANIFEST_PATH, "utf-8"));
-  } catch {
-    return null;
-  }
-}
-function saveManifest2(m) {
-  mkdirSync8(dirname4(MANIFEST_PATH), { recursive: true });
-  writeFileSync10(MANIFEST_PATH, JSON.stringify(m, null, 2));
-}
+var loadManifest2 = readLocalManifest;
+var saveManifest2 = writeLocalManifest;
 function truncate(s, max) {
   if (s.length <= max)
     return s;
@@ -6169,8 +6177,8 @@ async function runMineLocal(args) {
     console.log(`Dry-run: would invoke ${gateAgent} gate on ${picked.length} session(s) in parallel (concurrency=${GATE_CONCURRENCY}).`);
     return;
   }
-  const tmpDir = join24(homedir14(), ".claude", "hivemind", `mine-local-${Date.now()}`);
-  mkdirSync8(tmpDir, { recursive: true });
+  const tmpDir = join25(homedir15(), ".claude", "hivemind", `mine-local-${Date.now()}`);
+  mkdirSync9(tmpDir, { recursive: true });
   console.log(`Running ${picked.length} gate call(s) in parallel (concurrency=${GATE_CONCURRENCY}, timeout=${GATE_TIMEOUT_MS / 1e3}s each)...`);
   const results = await parallelMap(picked, GATE_CONCURRENCY, async (s) => {
     const shortId = s.sessionId.slice(0, 8);
@@ -6181,23 +6189,23 @@ async function runMineLocal(args) {
       return { session: s, skills: [], reason: "no pairs", error: null };
     }
     const tail = pairs2.slice(-PER_SESSION_PAIR_CAP);
-    const sessionTmp = join24(tmpDir, `s-${shortId}`);
-    mkdirSync8(sessionTmp, { recursive: true });
-    const verdictPath = join24(sessionTmp, "verdict.json");
+    const sessionTmp = join25(tmpDir, `s-${shortId}`);
+    mkdirSync9(sessionTmp, { recursive: true });
+    const verdictPath = join25(sessionTmp, "verdict.json");
     const prompt = buildSessionPrompt(tail, s, verdictPath);
-    writeFileSync10(join24(sessionTmp, "prompt.txt"), prompt);
+    writeFileSync11(join25(sessionTmp, "prompt.txt"), prompt);
     const gate = await runGateViaStdin({ agent: gateAgent, bin: gateBin, prompt, timeoutMs: GATE_TIMEOUT_MS });
     try {
-      writeFileSync10(join24(sessionTmp, "gate-stdout.txt"), gate.stdout);
+      writeFileSync11(join25(sessionTmp, "gate-stdout.txt"), gate.stdout);
       if (gate.stderr)
-        writeFileSync10(join24(sessionTmp, "gate-stderr.txt"), gate.stderr);
+        writeFileSync11(join25(sessionTmp, "gate-stderr.txt"), gate.stderr);
     } catch {
     }
     if (gate.errored) {
       console.log(`  [${shortId}] gate failed: ${gate.errorMessage}`);
       return { session: s, skills: [], reason: null, error: gate.errorMessage ?? "gate failed" };
     }
-    const verdictText = existsSync21(verdictPath) ? readFileSync14(verdictPath, "utf-8") : gate.stdout;
+    const verdictText = existsSync22(verdictPath) ? readFileSync15(verdictPath, "utf-8") : gate.stdout;
     const mv = parseMultiVerdict(verdictText);
     if (!mv) {
       console.log(`  [${shortId}] unparseable verdict (kept at ${sessionTmp})`);
@@ -6244,7 +6252,7 @@ async function runMineLocal(args) {
         sourceSessions: [session.sessionId],
         agent: gateAgent
       });
-      const canonicalDir = dirname4(result.path);
+      const canonicalDir = dirname5(result.path);
       const symlinks = fanOutRoots.length > 0 ? fanOutSymlinks(canonicalDir, basename(canonicalDir), fanOutRoots) : [];
       const symlinkSuffix = symlinks.length > 0 ? `, fan-out \u2192 ${symlinks.length} root(s)` : "";
       console.log(`  wrote ${skill.name} \u2190 session ${session.sessionId.slice(0, 8)} (${session.agent}${symlinkSuffix})`);
@@ -6284,7 +6292,7 @@ async function runMineLocal(args) {
 
 // dist/src/commands/skillify.js
 function stateDir() {
-  return join25(homedir15(), ".deeplake", "state", "skillify");
+  return join26(homedir16(), ".deeplake", "state", "skillify");
 }
 function showStatus() {
   const cfg = loadScopeConfig();
@@ -6292,7 +6300,7 @@ function showStatus() {
   console.log(`team:    ${cfg.team.length === 0 ? "(empty)" : cfg.team.join(", ")}`);
   console.log(`install: ${cfg.install}  (${cfg.install === "global" ? "~/.claude/skills/" : "<project>/.claude/skills/"})`);
   const dir = stateDir();
-  if (!existsSync22(dir)) {
+  if (!existsSync23(dir)) {
     console.log(`state: (no projects tracked yet)`);
     return;
   }
@@ -6304,7 +6312,7 @@ function showStatus() {
   console.log(`state: ${files.length} project(s) tracked`);
   for (const f of files) {
     try {
-      const s = JSON.parse(readFileSync15(join25(dir, f), "utf-8"));
+      const s = JSON.parse(readFileSync16(join26(dir, f), "utf-8"));
       const last = typeof s.updatedAt === "number" ? new Date(s.updatedAt).toISOString() : s.lastDate ?? "never";
       const skills = Array.isArray(s.skillsGenerated) && s.skillsGenerated.length > 0 ? s.skillsGenerated.join(", ") : "none";
       console.log(`  - ${s.project} (counter=${s.counter}, last=${last}, skills=${skills})`);
@@ -6331,7 +6339,7 @@ function setInstall(loc) {
   }
   const cfg = loadScopeConfig();
   saveScopeConfig({ ...cfg, install: loc });
-  const path = loc === "global" ? join25(homedir15(), ".claude", "skills") : "<cwd>/.claude/skills";
+  const path = loc === "global" ? join26(homedir16(), ".claude", "skills") : "<cwd>/.claude/skills";
   console.log(`Install location set to '${loc}'. New skills will be written to ${path}/<name>/SKILL.md.`);
 }
 function promoteSkill(name, cwd) {
@@ -6339,17 +6347,17 @@ function promoteSkill(name, cwd) {
     console.error("Usage: hivemind skillify promote <skill-name>");
     process.exit(1);
   }
-  const projectPath = join25(cwd, ".claude", "skills", name);
-  const globalPath = join25(homedir15(), ".claude", "skills", name);
-  if (!existsSync22(join25(projectPath, "SKILL.md"))) {
+  const projectPath = join26(cwd, ".claude", "skills", name);
+  const globalPath = join26(homedir16(), ".claude", "skills", name);
+  if (!existsSync23(join26(projectPath, "SKILL.md"))) {
     console.error(`Skill '${name}' not found at ${projectPath}/SKILL.md`);
     process.exit(1);
   }
-  if (existsSync22(join25(globalPath, "SKILL.md"))) {
+  if (existsSync23(join26(globalPath, "SKILL.md"))) {
     console.error(`Skill '${name}' already exists at ${globalPath}/SKILL.md \u2014 refusing to overwrite. Remove it first or rename the project skill.`);
     process.exit(1);
   }
-  mkdirSync9(dirname5(globalPath), { recursive: true });
+  mkdirSync10(dirname6(globalPath), { recursive: true });
   renameSync4(projectPath, globalPath);
   console.log(`Promoted '${name}' from ${projectPath} \u2192 ${globalPath}.`);
 }
@@ -6485,7 +6493,7 @@ async function pullSkills(args) {
     console.error(`pull failed: ${e?.message ?? e}`);
     process.exit(1);
   }
-  const dest = toRaw === "global" ? join25(homedir15(), ".claude", "skills") : `${process.cwd()}/.claude/skills`;
+  const dest = toRaw === "global" ? join26(homedir16(), ".claude", "skills") : `${process.cwd()}/.claude/skills`;
   const filterDesc = users.length === 0 ? "all users" : users.join(", ");
   console.log(`Destination: ${dest}`);
   console.log(`Filter:      ${filterDesc}${skillName ? ` \xB7 skill='${skillName}'` : ""}${dryRun ? " \xB7 dry-run" : ""}${force ? " \xB7 force" : ""}`);
@@ -6535,7 +6543,7 @@ async function unpullSkills(args) {
     all,
     legacyCleanup
   });
-  const dest = toRaw === "global" ? join25(homedir15(), ".claude", "skills") : `${process.cwd()}/.claude/skills`;
+  const dest = toRaw === "global" ? join26(homedir16(), ".claude", "skills") : `${process.cwd()}/.claude/skills`;
   const filterParts = [];
   if (users.length > 0)
     filterParts.push(`users=${users.join(",")}`);
@@ -6631,13 +6639,13 @@ if (process.argv[1] && process.argv[1].endsWith("skillify.js")) {
 
 // dist/src/cli/update.js
 import { execFileSync as execFileSync5 } from "node:child_process";
-import { existsSync as existsSync23, readFileSync as readFileSync17, realpathSync } from "node:fs";
-import { dirname as dirname7, sep } from "node:path";
+import { existsSync as existsSync24, readFileSync as readFileSync18, realpathSync } from "node:fs";
+import { dirname as dirname8, sep } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // dist/src/utils/version-check.js
-import { readFileSync as readFileSync16 } from "node:fs";
-import { dirname as dirname6, join as join26 } from "node:path";
+import { readFileSync as readFileSync17 } from "node:fs";
+import { dirname as dirname7, join as join27 } from "node:path";
 function isNewer(latest, current) {
   const parse = (v) => v.split(".").map(Number);
   const [la, lb, lc] = parse(latest);
@@ -6656,24 +6664,24 @@ function detectInstallKind(argv1) {
       return argv1 ?? process.argv[1] ?? fileURLToPath2(import.meta.url);
     }
   })();
-  let dir = dirname7(realArgv1);
+  let dir = dirname8(realArgv1);
   let installDir = null;
   for (let i = 0; i < 10; i++) {
     const pkgPath = `${dir}${sep}package.json`;
     try {
-      const pkg = JSON.parse(readFileSync17(pkgPath, "utf-8"));
+      const pkg = JSON.parse(readFileSync18(pkgPath, "utf-8"));
       if (pkg.name === PKG_NAME || pkg.name === "hivemind") {
         installDir = dir;
         break;
       }
     } catch {
     }
-    const parent = dirname7(dir);
+    const parent = dirname8(dir);
     if (parent === dir)
       break;
     dir = parent;
   }
-  installDir ??= dirname7(realArgv1);
+  installDir ??= dirname8(realArgv1);
   if (realArgv1.includes(`${sep}_npx${sep}`) || realArgv1.includes(`${sep}.npx${sep}`)) {
     return { kind: "npx", installDir };
   }
@@ -6682,10 +6690,10 @@ function detectInstallKind(argv1) {
   }
   let gitDir = installDir;
   for (let i = 0; i < 6; i++) {
-    if (existsSync23(`${gitDir}${sep}.git`)) {
+    if (existsSync24(`${gitDir}${sep}.git`)) {
       return { kind: "local-dev", installDir };
     }
-    const parent = dirname7(gitDir);
+    const parent = dirname8(gitDir);
     if (parent === gitDir)
       break;
     gitDir = parent;
