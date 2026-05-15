@@ -489,6 +489,34 @@ describe("EmbedClient — hello handshake / stuck daemon recycle", () => {
     expect(existsSync(join(dir, `hivemind-embed-${uid}.sock`))).toBe(true);
   });
 
+  it("recycles when the daemon returns 'unknown op' on hello (older protocol)", async () => {
+    const dir = makeTmpDir();
+    const uid = String(process.getuid?.() ?? "test");
+    const sockPath = join(dir, `hivemind-embed-${uid}.sock`);
+    const pidPath = join(dir, `hivemind-embed-${uid}.pid`);
+    writeFileSync(pidPath, "1"); // init pid — kill will fail silently
+
+    await startFakeDaemon(dir, (req) => {
+      if (req.op === "hello") {
+        // Mimic a pre-handshake daemon that doesn't recognize the op.
+        return { id: req.id, error: "unknown op" };
+      }
+      if (req.op === "embed") return { id: req.id, embedding: [0.5] };
+      return { id: req.id, error: "unknown" };
+    });
+
+    const client = new EmbedClient({
+      socketDir: dir,
+      timeoutMs: 500,
+      autoSpawn: false,
+      daemonEntry: "/expected/new/bundle/daemon.js",
+    });
+    await client.embed("hi");
+    // Recycle should have unlinked sock + pidfile so the next call respawns.
+    expect(existsSync(sockPath)).toBe(false);
+    expect(existsSync(pidPath)).toBe(false);
+  });
+
   it("recycles the daemon (SIGTERM + clear sock/pid) when hello returns a mismatched daemonPath", async () => {
     const dir = makeTmpDir();
     const uid = String(process.getuid?.() ?? "test");

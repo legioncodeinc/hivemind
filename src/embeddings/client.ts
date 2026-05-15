@@ -150,14 +150,20 @@ export class EmbedClient {
       return;
     }
     const hello = resp as HelloResponse;
-    if (!hello.daemonPath) {
-      log(`hello returned no daemonPath; skipping mismatch check`);
-      return;
-    }
-    if (hello.daemonPath === this.daemonEntry) return;
+    // A daemon from before this protocol version answers `hello` with
+    // `{ id, error: "unknown op" }` and no `daemonPath`. Treat that the
+    // same as a path mismatch: the running daemon doesn't speak the
+    // current protocol, so it can't be trusted for what comes next.
+    const noProtocolSupport = !hello.daemonPath;
+    const mismatch = !noProtocolSupport && hello.daemonPath !== this.daemonEntry;
+    if (!noProtocolSupport && !mismatch) return;
     if (_recycledStuckDaemon) return; // already recycled this process
     _recycledStuckDaemon = true;
-    log(`daemon path mismatch — running=${hello.daemonPath} expected=${this.daemonEntry}; recycling`);
+    if (noProtocolSupport) {
+      log(`daemon does not implement hello (older protocol); recycling`);
+    } else {
+      log(`daemon path mismatch — running=${hello.daemonPath} expected=${this.daemonEntry}; recycling`);
+    }
     this.recycleDaemon(hello.pid);
   }
 

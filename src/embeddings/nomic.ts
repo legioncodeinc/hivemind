@@ -37,12 +37,29 @@ export interface NomicOptions {
 async function importFromCanonicalSharedDeps(): Promise<TransformersModule> {
   const sharedDir = join(homedir(), ".hivemind", "embed-deps");
   const base = pathToFileURL(`${sharedDir}/`).href;
+  // `createRequire(base).resolve(...)` honors the package's `"require"`
+  // conditional export, which for @huggingface/transformers v3 points at
+  // the CJS bundle (`./dist/transformers.node.cjs`). The dynamic
+  // `import()` of a CJS file wraps it as `{ default: <exports> }`, so
+  // top-level `env` / `pipeline` are not directly accessible. Normalize
+  // both shapes (ESM .mjs would put names at the top level; CJS .cjs
+  // hides them under `.default`).
   const absMain = createRequire(base).resolve("@huggingface/transformers");
-  return (await import(pathToFileURL(absMain).href)) as TransformersModule;
+  const mod = await import(pathToFileURL(absMain).href);
+  return normalizeTransformersModule(mod);
 }
 
 async function importFromBareSpecifier(): Promise<TransformersModule> {
-  return (await import("@huggingface/transformers")) as TransformersModule;
+  const mod = await import("@huggingface/transformers");
+  return normalizeTransformersModule(mod);
+}
+
+function normalizeTransformersModule(mod: unknown): TransformersModule {
+  const m = mod as { default?: TransformersModule } & TransformersModule;
+  if (m.default && typeof m.default === "object" && "pipeline" in m.default) {
+    return m.default;
+  }
+  return m;
 }
 
 export async function defaultImportTransformers(
