@@ -1,8 +1,21 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, lstatSync, readlinkSync, rmSync, existsSync } from "node:fs";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, lstatSync, readlinkSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { findHivemindInstalls, isSharedDepsInstalled, linkStateFor, SHARED_DAEMON_PATH, SHARED_NODE_MODULES, TRANSFORMERS_PKG } from "../../src/cli/embeddings.js";
+import {
+  disableEmbeddings,
+  enableEmbeddings,
+  findHivemindInstalls,
+  installEmbeddings,
+  isSharedDepsInstalled,
+  killEmbedDaemon,
+  linkStateFor,
+  SHARED_DAEMON_PATH,
+  SHARED_NODE_MODULES,
+  TRANSFORMERS_PKG,
+  uninstallEmbeddings,
+} from "../../src/cli/embeddings.js";
+import { _resetUserConfigForTesting, _setConfigPathForTesting, getEmbeddingsEnabled } from "../../src/user-config.js";
 
 /**
  * Tests for the shared-deps embeddings installer's pure helpers. The
@@ -139,5 +152,79 @@ describe("linkStateFor", () => {
     mkDir(join(pluginDir, "node_modules"));
     const state = linkStateFor({ id: "codex", pluginDir });
     expect(state.kind).toBe("owns-own-node-modules");
+  });
+});
+
+// ── lightweight enable / disable: config-only, no fs install ──────────────
+
+describe("enableEmbeddings / disableEmbeddings — config flag mutation", () => {
+  let cfgPath: string;
+
+  beforeEach(() => {
+    cfgPath = join(tmpHome, "config.json");
+    _setConfigPathForTesting(() => cfgPath);
+  });
+
+  afterEach(() => {
+    _resetUserConfigForTesting();
+  });
+
+  it("enableEmbeddings writes embeddings.enabled:true to ~/.deeplake/config.json", () => {
+    enableEmbeddings();
+    expect(existsSync(cfgPath)).toBe(true);
+    expect(JSON.parse(readFileSync(cfgPath, "utf-8"))).toEqual({ embeddings: { enabled: true } });
+    expect(getEmbeddingsEnabled()).toBe(true);
+  });
+
+  it("disableEmbeddings writes embeddings.enabled:false to ~/.deeplake/config.json", () => {
+    enableEmbeddings();
+    disableEmbeddings();
+    expect(JSON.parse(readFileSync(cfgPath, "utf-8"))).toEqual({ embeddings: { enabled: false } });
+    expect(getEmbeddingsEnabled()).toBe(false);
+  });
+
+  it("disableEmbeddings is idempotent (no error when no daemon and no config)", () => {
+    expect(() => disableEmbeddings()).not.toThrow();
+    expect(getEmbeddingsEnabled()).toBe(false);
+  });
+
+  it("enableEmbeddings overrides a prior disableEmbeddings (last write wins)", () => {
+    disableEmbeddings();
+    enableEmbeddings();
+    expect(getEmbeddingsEnabled()).toBe(true);
+  });
+});
+
+// ── killEmbedDaemon: tolerant of every combination of missing files ───────
+
+describe("killEmbedDaemon", () => {
+  it("returns silently when there is no pidfile or socket (fresh machine)", () => {
+    // SOCKET_DIR defaults to /tmp/.hivemind-embed-<random>/ in production — we
+    // can't redirect that without monkey-patching. But the function only ever
+    // reads + best-effort-deletes, so calling it when nothing exists is a
+    // no-op by design.
+    expect(() => killEmbedDaemon()).not.toThrow();
+  });
+});
+
+// ── uninstall: writes config:false even when shared deps absent ───────────
+
+describe("uninstallEmbeddings — config flag side effect", () => {
+  let cfgPath: string;
+
+  beforeEach(() => {
+    cfgPath = join(tmpHome, "config.json");
+    _setConfigPathForTesting(() => cfgPath);
+  });
+
+  afterEach(() => {
+    _resetUserConfigForTesting();
+  });
+
+  it("flips embeddings.enabled:false even when there are no agent installs and no shared deps", () => {
+    // No installs detected, no shared deps dir — uninstall still flips the flag.
+    enableEmbeddings();
+    uninstallEmbeddings();
+    expect(getEmbeddingsEnabled()).toBe(false);
   });
 });
