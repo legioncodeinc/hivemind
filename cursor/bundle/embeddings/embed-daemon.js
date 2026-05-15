@@ -31,10 +31,19 @@ async function importFromCanonicalSharedDeps() {
   const sharedDir = join(homedir(), ".hivemind", "embed-deps");
   const base = pathToFileURL(`${sharedDir}/`).href;
   const absMain = createRequire(base).resolve("@huggingface/transformers");
-  return await import(pathToFileURL(absMain).href);
+  const mod = await import(pathToFileURL(absMain).href);
+  return normalizeTransformersModule(mod);
 }
 async function importFromBareSpecifier() {
-  return await import("@huggingface/transformers");
+  const mod = await import("@huggingface/transformers");
+  return normalizeTransformersModule(mod);
+}
+function normalizeTransformersModule(mod) {
+  const m = mod;
+  if (m.default && typeof m.default === "object" && "pipeline" in m.default) {
+    return m.default;
+  }
+  return m;
 }
 async function defaultImportTransformers(canonical = importFromCanonicalSharedDeps, bare = importFromBareSpecifier) {
   let canonicalErr;

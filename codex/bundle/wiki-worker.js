@@ -423,16 +423,18 @@ var EmbedClient = class {
       return;
     }
     const hello = resp;
-    if (!hello.daemonPath) {
-      log3(`hello returned no daemonPath; skipping mismatch check`);
-      return;
-    }
-    if (hello.daemonPath === this.daemonEntry)
+    const noProtocolSupport = !hello.daemonPath;
+    const mismatch = !noProtocolSupport && hello.daemonPath !== this.daemonEntry;
+    if (!noProtocolSupport && !mismatch)
       return;
     if (_recycledStuckDaemon)
       return;
     _recycledStuckDaemon = true;
-    log3(`daemon path mismatch \u2014 running=${hello.daemonPath} expected=${this.daemonEntry}; recycling`);
+    if (noProtocolSupport) {
+      log3(`daemon does not implement hello (older protocol); recycling`);
+    } else {
+      log3(`daemon path mismatch \u2014 running=${hello.daemonPath} expected=${this.daemonEntry}; recycling`);
+    }
     this.recycleDaemon(hello.pid);
   }
   /**
