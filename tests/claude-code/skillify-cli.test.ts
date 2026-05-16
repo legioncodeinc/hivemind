@@ -473,6 +473,13 @@ describe("mine-local subcommand", () => {
   });
 
   it("rejected runMineLocal triggers process.exit(1) via .catch handler", async () => {
+    // Swap the default `throw`-on-exit mock for this test only: the .catch
+    // arrow in skillify.ts calls process.exit(1) WITHOUT a surrounding
+    // try/catch, so a throwing mock surfaces as an unhandled rejection and
+    // fails CI. Track the call without throwing.
+    const exitCalls: number[] = [];
+    exitSpy.mockImplementation(((code?: number) => { exitCalls.push(code ?? 0); }) as any);
+
     vi.doMock("../../src/commands/mine-local.js", () => ({
       runMineLocal: vi.fn().mockRejectedValue(new Error("synthetic mine-local fail")),
     }));
@@ -482,7 +489,7 @@ describe("mine-local subcommand", () => {
     // Wait for the rejected promise to flush through the chain.
     await new Promise(r => setImmediate(r));
     await new Promise(r => setImmediate(r));
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(exitCalls).toContain(1);
     expect(erred.join("\n")).toMatch(/synthetic mine-local fail/);
   });
 });
