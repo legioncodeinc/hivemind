@@ -258,7 +258,13 @@ async function checkForUpdate(logger: PluginLogger): Promise<void> {
   try {
     const current = getInstalledVersion();
     if (!current) return;
-    const res = await fetch(VERSION_URL, { signal: AbortSignal.timeout(5000) });
+    // 10s timeout: cold gateway init runs this concurrently with plugin
+    // discovery + Bonjour watchdogs + TLS warm-up. Steady-state npm
+    // registry latency is ~170ms, but 3s and 5s have both been observed
+    // to abort during cold start (see #105, #109). Fire-and-forget call
+    // path (see register() bottom), so a longer budget doesn't block
+    // anything user-visible.
+    const res = await fetch(VERSION_URL, { signal: AbortSignal.timeout(10000) });
     if (!res.ok) return;
     const latest = extractLatestVersion(await res.json());
     if (latest && isNewer(latest, current)) {
@@ -789,7 +795,11 @@ export default definePluginEntry({
           const current = getInstalledVersion();
           if (!current) return { text: "Could not determine installed version." };
           try {
-            const res = await fetch(VERSION_URL, { signal: AbortSignal.timeout(3000) });
+            // 10s timeout matches checkForUpdate (see #105, #109). The 3s
+            // budget here was too aggressive even off cold start, since
+            // /hivemind_version is often the first command after a fresh
+            // login and runs while other plugins are still initializing.
+            const res = await fetch(VERSION_URL, { signal: AbortSignal.timeout(10000) });
             if (!res.ok) return { text: `Current version: ${current}. Could not check for updates.` };
             const latest = extractLatestVersion(await res.json());
             if (!latest) return { text: `Current version: ${current}. Could not parse latest version.` };
