@@ -21,7 +21,7 @@ import { readState, writeState, alreadyShown, markShown, tryClaim } from "./stat
 import { renderNotifications } from "./format.js";
 import { emit } from "./delivery/index.js";
 import { fetchBackendNotifications } from "./sources/backend.js";
-import { fetchLocalUsageNotifications } from "./sources/local-usage.js";
+import { pickPrimaryBanner } from "./sources/primary-banner.js";
 import { log as _log } from "../utils/debug.js";
 
 const log = (msg: string) => _log("notifications", msg);
@@ -73,19 +73,20 @@ export async function drainSessionStart(opts: DrainOptions): Promise<void> {
 
     const fromRules = evaluateRules("session_start", ctx);
     const fromQueue = queue.queue;
-    // Both server fetches are fail-soft (return null/[] on error/timeout)
-    // — neither can abort the rules + queue path. Fired in parallel since
-    // they hit independent endpoints with the same 1.5s timeout, so the
-    // upper bound on session-start latency stays ~1.5s rather than 3s.
-    const [fromBackend, fromLocalUsage] = await Promise.all([
+    // Two parallel fetches with independent 1.5s timeouts so session-start
+    // latency stays bounded by ~1.5s rather than 3s. Both fail-soft.
+    //
+    // pickPrimaryBanner returns the single banner for the welcome/savings
+    // priority slot (org savings > 1M → savings recap; else → welcome).
+    // Backend pushes remain additive in this PR — they're rare and not yet
+    // under the priority model. A follow-up will collapse all sources
+    // (including queue) under the same priority.
+    const [fromBackend, primary] = await Promise.all([
       fetchBackendNotifications(opts.creds),
-      // Local-usage source: tries GET /me/hivemind-stats first for the
-      // cross-machine "your team saved X" banner, falls back to local
-      // ~/.deeplake/usage-stats.jsonl if the server is unreachable or
-      // the caller hasn't met the personal-recall threshold.
-      fetchLocalUsageNotifications(opts.sessionId, opts.creds),
+      pickPrimaryBanner(opts.sessionId, opts.creds),
     ]);
-    const all: Notification[] = [...fromRules, ...fromQueue, ...fromBackend, ...fromLocalUsage];
+    const fromPrimary = primary != null ? [primary] : [];
+    const all: Notification[] = [...fromRules, ...fromQueue, ...fromBackend, ...fromPrimary];
 
     const fresh = all.filter(n => !alreadyShown(state, n));
     if (fresh.length === 0) {

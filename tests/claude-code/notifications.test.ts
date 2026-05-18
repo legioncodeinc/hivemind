@@ -4,6 +4,14 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync, mkdirSync, existsSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// Mock fetchOrgStats so drainSessionStart doesn't try to hit the network
+// during these tests. Returning null forces the primary-banner fallback to
+// local jsonl (empty → savings = 0 → welcome branch).
+const { orgStatsMock } = vi.hoisted(() => ({ orgStatsMock: vi.fn() }));
+vi.mock("../../src/notifications/sources/org-stats.js", () => ({
+  fetchOrgStats: orgStatsMock,
+}));
+
 import {
   drainSessionStart,
   enqueueNotification,
@@ -15,7 +23,6 @@ import {
 import { readState, statePath } from "../../src/notifications/state.js";
 import { readQueue, queuePath } from "../../src/notifications/queue.js";
 import { renderNotifications } from "../../src/notifications/format.js";
-import { welcomeRule } from "../../src/notifications/rules/welcome.js";
 import { localMinedRule } from "../../src/notifications/rules/local-mined.js";
 import type { Credentials } from "../../src/commands/auth-creds.js";
 
@@ -46,6 +53,10 @@ beforeEach(() => {
   ORIGINAL_HOME = process.env.HOME;
   process.env.HOME = TEMP_HOME;
   _resetRulesForTest();
+  // Default: server returns null → primary-banner falls back to local jsonl
+  // (which is empty in fresh sandbox) → savings == 0 → welcome wins.
+  orgStatsMock.mockReset();
+  orgStatsMock.mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -91,45 +102,15 @@ describe("renderNotifications", () => {
 });
 
 // ---------------------------------------------------------------------------
-// welcomeRule
+// drainSessionStart — primary-banner produces welcome by default
+// (Welcome is no longer a registered rule — it's the default fallback inside
+// pickPrimaryBanner when org savings ≤ 1M. See sources/primary-banner.ts.)
 // ---------------------------------------------------------------------------
-
-describe("welcomeRule", () => {
-  it("fires when state has no prior welcome entry", () => {
-    const result = welcomeRule.evaluate({
-      agent: "claude-code",
-      creds: FRESH_CREDS,
-      state: { shown: {} },
-    });
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("welcome");
-    expect(result!.dedupKey).toEqual({ savedAt: FRESH_CREDS.savedAt });
-    expect(result!.title).toContain("ada");
-    expect(result!.body).toContain("acme");
-    expect(result!.body).toContain("ws-1");
-  });
-
-  it("returns null when creds have no token (logged-out user)", () => {
-    const result = welcomeRule.evaluate({
-      agent: "claude-code",
-      creds: { ...FRESH_CREDS, token: "" },
-      state: { shown: {} },
-    });
-    expect(result).toBeNull();
-  });
-
-  it("returns null when creds is null", () => {
-    const result = welcomeRule.evaluate({
-      agent: "claude-code",
-      creds: null,
-      state: { shown: {} },
-    });
-    expect(result).toBeNull();
-  });
-});
 
 // ---------------------------------------------------------------------------
 // localMinedRule — fires when not-logged-in + manifest has entries
+// (welcomeRule tests moved to notifications-primary-banner.test.ts — welcome
+// is now a default fallback in pickPrimaryBanner, not a registered rule.)
 // ---------------------------------------------------------------------------
 
 describe("localMinedRule", () => {
@@ -213,10 +194,12 @@ describe("localMinedRule", () => {
 });
 
 // ---------------------------------------------------------------------------
-// drainSessionStart — end-to-end framework behavior
+// drainSessionStart — primary-banner produces welcome by default
+// (Welcome is no longer a registered rule — it's the default fallback inside
+// pickPrimaryBanner when org savings ≤ 1M. See sources/primary-banner.ts.)
 // ---------------------------------------------------------------------------
 
-describe("drainSessionStart with welcome rule registered", () => {
+describe("drainSessionStart welcome via primary-banner", () => {
   let writes: string[] = [];
 
   beforeEach(() => {
@@ -225,15 +208,14 @@ describe("drainSessionStart with welcome rule registered", () => {
       writes.push(typeof chunk === "string" ? chunk : chunk.toString());
       return true;
     });
-    registerRule(welcomeRule);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("emits welcome on the first drain after a fresh login", async () => {
-    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS });
+  it("emits welcome on the first drain", async () => {
+    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-1" });
 
     expect(writes.length).toBe(1);
     const payload = JSON.parse(writes[0]);
@@ -244,40 +226,47 @@ describe("drainSessionStart with welcome rule registered", () => {
     expect(payload.hookSpecificOutput.additionalContext).not.toContain("DEEPLAKE MEMORY");
     expect(payload.hookSpecificOutput.additionalContext).not.toContain("HIVEMIND");
 
-    // State persisted.
+    // State persisted with the new session-scoped dedupKey.
     const state = readState();
-    expect(state.shown.welcome.dedupKey).toBe(JSON.stringify({ savedAt: FRESH_CREDS.savedAt }));
+    expect(state.shown.welcome.dedupKey).toBe(JSON.stringify({ session: "s-1" }));
   });
 
-  it("does NOT emit welcome on the second drain with the same savedAt", async () => {
-    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS });
+  it("does NOT emit welcome on the second drain with the SAME sessionId (state dedup)", async () => {
+    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-same" });
     writes.length = 0;
-    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS });
+    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-same" });
     expect(writes.length).toBe(0);
   });
 
-  it("re-emits welcome after creds.savedAt changes (re-login)", async () => {
-    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS });
+  it("re-emits welcome on a new sessionId (no longer gated on creds.savedAt)", async () => {
+    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-A" });
     writes.length = 0;
-    await drainSessionStart({
-      agent: "claude-code",
-      creds: { ...FRESH_CREDS, savedAt: "2026-05-07T09:00:00Z" },
-    });
+    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-B" });
     expect(writes.length).toBe(1);
   });
 
-  it("emits exactly one notification per id per drain (count assertion)", async () => {
-    // If a buggy rule produced the same notification id twice, the dedup
-    // step would still mark only one as shown — but we should never emit
-    // duplicates in a single drain either.
-    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS });
+  it("emits exactly one welcome per drain (no double 'Welcome back' markers)", async () => {
+    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-once" });
     expect(writes.length).toBe(1);
     const payload = JSON.parse(writes[0]);
-    // Single welcome → no double "Welcome back" markers.
     const occurrences = payload.hookSpecificOutput.additionalContext.split("Welcome back").length - 1;
     expect(occurrences).toBe(1);
   });
 
+  it("emits savings recap (not welcome) when org savings > 1M tokens", async () => {
+    // 6,000,000 bytes → Y = 1.5M tokens, Z = 0.7 × 1.5M = 1.05M → above the 1M threshold
+    orgStatsMock.mockResolvedValue({
+      org:  { sessionsCount: 100, memoryRecallCount: 1000, memorySearchBytes: 6_000_000 },
+      user: { sessionsCount: 10,  memoryRecallCount: 50,   memorySearchBytes: 500_000 },
+    });
+
+    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-rich" });
+
+    expect(writes.length).toBe(1);
+    const payload = JSON.parse(writes[0]);
+    expect(payload.hookSpecificOutput.additionalContext).toContain("your team");
+    expect(payload.hookSpecificOutput.additionalContext).not.toContain("Welcome back");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -433,9 +422,8 @@ describe("drainSessionStart resilience", () => {
       writes.push(typeof chunk === "string" ? chunk : chunk.toString());
       return true;
     });
-    registerRule(welcomeRule);
 
-    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS });
+    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-corrupt-state" });
     expect(writes.length).toBe(1);
     vi.restoreAllMocks();
   });
@@ -466,7 +454,6 @@ describe("drainSessionStart resilience", () => {
     // see — if not, the framework's outer try/catch in drainSessionStart
     // should still prevent abort. Either way, the drain must not throw.
     registerRule(explodingRule);
-    registerRule(welcomeRule);
 
     const writes: string[] = [];
     vi.spyOn(process.stdout, "write").mockImplementation((chunk: any) => {
@@ -475,7 +462,7 @@ describe("drainSessionStart resilience", () => {
     });
 
     await expect(
-      drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS }),
+      drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-explode" }),
     ).resolves.toBeUndefined();
 
     vi.restoreAllMocks();
@@ -497,7 +484,12 @@ describe("bundle/session-notifications.js (built artifact)", () => {
   // spawnSync (vs execFileSync) so we can capture stdout + stderr separately
   // to verify the dual-channel emit: user-visible stderr banner + model-
   // visible additionalContext JSON on stdout. Both must carry the same text.
-  function runBundle(extraEnv: Record<string, string>, input = "{}"): { stdout: string; stderr: string } {
+  // The default input now includes a session_id — primary-banner requires
+  // one to compute a per-session dedupKey.
+  function runBundle(
+    extraEnv: Record<string, string>,
+    input: string = JSON.stringify({ session_id: "bundle-test-session" }),
+  ): { stdout: string; stderr: string } {
     const r = spawnSync("node", [bundlePath], {
       input,
       encoding: "utf-8",
@@ -697,12 +689,11 @@ describe("backend source (GET /me/notifications)", () => {
     expect(JSON.parse(writes[0]).hookSpecificOutput.additionalContext).toContain("B2");
   });
 
-  it("a 500 response degrades to no backend notifications, rules+queue still run", async () => {
-    registerRule(welcomeRule);
+  it("a 500 response degrades to no backend notifications, primary banner still fires", async () => {
     mockFetchOnce({}, false);
 
-    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS });
-    // Welcome rule still fires even though backend returned 500.
+    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-be-500" });
+    // Primary banner (welcome — savings=0 in this sandbox) still fires.
     expect(writes.length).toBe(1);
     expect(JSON.parse(writes[0]).hookSpecificOutput.additionalContext).toContain("Welcome back");
   });
@@ -742,20 +733,10 @@ describe("backend source (GET /me/notifications)", () => {
   });
 });
 
-describe("concurrent drains on shared HOME (cross-instance race)", () => {
-  it("welcome appears in at most one of two parallel drains across the pair", async () => {
+describe("serial drains on shared HOME (state dedup)", () => {
+  it("welcome appears once when two serial drains use the same sessionId", async () => {
     const writesA: string[] = [];
     const writesB: string[] = [];
-
-    // Two separate stdout spies impossible in one process; instead, run
-    // the drain twice in parallel against the same state file. The atomic
-    // write semantics (tmp + rename) mean state ends in a coherent shape;
-    // dedup logic keys on creds.savedAt so the second drain reads the
-    // first's persisted state and skips emit. With true concurrency where
-    // both drains read state BEFORE either writes, both can emit — that's
-    // the intended trade-off for v1 (a single duplicate welcome on a
-    // racing pair is acceptable; no torn JSON file is the hard guarantee).
-    registerRule(welcomeRule);
 
     let activeBuffer: string[] = writesA;
     vi.spyOn(process.stdout, "write").mockImplementation((chunk: any) => {
@@ -764,13 +745,14 @@ describe("concurrent drains on shared HOME (cross-instance race)", () => {
     });
 
     // First drain to completion to populate state.
-    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS });
+    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-shared" });
     activeBuffer = writesB;
 
     // Second drain reads the persisted state — must be a no-op for the
-    // same savedAt. Proves serial dedup works across "two SessionStart
-    // hook invocations on the same machine."
-    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS });
+    // SAME sessionId. Proves serial dedup works across "two SessionStart
+    // hook invocations within one session" (the typical case: settings.json
+    // hook + marketplace hook both fire with the same session_id).
+    await drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-shared" });
 
     expect(writesA.length).toBe(1);
     expect(writesB.length).toBe(0);
@@ -854,13 +836,15 @@ describe("drainSessionStart with per-notification claim", () => {
       stdoutWrites += 1;
       return true;
     });
-    registerRule(welcomeRule);
 
-    // True parallelism: both drains read state before either writes, so
-    // dedup-via-state alone wouldn't catch the duplicate. tryClaim does.
+    // True parallelism with the SAME sessionId — both drains read state
+    // before either writes, so dedup-via-state alone wouldn't catch the
+    // duplicate. tryClaim's atomic file lock does. This mirrors production:
+    // settings.json hook + marketplace hook both fire concurrently with the
+    // same session_id from the same SessionStart event.
     await Promise.all([
-      drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS }),
-      drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS }),
+      drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-parallel" }),
+      drainSessionStart({ agent: "claude-code", creds: FRESH_CREDS, sessionId: "s-parallel" }),
     ]);
 
     expect(stdoutWrites).toBe(1);
