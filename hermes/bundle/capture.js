@@ -564,7 +564,7 @@ function buildSessionPath(config, sessionId) {
 // dist/src/embeddings/client.js
 import { connect } from "node:net";
 import { spawn } from "node:child_process";
-import { openSync, closeSync, writeSync, unlinkSync, existsSync as existsSync4, readFileSync as readFileSync5 } from "node:fs";
+import { openSync as openSync2, closeSync as closeSync2, writeSync, unlinkSync as unlinkSync2, existsSync as existsSync4, readFileSync as readFileSync5 } from "node:fs";
 import { homedir as homedir6 } from "node:os";
 import { join as join7 } from "node:path";
 
@@ -580,12 +580,18 @@ function pidPathFor(uid, dir = DEFAULT_SOCKET_DIR) {
 }
 
 // dist/src/notifications/queue.js
-import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, renameSync, mkdirSync as mkdirSync2 } from "node:fs";
+import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, renameSync, mkdirSync as mkdirSync2, openSync, closeSync, unlinkSync, statSync } from "node:fs";
 import { join as join4, resolve } from "node:path";
 import { homedir as homedir3 } from "node:os";
 var log3 = (msg) => log("notifications-queue", msg);
+var LOCK_RETRY_MAX = 50;
+var LOCK_RETRY_BASE_MS = 5;
+var LOCK_STALE_MS = 5e3;
 function queuePath() {
   return join4(homedir3(), ".deeplake", "notifications-queue.json");
+}
+function lockPath() {
+  return `${queuePath()}.lock`;
 }
 function readQueue() {
   try {
@@ -611,10 +617,55 @@ function writeQueue(q) {
   writeFileSync2(tmp, JSON.stringify(q, null, 2), { mode: 384 });
   renameSync(tmp, path);
 }
+function withQueueLock(fn) {
+  const path = lockPath();
+  mkdirSync2(join4(homedir3(), ".deeplake"), { recursive: true, mode: 448 });
+  let fd = null;
+  for (let attempt = 0; attempt < LOCK_RETRY_MAX; attempt++) {
+    try {
+      fd = openSync(path, "wx", 384);
+      break;
+    } catch (e) {
+      const code = e.code;
+      if (code !== "EEXIST")
+        throw e;
+      try {
+        const age = Date.now() - statSync(path).mtimeMs;
+        if (age > LOCK_STALE_MS) {
+          unlinkSync(path);
+          continue;
+        }
+      } catch {
+      }
+      const delay = LOCK_RETRY_BASE_MS * (attempt + 1);
+      const end = Date.now() + delay;
+      while (Date.now() < end) {
+      }
+    }
+  }
+  if (fd === null) {
+    log3(`lock acquisition gave up after ${LOCK_RETRY_MAX} attempts \u2014 proceeding unlocked (last-writer-wins)`);
+    return fn();
+  }
+  try {
+    return fn();
+  } finally {
+    try {
+      closeSync(fd);
+    } catch {
+    }
+    try {
+      unlinkSync(path);
+    } catch {
+    }
+  }
+}
 function enqueueNotification(n) {
-  const q = readQueue();
-  q.queue.push(n);
-  writeQueue(q);
+  withQueueLock(() => {
+    const q = readQueue();
+    q.queue.push(n);
+    writeQueue(q);
+  });
 }
 
 // dist/src/embeddings/disable.js
@@ -948,11 +999,11 @@ var EmbedClient = class {
       }
     }
     try {
-      unlinkSync(this.socketPath);
+      unlinkSync2(this.socketPath);
     } catch {
     }
     try {
-      unlinkSync(this.pidPath);
+      unlinkSync2(this.pidPath);
     } catch {
     }
   }
@@ -998,16 +1049,16 @@ var EmbedClient = class {
   trySpawnDaemon() {
     let fd;
     try {
-      fd = openSync(this.pidPath, "wx", 384);
+      fd = openSync2(this.pidPath, "wx", 384);
       writeSync(fd, String(process.pid));
     } catch (e) {
       if (this.isPidFileStale()) {
         try {
-          unlinkSync(this.pidPath);
+          unlinkSync2(this.pidPath);
         } catch {
         }
         try {
-          fd = openSync(this.pidPath, "wx", 384);
+          fd = openSync2(this.pidPath, "wx", 384);
           writeSync(fd, String(process.pid));
         } catch {
           return;
@@ -1019,8 +1070,8 @@ var EmbedClient = class {
     if (!this.daemonEntry || !existsSync4(this.daemonEntry)) {
       log4(`daemonEntry not configured or missing: ${this.daemonEntry}`);
       try {
-        closeSync(fd);
-        unlinkSync(this.pidPath);
+        closeSync2(fd);
+        unlinkSync2(this.pidPath);
       } catch {
       }
       return;
@@ -1034,7 +1085,7 @@ var EmbedClient = class {
       child.unref();
       log4(`spawned daemon pid=${child.pid}`);
     } finally {
-      closeSync(fd);
+      closeSync2(fd);
     }
   }
   isPidFileStale() {
@@ -1122,7 +1173,7 @@ function embeddingSqlLiteral(vec) {
 }
 
 // dist/src/embeddings/self-heal.js
-import { existsSync as existsSync5, lstatSync, mkdirSync as mkdirSync4, readlinkSync, renameSync as renameSync3, rmSync, symlinkSync, statSync } from "node:fs";
+import { existsSync as existsSync5, lstatSync, mkdirSync as mkdirSync4, readlinkSync, renameSync as renameSync3, rmSync, symlinkSync, statSync as statSync2 } from "node:fs";
 import { homedir as homedir7 } from "node:os";
 import { basename, dirname as dirname2, join as join8 } from "node:path";
 function ensurePluginNodeModulesLink(opts) {
@@ -1152,7 +1203,7 @@ function ensurePluginNodeModulesLink(opts) {
       return { kind: "already-linked", target, link };
     }
     try {
-      statSync(link);
+      statSync2(link);
       return { kind: "linked-elsewhere", link, existingTarget };
     } catch {
       try {
@@ -1187,7 +1238,7 @@ import { fileURLToPath as fileURLToPath3 } from "node:url";
 import { dirname as dirname6, join as join18 } from "node:path";
 
 // dist/src/hooks/summary-state.js
-import { readFileSync as readFileSync6, writeFileSync as writeFileSync4, writeSync as writeSync2, mkdirSync as mkdirSync5, renameSync as renameSync4, existsSync as existsSync6, unlinkSync as unlinkSync2, openSync as openSync2, closeSync as closeSync2 } from "node:fs";
+import { readFileSync as readFileSync6, writeFileSync as writeFileSync4, writeSync as writeSync2, mkdirSync as mkdirSync5, renameSync as renameSync4, existsSync as existsSync6, unlinkSync as unlinkSync3, openSync as openSync3, closeSync as closeSync3 } from "node:fs";
 import { homedir as homedir8 } from "node:os";
 import { join as join9 } from "node:path";
 var dlog = (msg) => log("summary-state", msg);
@@ -1196,7 +1247,7 @@ var YIELD_BUF = new Int32Array(new SharedArrayBuffer(4));
 function statePath(sessionId) {
   return join9(STATE_DIR, `${sessionId}.json`);
 }
-function lockPath(sessionId) {
+function lockPath2(sessionId) {
   return join9(STATE_DIR, `${sessionId}.lock`);
 }
 function readState(sessionId) {
@@ -1223,14 +1274,14 @@ function withRmwLock(sessionId, fn) {
   let fd = null;
   while (fd === null) {
     try {
-      fd = openSync2(rmwLock, "wx");
+      fd = openSync3(rmwLock, "wx");
     } catch (e) {
       if (e.code !== "EEXIST")
         throw e;
       if (Date.now() > deadline) {
         dlog(`rmw lock deadline exceeded for ${sessionId}, reclaiming stale lock`);
         try {
-          unlinkSync2(rmwLock);
+          unlinkSync3(rmwLock);
         } catch (unlinkErr) {
           dlog(`stale rmw lock unlink failed for ${sessionId}: ${unlinkErr.message}`);
         }
@@ -1242,9 +1293,9 @@ function withRmwLock(sessionId, fn) {
   try {
     return fn();
   } finally {
-    closeSync2(fd);
+    closeSync3(fd);
     try {
-      unlinkSync2(rmwLock);
+      unlinkSync3(rmwLock);
     } catch (unlinkErr) {
       dlog(`rmw lock cleanup failed for ${sessionId}: ${unlinkErr.message}`);
     }
@@ -1280,7 +1331,7 @@ function shouldTrigger(state, cfg, now = Date.now()) {
 }
 function tryAcquireLock(sessionId, maxAgeMs = 10 * 60 * 1e3) {
   mkdirSync5(STATE_DIR, { recursive: true });
-  const p = lockPath(sessionId);
+  const p = lockPath2(sessionId);
   if (existsSync6(p)) {
     try {
       const ageMs = Date.now() - parseInt(readFileSync6(p, "utf-8"), 10);
@@ -1290,18 +1341,18 @@ function tryAcquireLock(sessionId, maxAgeMs = 10 * 60 * 1e3) {
       dlog(`lock file unreadable for ${sessionId}, treating as stale: ${readErr.message}`);
     }
     try {
-      unlinkSync2(p);
+      unlinkSync3(p);
     } catch (unlinkErr) {
       dlog(`could not unlink stale lock for ${sessionId}: ${unlinkErr.message}`);
       return false;
     }
   }
   try {
-    const fd = openSync2(p, "wx");
+    const fd = openSync3(p, "wx");
     try {
       writeSync2(fd, String(Date.now()));
     } finally {
-      closeSync2(fd);
+      closeSync3(fd);
     }
     return true;
   } catch (e) {
@@ -1312,7 +1363,7 @@ function tryAcquireLock(sessionId, maxAgeMs = 10 * 60 * 1e3) {
 }
 function releaseLock(sessionId) {
   try {
-    unlinkSync2(lockPath(sessionId));
+    unlinkSync3(lockPath2(sessionId));
   } catch (e) {
     if (e?.code !== "ENOENT") {
       dlog(`releaseLock unlink failed for ${sessionId}: ${e.message}`);
@@ -1580,7 +1631,7 @@ function spawnSkillifyWorker(opts) {
 }
 
 // dist/src/skillify/state.js
-import { readFileSync as readFileSync8, writeFileSync as writeFileSync7, writeSync as writeSync3, mkdirSync as mkdirSync9, renameSync as renameSync6, existsSync as existsSync9, unlinkSync as unlinkSync3, openSync as openSync3, closeSync as closeSync3 } from "node:fs";
+import { readFileSync as readFileSync8, writeFileSync as writeFileSync7, writeSync as writeSync3, mkdirSync as mkdirSync9, renameSync as renameSync6, existsSync as existsSync9, unlinkSync as unlinkSync4, openSync as openSync4, closeSync as closeSync4 } from "node:fs";
 import { execSync as execSync2 } from "node:child_process";
 import { homedir as homedir13 } from "node:os";
 import { createHash } from "node:crypto";
@@ -1627,7 +1678,7 @@ var TRIGGER_THRESHOLD = (() => {
 function statePath2(projectKey) {
   return join16(STATE_DIR2, `${projectKey}.json`);
 }
-function lockPath2(projectKey) {
+function lockPath3(projectKey) {
   return join16(STATE_DIR2, `${projectKey}.lock`);
 }
 var DEFAULT_PORTS = {
@@ -1693,19 +1744,19 @@ function writeState2(projectKey, state) {
 function withRmwLock2(projectKey, fn) {
   migrateLegacyStateDir();
   mkdirSync9(STATE_DIR2, { recursive: true });
-  const rmw = lockPath2(projectKey) + ".rmw";
+  const rmw = lockPath3(projectKey) + ".rmw";
   const deadline = Date.now() + 2e3;
   let fd = null;
   while (fd === null) {
     try {
-      fd = openSync3(rmw, "wx");
+      fd = openSync4(rmw, "wx");
     } catch (e) {
       if (e.code !== "EEXIST")
         throw e;
       if (Date.now() > deadline) {
         dlog3(`rmw lock deadline exceeded for ${projectKey}, reclaiming stale lock`);
         try {
-          unlinkSync3(rmw);
+          unlinkSync4(rmw);
         } catch (unlinkErr) {
           dlog3(`stale rmw lock unlink failed for ${projectKey}: ${unlinkErr.message}`);
         }
@@ -1717,9 +1768,9 @@ function withRmwLock2(projectKey, fn) {
   try {
     return fn();
   } finally {
-    closeSync3(fd);
+    closeSync4(fd);
     try {
-      unlinkSync3(rmw);
+      unlinkSync4(rmw);
     } catch (unlinkErr) {
       dlog3(`rmw lock cleanup failed for ${projectKey}: ${unlinkErr.message}`);
     }
@@ -1753,7 +1804,7 @@ function resetCounter(projectKey) {
 function tryAcquireWorkerLock(projectKey, maxAgeMs = 10 * 60 * 1e3) {
   migrateLegacyStateDir();
   mkdirSync9(STATE_DIR2, { recursive: true });
-  const p = lockPath2(projectKey);
+  const p = lockPath3(projectKey);
   if (existsSync9(p)) {
     try {
       const ageMs = Date.now() - parseInt(readFileSync8(p, "utf-8"), 10);
@@ -1763,18 +1814,18 @@ function tryAcquireWorkerLock(projectKey, maxAgeMs = 10 * 60 * 1e3) {
       dlog3(`worker lock unreadable for ${projectKey}, treating as stale: ${readErr.message}`);
     }
     try {
-      unlinkSync3(p);
+      unlinkSync4(p);
     } catch (unlinkErr) {
       dlog3(`could not unlink stale worker lock for ${projectKey}: ${unlinkErr.message}`);
       return false;
     }
   }
   try {
-    const fd = openSync3(p, "wx");
+    const fd = openSync4(p, "wx");
     try {
       writeSync3(fd, String(Date.now()));
     } finally {
-      closeSync3(fd);
+      closeSync4(fd);
     }
     return true;
   } catch {
@@ -1782,9 +1833,9 @@ function tryAcquireWorkerLock(projectKey, maxAgeMs = 10 * 60 * 1e3) {
   }
 }
 function releaseWorkerLock(projectKey) {
-  const p = lockPath2(projectKey);
+  const p = lockPath3(projectKey);
   try {
-    unlinkSync3(p);
+    unlinkSync4(p);
   } catch {
   }
 }

@@ -284,6 +284,52 @@ describe("drainSessionStart with welcome rule registered", () => {
 // queue (push-based notifications)
 // ---------------------------------------------------------------------------
 
+describe("enqueueNotification cross-process safety", () => {
+  // Regression for CodeRabbit #4: previously `enqueueNotification` did
+  // read-modify-write on the queue JSON without any cross-process lock,
+  // so two concurrent producers would race and the later `rename(2)`
+  // would clobber the earlier one's append. Spawn N subprocesses that
+  // each enqueue one notification and assert the final queue length
+  // equals N — without the lock, the count would be < N.
+  const modPath = new URL("../../src/notifications/queue.ts", import.meta.url).pathname;
+
+  it("N parallel producers each append exactly once (no lost writes)", async () => {
+    const N = 12;
+    // Each subprocess imports the queue module and enqueues a uniquely-
+    // identified notification. They all share the same $HOME (tmp dir
+    // from outer beforeEach) so they target the same queue file.
+    const code =
+      `import("${modPath}").then(m => { ` +
+      `  const idx = process.env.PRODUCER_IDX; ` +
+      `  m.enqueueNotification({ id: "test-cross-proc", title: "T" + idx, body: "B" + idx, dedupKey: { idx } }); ` +
+      `  process.stdout.write("ok"); ` +
+      `});`;
+
+    const runs = Array.from({ length: N }, (_, i) =>
+      new Promise<void>((resolve, reject) => {
+        const r = spawnSync("npx", ["tsx", "-e", code], {
+          env: { ...process.env, HOME: TEMP_HOME, PRODUCER_IDX: String(i) },
+          encoding: "utf-8",
+          timeout: 30_000,
+        });
+        if (r.status !== 0) {
+          reject(new Error(`producer ${i} exit=${r.status} stderr=${(r.stderr || "").slice(0, 300)}`));
+        } else {
+          resolve();
+        }
+      }),
+    );
+    await Promise.all(runs);
+
+    const finalQueue = readQueue().queue;
+    expect(finalQueue.length).toBe(N);
+    // Every producer index 0..N-1 must appear exactly once.
+    const idxs = finalQueue.map(n => (n.dedupKey as { idx: string }).idx).sort();
+    const expected = Array.from({ length: N }, (_, i) => String(i)).sort();
+    expect(idxs).toEqual(expected);
+  }, 60_000);
+});
+
 describe("enqueueNotification + drainSessionStart", () => {
   let writes: string[] = [];
 

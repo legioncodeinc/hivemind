@@ -59,7 +59,7 @@ function evaluateRules(trigger, ctx) {
 }
 
 // dist/src/notifications/queue.js
-import { readFileSync as readFileSync2, writeFileSync as writeFileSync2, renameSync, mkdirSync as mkdirSync2 } from "node:fs";
+import { readFileSync as readFileSync2, writeFileSync as writeFileSync2, renameSync, mkdirSync as mkdirSync2, openSync, closeSync, unlinkSync as unlinkSync2, statSync } from "node:fs";
 import { join as join3, resolve } from "node:path";
 import { homedir as homedir3 } from "node:os";
 
@@ -107,7 +107,7 @@ function writeQueue(q) {
 }
 
 // dist/src/notifications/state.js
-import { closeSync, mkdirSync as mkdirSync3, openSync, readFileSync as readFileSync3, renameSync as renameSync2, writeFileSync as writeFileSync3 } from "node:fs";
+import { closeSync as closeSync2, mkdirSync as mkdirSync3, openSync as openSync2, readFileSync as readFileSync3, renameSync as renameSync2, writeFileSync as writeFileSync3 } from "node:fs";
 import { createHash } from "node:crypto";
 import { join as join4, resolve as resolve2 } from "node:path";
 import { homedir as homedir4 } from "node:os";
@@ -166,8 +166,8 @@ function tryClaim(n) {
   const safeId = n.id.replace(/[^a-zA-Z0-9_.:-]/g, "_");
   const claimPath = join4(claimsDir, `${safeId}-${keyHash}`);
   try {
-    const fd = openSync(claimPath, "wx", 384);
-    closeSync(fd);
+    const fd = openSync2(claimPath, "wx", 384);
+    closeSync2(fd);
     return true;
   } catch (e) {
     if (e?.code === "EEXIST")

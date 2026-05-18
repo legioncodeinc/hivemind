@@ -1134,7 +1134,7 @@ function buildSessionPath(config, sessionId) {
 // dist/src/embeddings/client.js
 import { connect } from "node:net";
 import { spawn as spawn3 } from "node:child_process";
-import { openSync as openSync3, closeSync as closeSync3, writeSync as writeSync3, unlinkSync as unlinkSync3, existsSync as existsSync9, readFileSync as readFileSync9 } from "node:fs";
+import { openSync as openSync4, closeSync as closeSync4, writeSync as writeSync3, unlinkSync as unlinkSync4, existsSync as existsSync9, readFileSync as readFileSync9 } from "node:fs";
 import { homedir as homedir13 } from "node:os";
 import { join as join16 } from "node:path";
 
@@ -1150,12 +1150,18 @@ function pidPathFor(uid, dir = DEFAULT_SOCKET_DIR) {
 }
 
 // dist/src/notifications/queue.js
-import { readFileSync as readFileSync7, writeFileSync as writeFileSync7, renameSync as renameSync4, mkdirSync as mkdirSync8 } from "node:fs";
+import { readFileSync as readFileSync7, writeFileSync as writeFileSync7, renameSync as renameSync4, mkdirSync as mkdirSync8, openSync as openSync3, closeSync as closeSync3, unlinkSync as unlinkSync3, statSync } from "node:fs";
 import { join as join13, resolve } from "node:path";
 import { homedir as homedir10 } from "node:os";
 var log3 = (msg) => log("notifications-queue", msg);
+var LOCK_RETRY_MAX = 50;
+var LOCK_RETRY_BASE_MS = 5;
+var LOCK_STALE_MS = 5e3;
 function queuePath() {
   return join13(homedir10(), ".deeplake", "notifications-queue.json");
+}
+function lockPath3() {
+  return `${queuePath()}.lock`;
 }
 function readQueue() {
   try {
@@ -1181,10 +1187,55 @@ function writeQueue(q) {
   writeFileSync7(tmp, JSON.stringify(q, null, 2), { mode: 384 });
   renameSync4(tmp, path);
 }
+function withQueueLock(fn) {
+  const path = lockPath3();
+  mkdirSync8(join13(homedir10(), ".deeplake"), { recursive: true, mode: 448 });
+  let fd = null;
+  for (let attempt = 0; attempt < LOCK_RETRY_MAX; attempt++) {
+    try {
+      fd = openSync3(path, "wx", 384);
+      break;
+    } catch (e) {
+      const code = e.code;
+      if (code !== "EEXIST")
+        throw e;
+      try {
+        const age = Date.now() - statSync(path).mtimeMs;
+        if (age > LOCK_STALE_MS) {
+          unlinkSync3(path);
+          continue;
+        }
+      } catch {
+      }
+      const delay = LOCK_RETRY_BASE_MS * (attempt + 1);
+      const end = Date.now() + delay;
+      while (Date.now() < end) {
+      }
+    }
+  }
+  if (fd === null) {
+    log3(`lock acquisition gave up after ${LOCK_RETRY_MAX} attempts \u2014 proceeding unlocked (last-writer-wins)`);
+    return fn();
+  }
+  try {
+    return fn();
+  } finally {
+    try {
+      closeSync3(fd);
+    } catch {
+    }
+    try {
+      unlinkSync3(path);
+    } catch {
+    }
+  }
+}
 function enqueueNotification(n) {
-  const q = readQueue();
-  q.queue.push(n);
-  writeQueue(q);
+  withQueueLock(() => {
+    const q = readQueue();
+    q.queue.push(n);
+    writeQueue(q);
+  });
 }
 
 // dist/src/embeddings/disable.js
@@ -1518,11 +1569,11 @@ var EmbedClient = class {
       }
     }
     try {
-      unlinkSync3(this.socketPath);
+      unlinkSync4(this.socketPath);
     } catch {
     }
     try {
-      unlinkSync3(this.pidPath);
+      unlinkSync4(this.pidPath);
     } catch {
     }
   }
@@ -1568,16 +1619,16 @@ var EmbedClient = class {
   trySpawnDaemon() {
     let fd;
     try {
-      fd = openSync3(this.pidPath, "wx", 384);
+      fd = openSync4(this.pidPath, "wx", 384);
       writeSync3(fd, String(process.pid));
     } catch (e) {
       if (this.isPidFileStale()) {
         try {
-          unlinkSync3(this.pidPath);
+          unlinkSync4(this.pidPath);
         } catch {
         }
         try {
-          fd = openSync3(this.pidPath, "wx", 384);
+          fd = openSync4(this.pidPath, "wx", 384);
           writeSync3(fd, String(process.pid));
         } catch {
           return;
@@ -1589,8 +1640,8 @@ var EmbedClient = class {
     if (!this.daemonEntry || !existsSync9(this.daemonEntry)) {
       log4(`daemonEntry not configured or missing: ${this.daemonEntry}`);
       try {
-        closeSync3(fd);
-        unlinkSync3(this.pidPath);
+        closeSync4(fd);
+        unlinkSync4(this.pidPath);
       } catch {
       }
       return;
@@ -1604,7 +1655,7 @@ var EmbedClient = class {
       child.unref();
       log4(`spawned daemon pid=${child.pid}`);
     } finally {
-      closeSync3(fd);
+      closeSync4(fd);
     }
   }
   isPidFileStale() {
