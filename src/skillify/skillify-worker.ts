@@ -470,6 +470,7 @@ async function main(): Promise<void> {
         await insertSkillRow({
           query,
           tableName: cfg.skillsTable,
+          workspaceId: cfg.workspaceId,
           name: verdict.name!,
           project: cfg.project,
           projectKey: cfg.projectKey,
