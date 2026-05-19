@@ -17,11 +17,11 @@ import type { Credentials } from "../commands/auth-creds.js";
 import type { Agent, Notification, NotificationContext } from "./types.js";
 import { evaluateRules } from "./rules/registry.js";
 import { readQueue, writeQueue } from "./queue.js";
-import { readState, writeState, alreadyShown, markShown, tryClaim } from "./state.js";
+import { readState, writeState, alreadyShown, markShown, tryClaim, releaseClaim } from "./state.js";
 import { renderNotifications } from "./format.js";
 import { emit } from "./delivery/index.js";
 import { fetchBackendNotifications } from "./sources/backend.js";
-import { fetchLocalUsageNotifications } from "./sources/local-usage.js";
+import { pickPrimaryBanner } from "./sources/primary-banner.js";
 import { log as _log } from "../utils/debug.js";
 
 const log = (msg: string) => _log("notifications", msg);
@@ -73,14 +73,20 @@ export async function drainSessionStart(opts: DrainOptions): Promise<void> {
 
     const fromRules = evaluateRules("session_start", ctx);
     const fromQueue = queue.queue;
-    // Backend fetch is fail-soft (returns [] on error/timeout) — its
-    // failure must not abort the rules + queue path.
-    const fromBackend = await fetchBackendNotifications(opts.creds);
-    // Local-usage source: synchronous, reads ~/.deeplake/usage-stats.jsonl
-    // to render the cumulative savings recap. Returns [] when sessionId
-    // is missing OR there's no memory-search activity to claim.
-    const fromLocalUsage = fetchLocalUsageNotifications(opts.sessionId, opts.creds?.userName);
-    const all: Notification[] = [...fromRules, ...fromQueue, ...fromBackend, ...fromLocalUsage];
+    // Two parallel fetches with independent 1.5s timeouts so session-start
+    // latency stays bounded by ~1.5s rather than 3s. Both fail-soft.
+    //
+    // pickPrimaryBanner returns the single banner for the welcome/savings
+    // priority slot (org savings > 1M → savings recap; else → welcome).
+    // Backend pushes remain additive in this PR — they're rare and not yet
+    // under the priority model. A follow-up will collapse all sources
+    // (including queue) under the same priority.
+    const [fromBackend, primary] = await Promise.all([
+      fetchBackendNotifications(opts.creds),
+      pickPrimaryBanner(opts.sessionId, opts.creds),
+    ]);
+    const fromPrimary = primary != null ? [primary] : [];
+    const all: Notification[] = [...fromRules, ...fromQueue, ...fromBackend, ...fromPrimary];
 
     const fresh = all.filter(n => !alreadyShown(state, n));
     if (fresh.length === 0) {
@@ -102,8 +108,17 @@ export async function drainSessionStart(opts: DrainOptions): Promise<void> {
     const rendered = renderNotifications(claimed);
     emit(opts.agent, rendered);
 
+    // Persist state for non-transient notifications. Transient ones (see
+    // Notification.transient docstring) are self-clearing — their enqueue
+    // is the rate limit, so recording them in state.shown would block the
+    // next session's refire. We also release their claim file so the next
+    // session's tryClaim() succeeds (the claim file is the OTHER cross-
+    // session blocker, separate from state.shown).
     let nextState = state;
-    for (const n of claimed) nextState = markShown(nextState, n);
+    for (const n of claimed) {
+      if (n.transient) releaseClaim(n);
+      else nextState = markShown(nextState, n);
+    }
     writeState(nextState);
 
     // Queue is fully drained whether or not its items were dedup-skipped:

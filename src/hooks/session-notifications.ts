@@ -15,15 +15,18 @@
 import { loadCredentials } from "../commands/auth.js";
 import { readStdin } from "../utils/stdin.js";
 import { drainSessionStart, registerRule } from "../notifications/index.js";
-import { welcomeRule } from "../notifications/rules/welcome.js";
 import { localMinedRule } from "../notifications/rules/local-mined.js";
 import { countLocalManifestEntries } from "../skillify/local-manifest.js";
 import { log as _log } from "../utils/debug.js";
 
 const log = (msg: string) => _log("session-notifications", msg);
 
-// Register the v1 rule set. Rules are pure functions; registration is cheap.
-registerRule(welcomeRule);
+// Register the rule set. Welcome is no longer a rule — it's the default
+// fallback rendered by pickPrimaryBanner inside drainSessionStart (see
+// src/notifications/sources/primary-banner.ts for the priority logic).
+// localMinedRule stays as a rule because it's additive to the primary
+// banner (fires alongside it, not in its slot — different concept than
+// the welcome→savings priority).
 registerRule(localMinedRule);
 
 interface SessionStartInput {
@@ -37,21 +40,22 @@ async function main(): Promise<void> {
   if (process.env.HIVEMIND_WIKI_WORKER === "1") return;
 
   // Drain stdin so Claude Code's writer doesn't EPIPE. We also extract
-  // session_id so the local-usage source can scope its dedupKey to the
-  // current session — two parallel hook fires for the same session share
-  // the same id and dedupe to one emission via the atomic claim file.
+  // session_id so primary-banner can scope its dedupKey to the current
+  // session — two parallel hook fires for the same session share the
+  // same id and dedupe to one emission via the atomic claim file.
   const input = await readStdin<SessionStartInput>().catch(() => ({} as SessionStartInput));
   // Trim + non-empty check: an empty or whitespace-only session_id would
-  // collapse the dedupKey across unrelated sessions. fetchLocalUsageNotifications
-  // already returns [] when sessionId is undefined; route there instead of
+  // collapse the dedupKey across unrelated sessions. pickPrimaryBanner
+  // returns null when sessionId is undefined; route there instead of
   // letting an empty string slip through.
   const rawSessionId = typeof input?.session_id === "string" ? input.session_id.trim() : "";
   const sessionId = rawSessionId.length > 0 ? rawSessionId : undefined;
 
   const creds = loadCredentials();
-  // Read the local-mined count here (rules stay pure / IO-free). countLocalManifestEntries
-  // returns 0 when the manifest is missing or malformed — we coerce to null in
-  // that case so the rule can distinguish "no mining run yet" from "ran, found 0".
+  // Read the local-mined count here (rules stay pure / IO-free).
+  // countLocalManifestEntries returns 0 when the manifest is missing or
+  // malformed — we coerce to null in that case so the rule can
+  // distinguish "no mining run yet" from "ran, found 0".
   let localSkillsCount: number | null = null;
   try { localSkillsCount = countLocalManifestEntries(); }
   catch { /* keep null */ }

@@ -18,8 +18,6 @@ import {
   type HelloResponse,
 } from "./protocol.js";
 import { log as _log } from "../utils/debug.js";
-import { enqueueNotification } from "../notifications/queue.js";
-import { embeddingsStatus } from "./disable.js";
 
 // Canonical location for the standalone daemon bundle, deposited by
 // `hivemind embeddings install`. Used as the auto-spawn fallback when
@@ -43,10 +41,8 @@ export interface ClientOptions {
   spawnWaitMs?: number;
 }
 
-// Process-local flags so an embed-deps-missing notification fires at most
-// once per process AND the stuck-daemon kill+recycle path runs at most once
-// per process (it's idempotent but the SIGTERM is wasted on every retry).
-let _signalledMissingDeps = false;
+// Process-local flag so the stuck-daemon kill+recycle path runs at most
+// once per process (it's idempotent but the SIGTERM is wasted on every retry).
 let _recycledStuckDaemon = false;
 // Hello handshake runs at most once per (process, EmbedClient instance).
 // Stored on the instance, not module-global, because tests construct
@@ -252,35 +248,21 @@ export class EmbedClient {
   /**
    * On a transformers-missing error from the daemon, SIGTERM the stuck
    * daemon (the bundle daemon that can't find its deps) and clear
-   * sock/pid so the next call spawns fresh. Also enqueue a one-time
-   * notification telling the user to run `hivemind embeddings install`
-   * — but only when the user has opted in. Suppressed when
-   * embeddingsStatus() === "user-disabled" so we don't nag users who
-   * explicitly chose to turn embeddings off.
+   * sock/pid so the next call spawns fresh.
+   *
+   * Previously this also enqueued a user-visible "Hivemind embeddings
+   * disabled — deps missing" notification telling the user to run
+   * `hivemind embeddings install`. The notification was removed because
+   * (a) the recycle alone often fixes the issue silently, and (b) the
+   * warning kept stacking on top of the primary session-start banner
+   * which clashed with the single-slot priority model. The `detail`
+   * argument is retained for future telemetry / debug logging.
    */
-  private handleTransformersMissing(detail: string): void {
+  private handleTransformersMissing(_detail: string): void {
     if (!_recycledStuckDaemon) {
       _recycledStuckDaemon = true;
       this.recycleDaemon(null);
     }
-    if (_signalledMissingDeps) return;
-    _signalledMissingDeps = true;
-    let status: string;
-    try { status = embeddingsStatus(); } catch { status = "enabled"; }
-    if (status === "user-disabled") return; // user said no, don't nag
-    // Fire-and-forget. `enqueueNotification` is now async (it may yield
-    // the event loop on lock contention); we don't await it so we never
-    // block the capture hot path on a notification write. Errors land in
-    // the .catch instead of being swallowed silently by the outer caller.
-    enqueueNotification({
-      id: "embed-deps-missing",
-      severity: "warn",
-      title: "Hivemind embeddings disabled — deps missing",
-      body: `Semantic memory search is off because @huggingface/transformers is not installed where the daemon can find it. Run \`hivemind embeddings install\` to enable.`,
-      dedupKey: { reason: "transformers-missing", detail: detail.slice(0, 200) },
-    }).catch((e: unknown) => {
-      log(`enqueue embed-deps-missing failed: ${e instanceof Error ? e.message : String(e)}`);
-    });
   }
 
   /**
@@ -493,7 +475,6 @@ export function isTransformersMissingError(err: string): boolean {
 // ── Test helpers ────────────────────────────────────────────────────────────
 
 export function _resetClientStateForTesting(): void {
-  _signalledMissingDeps = false;
   _recycledStuckDaemon = false;
 }
 
