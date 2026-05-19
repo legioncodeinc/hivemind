@@ -17,21 +17,21 @@ __export(index_marker_store_exports, {
   hasFreshIndexMarker: () => hasFreshIndexMarker,
   writeIndexMarker: () => writeIndexMarker
 });
-import { existsSync as existsSync14, mkdirSync as mkdirSync4, readFileSync as readFileSync12, writeFileSync as writeFileSync8 } from "node:fs";
-import { join as join17 } from "node:path";
+import { existsSync as existsSync14, mkdirSync as mkdirSync5, readFileSync as readFileSync13, writeFileSync as writeFileSync9 } from "node:fs";
+import { join as join18 } from "node:path";
 import { tmpdir } from "node:os";
 function getIndexMarkerDir() {
-  return process.env.HIVEMIND_INDEX_MARKER_DIR ?? join17(tmpdir(), "hivemind-deeplake-indexes");
+  return process.env.HIVEMIND_INDEX_MARKER_DIR ?? join18(tmpdir(), "hivemind-deeplake-indexes");
 }
 function buildIndexMarkerPath(workspaceId, orgId, table, suffix) {
   const markerKey = [workspaceId, orgId, table, suffix].join("__").replace(/[^a-zA-Z0-9_.-]/g, "_");
-  return join17(getIndexMarkerDir(), `${markerKey}.json`);
+  return join18(getIndexMarkerDir(), `${markerKey}.json`);
 }
 function hasFreshIndexMarker(markerPath) {
   if (!existsSync14(markerPath))
     return false;
   try {
-    const raw = JSON.parse(readFileSync12(markerPath, "utf-8"));
+    const raw = JSON.parse(readFileSync13(markerPath, "utf-8"));
     const updatedAt = raw.updatedAt ? new Date(raw.updatedAt).getTime() : NaN;
     if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > INDEX_MARKER_TTL_MS)
       return false;
@@ -41,8 +41,8 @@ function hasFreshIndexMarker(markerPath) {
   }
 }
 function writeIndexMarker(markerPath) {
-  mkdirSync4(getIndexMarkerDir(), { recursive: true });
-  writeFileSync8(markerPath, JSON.stringify({ updatedAt: (/* @__PURE__ */ new Date()).toISOString() }), "utf-8");
+  mkdirSync5(getIndexMarkerDir(), { recursive: true });
+  writeFileSync9(markerPath, JSON.stringify({ updatedAt: (/* @__PURE__ */ new Date()).toISOString() }), "utf-8");
 }
 var INDEX_MARKER_TTL_MS;
 var init_index_marker_store = __esm({
@@ -4343,6 +4343,107 @@ function sqlIdent(name) {
 var SUMMARY_EMBEDDING_COL = "summary_embedding";
 var MESSAGE_EMBEDDING_COL = "message_embedding";
 
+// dist/src/notifications/queue.js
+import { readFileSync as readFileSync12, writeFileSync as writeFileSync8, renameSync as renameSync3, mkdirSync as mkdirSync4, openSync, closeSync, unlinkSync as unlinkSync7, statSync as statSync2 } from "node:fs";
+import { join as join17, resolve } from "node:path";
+import { homedir as homedir8 } from "node:os";
+import { setTimeout as sleep } from "node:timers/promises";
+var log3 = (msg) => log2("notifications-queue", msg);
+var LOCK_RETRY_MAX = 50;
+var LOCK_RETRY_BASE_MS = 5;
+var LOCK_STALE_MS = 5e3;
+function queuePath() {
+  return join17(homedir8(), ".deeplake", "notifications-queue.json");
+}
+function lockPath() {
+  return `${queuePath()}.lock`;
+}
+function readQueue() {
+  try {
+    const raw = readFileSync12(queuePath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.queue)) {
+      log3(`queue malformed \u2192 treating as empty`);
+      return { queue: [] };
+    }
+    return { queue: parsed.queue };
+  } catch {
+    return { queue: [] };
+  }
+}
+function _isQueuePathInsideHome(path, home) {
+  const r = resolve(path);
+  const h = resolve(home);
+  return r.startsWith(h + "/") || r === h;
+}
+function writeQueue(q) {
+  const path = queuePath();
+  const home = resolve(homedir8());
+  if (!_isQueuePathInsideHome(path, home)) {
+    throw new Error(`notifications-queue write blocked: ${path} is outside ${home}`);
+  }
+  mkdirSync4(join17(home, ".deeplake"), { recursive: true, mode: 448 });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync8(tmp, JSON.stringify(q, null, 2), { mode: 384 });
+  renameSync3(tmp, path);
+}
+async function withQueueLock(fn) {
+  const path = lockPath();
+  mkdirSync4(join17(homedir8(), ".deeplake"), { recursive: true, mode: 448 });
+  let fd = null;
+  for (let attempt = 0; attempt < LOCK_RETRY_MAX; attempt++) {
+    try {
+      fd = openSync(path, "wx", 384);
+      break;
+    } catch (e) {
+      const code = e.code;
+      if (code !== "EEXIST")
+        throw e;
+      try {
+        const age = Date.now() - statSync2(path).mtimeMs;
+        if (age > LOCK_STALE_MS) {
+          unlinkSync7(path);
+          continue;
+        }
+      } catch {
+      }
+      const delay = LOCK_RETRY_BASE_MS * (attempt + 1);
+      await sleep(delay);
+    }
+  }
+  if (fd === null) {
+    log3(`lock acquisition gave up after ${LOCK_RETRY_MAX} attempts \u2014 proceeding unlocked (last-writer-wins)`);
+    return fn();
+  }
+  try {
+    return fn();
+  } finally {
+    try {
+      closeSync(fd);
+    } catch {
+    }
+    try {
+      unlinkSync7(path);
+    } catch {
+    }
+  }
+}
+function sameDedupKey(a, b) {
+  if (a.id !== b.id)
+    return false;
+  return JSON.stringify(a.dedupKey) === JSON.stringify(b.dedupKey);
+}
+async function enqueueNotification(n) {
+  await withQueueLock(() => {
+    const q = readQueue();
+    if (q.queue.some((existing) => sameDedupKey(existing, n))) {
+      return;
+    }
+    q.queue.push(n);
+    writeQueue(q);
+  });
+}
+
 // dist/src/deeplake-api.js
 var indexMarkerStorePromise = null;
 function getIndexMarkerStore() {
@@ -4350,7 +4451,7 @@ function getIndexMarkerStore() {
     indexMarkerStorePromise = Promise.resolve().then(() => (init_index_marker_store(), index_marker_store_exports));
   return indexMarkerStorePromise;
 }
-var log3 = (msg) => log2("sdk", msg);
+var log4 = (msg) => log2("sdk", msg);
 function summarizeSql(sql, maxLen = 220) {
   const compact = sql.replace(/\s+/g, " ").trim();
   return compact.length > maxLen ? `${compact.slice(0, maxLen)}...` : compact;
@@ -4362,7 +4463,38 @@ function traceSql(msg) {
   process.stderr.write(`[deeplake-sql] ${msg}
 `);
   if (process.env.HIVEMIND_DEBUG === "1")
-    log3(msg);
+    log4(msg);
+}
+var _signalledBalanceExhausted = false;
+function maybeSignalBalanceExhausted(status, bodyText) {
+  if (status !== 402)
+    return;
+  if (!bodyText.includes("balance_cents"))
+    return;
+  if (_signalledBalanceExhausted)
+    return;
+  _signalledBalanceExhausted = true;
+  log4(`balance exhausted \u2014 enqueuing session-start banner (body=${bodyText.slice(0, 120)})`);
+  enqueueNotification({
+    id: "balance-exhausted",
+    severity: "warn",
+    transient: true,
+    title: "Hivemind credits exhausted \u2014 top up to keep capturing",
+    body: `Sessions are not being saved and memory recall is returning empty. Top up at ${billingUrl()} to restore capture and recall.`,
+    dedupKey: { reason: "balance-zero" }
+  }).catch((e) => {
+    log4(`enqueue balance-exhausted failed: ${e instanceof Error ? e.message : String(e)}`);
+  });
+}
+function billingUrl() {
+  try {
+    const c = loadCredentials();
+    if (c?.orgName && c?.workspaceId) {
+      return `https://deeplake.ai/${encodeURIComponent(c.orgName)}/workspace/${encodeURIComponent(c.workspaceId)}/billing`;
+    }
+  } catch {
+  }
+  return "https://deeplake.ai";
 }
 var RETRYABLE_CODES = /* @__PURE__ */ new Set([429, 500, 502, 503, 504]);
 var MAX_RETRIES = 3;
@@ -4371,8 +4503,8 @@ var MAX_CONCURRENCY = 5;
 function getQueryTimeoutMs() {
   return Number(process.env.HIVEMIND_QUERY_TIMEOUT_MS ?? 1e4);
 }
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep2(ms) {
+  return new Promise((resolve2) => setTimeout(resolve2, ms));
 }
 function isTimeoutError(error) {
   const name = error instanceof Error ? error.name.toLowerCase() : "";
@@ -4402,7 +4534,7 @@ var Semaphore = class {
       this.active++;
       return;
     }
-    await new Promise((resolve) => this.waiting.push(resolve));
+    await new Promise((resolve2) => this.waiting.push(resolve2));
   }
   release() {
     this.active--;
@@ -4473,8 +4605,8 @@ var DeeplakeApi = class {
         lastError = e instanceof Error ? e : new Error(String(e));
         if (attempt < MAX_RETRIES) {
           const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 200;
-          log3(`query retry ${attempt + 1}/${MAX_RETRIES} (fetch error: ${lastError.message}) in ${delay.toFixed(0)}ms`);
-          await sleep(delay);
+          log4(`query retry ${attempt + 1}/${MAX_RETRIES} (fetch error: ${lastError.message}) in ${delay.toFixed(0)}ms`);
+          await sleep2(delay);
           continue;
         }
         throw lastError;
@@ -4490,10 +4622,11 @@ var DeeplakeApi = class {
       const alreadyExists = resp.status === 500 && isDuplicateIndexError(text);
       if (!alreadyExists && attempt < MAX_RETRIES && (RETRYABLE_CODES.has(resp.status) || retryable403)) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 200;
-        log3(`query retry ${attempt + 1}/${MAX_RETRIES} (${resp.status}) in ${delay.toFixed(0)}ms`);
-        await sleep(delay);
+        log4(`query retry ${attempt + 1}/${MAX_RETRIES} (${resp.status}) in ${delay.toFixed(0)}ms`);
+        await sleep2(delay);
         continue;
       }
+      maybeSignalBalanceExhausted(resp.status, text);
       throw new Error(`Query failed: ${resp.status}: ${text.slice(0, 200)}`);
     }
     throw lastError ?? new Error("Query failed: max retries exceeded");
@@ -4514,7 +4647,7 @@ var DeeplakeApi = class {
       const chunk = rows.slice(i, i + CONCURRENCY);
       await Promise.allSettled(chunk.map((r) => this.upsertRowSql(r)));
     }
-    log3(`commit: ${rows.length} rows`);
+    log4(`commit: ${rows.length} rows`);
   }
   async upsertRowSql(row) {
     const ts = (/* @__PURE__ */ new Date()).toISOString();
@@ -4570,7 +4703,7 @@ var DeeplakeApi = class {
         markers.writeIndexMarker(markerPath);
         return;
       }
-      log3(`index "${indexName}" skipped: ${e.message}`);
+      log4(`index "${indexName}" skipped: ${e.message}`);
     }
   }
   /**
@@ -4660,13 +4793,13 @@ var DeeplakeApi = class {
           };
         }
         if (attempt < MAX_RETRIES && RETRYABLE_CODES.has(resp.status)) {
-          await sleep(BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 200);
+          await sleep2(BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 200);
           continue;
         }
         return { tables: [], cacheable: false };
       } catch {
         if (attempt < MAX_RETRIES) {
-          await sleep(BASE_DELAY_MS * Math.pow(2, attempt));
+          await sleep2(BASE_DELAY_MS * Math.pow(2, attempt));
           continue;
         }
         return { tables: [], cacheable: false };
@@ -4694,9 +4827,9 @@ var DeeplakeApi = class {
       } catch (err) {
         lastErr = err;
         const msg = err instanceof Error ? err.message : String(err);
-        log3(`CREATE TABLE "${label}" attempt ${attempt + 1}/${OUTER_BACKOFFS_MS.length + 1} failed: ${msg}`);
+        log4(`CREATE TABLE "${label}" attempt ${attempt + 1}/${OUTER_BACKOFFS_MS.length + 1} failed: ${msg}`);
         if (attempt < OUTER_BACKOFFS_MS.length) {
-          await sleep(OUTER_BACKOFFS_MS[attempt]);
+          await sleep2(OUTER_BACKOFFS_MS[attempt]);
         }
       }
     }
@@ -4707,9 +4840,9 @@ var DeeplakeApi = class {
     const tbl = sqlIdent(name ?? this.tableName);
     const tables = await this.listTables();
     if (!tables.includes(tbl)) {
-      log3(`table "${tbl}" not found, creating`);
+      log4(`table "${tbl}" not found, creating`);
       await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${tbl}" (id TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', filename TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT '', summary_embedding FLOAT4[], author TEXT NOT NULL DEFAULT '', mime_type TEXT NOT NULL DEFAULT 'text/plain', size_bytes BIGINT NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '', plugin_version TEXT NOT NULL DEFAULT '', creation_date TEXT NOT NULL DEFAULT '', last_update_date TEXT NOT NULL DEFAULT '') USING deeplake`, tbl);
-      log3(`table "${tbl}" created`);
+      log4(`table "${tbl}" created`);
       if (!tables.includes(tbl))
         this._tablesCache = [...tables, tbl];
     }
@@ -4722,9 +4855,9 @@ var DeeplakeApi = class {
     const safe = sqlIdent(name);
     const tables = await this.listTables();
     if (!tables.includes(safe)) {
-      log3(`table "${safe}" not found, creating`);
+      log4(`table "${safe}" not found, creating`);
       await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${safe}" (id TEXT NOT NULL DEFAULT '', path TEXT NOT NULL DEFAULT '', filename TEXT NOT NULL DEFAULT '', message JSONB, message_embedding FLOAT4[], author TEXT NOT NULL DEFAULT '', mime_type TEXT NOT NULL DEFAULT 'application/json', size_bytes BIGINT NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', agent TEXT NOT NULL DEFAULT '', plugin_version TEXT NOT NULL DEFAULT '', creation_date TEXT NOT NULL DEFAULT '', last_update_date TEXT NOT NULL DEFAULT '') USING deeplake`, safe);
-      log3(`table "${safe}" created`);
+      log4(`table "${safe}" created`);
       if (!tables.includes(safe))
         this._tablesCache = [...tables, safe];
     }
@@ -4747,9 +4880,9 @@ var DeeplakeApi = class {
     const safe = sqlIdent(name);
     const tables = await this.listTables();
     if (!tables.includes(safe)) {
-      log3(`table "${safe}" not found, creating`);
+      log4(`table "${safe}" not found, creating`);
       await this.createTableWithRetry(`CREATE TABLE IF NOT EXISTS "${safe}" (id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', project TEXT NOT NULL DEFAULT '', project_key TEXT NOT NULL DEFAULT '', local_path TEXT NOT NULL DEFAULT '', install TEXT NOT NULL DEFAULT 'project', source_sessions TEXT NOT NULL DEFAULT '[]', source_agent TEXT NOT NULL DEFAULT '', scope TEXT NOT NULL DEFAULT 'me', author TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '', trigger_text TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', version BIGINT NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '') USING deeplake`, safe);
-      log3(`table "${safe}" created`);
+      log4(`table "${safe}" created`);
       if (!tables.includes(safe))
         this._tablesCache = [...tables, safe];
     }
@@ -4780,10 +4913,10 @@ function parseArgs(argv) {
 }
 function confirm(message) {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     rl.question(`${message} [y/N] `, (answer) => {
       rl.close();
-      resolve(answer.trim().toLowerCase() === "y");
+      resolve2(answer.trim().toLowerCase() === "y");
     });
   });
 }
@@ -5085,34 +5218,34 @@ if (process.argv[1] && process.argv[1].endsWith("auth-login.js")) {
 }
 
 // dist/src/commands/skillify.js
-import { readdirSync as readdirSync5, existsSync as existsSync26, readFileSync as readFileSync20, mkdirSync as mkdirSync11, renameSync as renameSync6 } from "node:fs";
-import { homedir as homedir19 } from "node:os";
-import { dirname as dirname7, join as join29 } from "node:path";
+import { readdirSync as readdirSync5, existsSync as existsSync26, readFileSync as readFileSync21, mkdirSync as mkdirSync12, renameSync as renameSync7 } from "node:fs";
+import { homedir as homedir20 } from "node:os";
+import { dirname as dirname7, join as join30 } from "node:path";
 
 // dist/src/skillify/scope-config.js
-import { existsSync as existsSync16, mkdirSync as mkdirSync5, readFileSync as readFileSync13, writeFileSync as writeFileSync9 } from "node:fs";
-import { homedir as homedir9 } from "node:os";
-import { join as join19 } from "node:path";
+import { existsSync as existsSync16, mkdirSync as mkdirSync6, readFileSync as readFileSync14, writeFileSync as writeFileSync10 } from "node:fs";
+import { homedir as homedir10 } from "node:os";
+import { join as join20 } from "node:path";
 
 // dist/src/skillify/legacy-migration.js
-import { existsSync as existsSync15, renameSync as renameSync3 } from "node:fs";
-import { homedir as homedir8 } from "node:os";
-import { join as join18 } from "node:path";
+import { existsSync as existsSync15, renameSync as renameSync4 } from "node:fs";
+import { homedir as homedir9 } from "node:os";
+import { join as join19 } from "node:path";
 var dlog = (msg) => log2("skillify-migrate", msg);
 var attempted = false;
 function migrateLegacyStateDir() {
   if (attempted)
     return;
   attempted = true;
-  const root = join18(homedir8(), ".deeplake", "state");
-  const legacy = join18(root, "skilify");
-  const current = join18(root, "skillify");
+  const root = join19(homedir9(), ".deeplake", "state");
+  const legacy = join19(root, "skilify");
+  const current = join19(root, "skillify");
   if (!existsSync15(legacy))
     return;
   if (existsSync15(current))
     return;
   try {
-    renameSync3(legacy, current);
+    renameSync4(legacy, current);
     dlog(`migrated ${legacy} -> ${current}`);
   } catch (err) {
     const code = err.code;
@@ -5125,15 +5258,15 @@ function migrateLegacyStateDir() {
 }
 
 // dist/src/skillify/scope-config.js
-var STATE_DIR = join19(homedir9(), ".deeplake", "state", "skillify");
-var CONFIG_PATH2 = join19(STATE_DIR, "config.json");
+var STATE_DIR = join20(homedir10(), ".deeplake", "state", "skillify");
+var CONFIG_PATH2 = join20(STATE_DIR, "config.json");
 var DEFAULT = { scope: "me", team: [], install: "project" };
 function loadScopeConfig() {
   migrateLegacyStateDir();
   if (!existsSync16(CONFIG_PATH2))
     return DEFAULT;
   try {
-    const raw = JSON.parse(readFileSync13(CONFIG_PATH2, "utf-8"));
+    const raw = JSON.parse(readFileSync14(CONFIG_PATH2, "utf-8"));
     const scope = raw.scope === "team" ? "team" : raw.scope === "org" ? "team" : "me";
     const team = Array.isArray(raw.team) ? raw.team.filter((s) => typeof s === "string") : [];
     const install = raw.install === "global" ? "global" : "project";
@@ -5144,19 +5277,19 @@ function loadScopeConfig() {
 }
 function saveScopeConfig(cfg) {
   migrateLegacyStateDir();
-  mkdirSync5(STATE_DIR, { recursive: true });
-  writeFileSync9(CONFIG_PATH2, JSON.stringify(cfg, null, 2));
+  mkdirSync6(STATE_DIR, { recursive: true });
+  writeFileSync10(CONFIG_PATH2, JSON.stringify(cfg, null, 2));
 }
 
 // dist/src/skillify/pull.js
-import { existsSync as existsSync20, readFileSync as readFileSync16, writeFileSync as writeFileSync12, mkdirSync as mkdirSync8, renameSync as renameSync5, lstatSync as lstatSync4, readlinkSync as readlinkSync2, symlinkSync as symlinkSync2, unlinkSync as unlinkSync8 } from "node:fs";
-import { homedir as homedir13 } from "node:os";
-import { dirname as dirname4, join as join23 } from "node:path";
+import { existsSync as existsSync20, readFileSync as readFileSync17, writeFileSync as writeFileSync13, mkdirSync as mkdirSync9, renameSync as renameSync6, lstatSync as lstatSync4, readlinkSync as readlinkSync2, symlinkSync as symlinkSync2, unlinkSync as unlinkSync9 } from "node:fs";
+import { homedir as homedir14 } from "node:os";
+import { dirname as dirname4, join as join24 } from "node:path";
 
 // dist/src/skillify/skill-writer.js
-import { existsSync as existsSync17, mkdirSync as mkdirSync6, readFileSync as readFileSync14, readdirSync as readdirSync2, statSync as statSync2, writeFileSync as writeFileSync10 } from "node:fs";
-import { homedir as homedir10 } from "node:os";
-import { join as join20 } from "node:path";
+import { existsSync as existsSync17, mkdirSync as mkdirSync7, readFileSync as readFileSync15, readdirSync as readdirSync2, statSync as statSync3, writeFileSync as writeFileSync11 } from "node:fs";
+import { homedir as homedir11 } from "node:os";
+import { join as join21 } from "node:path";
 function assertValidSkillName(name) {
   if (typeof name !== "string" || name.length === 0) {
     throw new Error(`invalid skill name: empty or non-string`);
@@ -5172,10 +5305,10 @@ function assertValidSkillName(name) {
   }
 }
 function skillDir(skillsRoot, name) {
-  return join20(skillsRoot, name);
+  return join21(skillsRoot, name);
 }
 function skillPath(skillsRoot, name) {
-  return join20(skillDir(skillsRoot, name), "SKILL.md");
+  return join21(skillDir(skillsRoot, name), "SKILL.md");
 }
 function renderFrontmatter(fm) {
   const lines = ["---"];
@@ -5256,7 +5389,7 @@ function writeNewSkill(args) {
   if (existsSync17(path)) {
     throw new Error(`skill already exists at ${path}; use mergeSkill`);
   }
-  mkdirSync6(dir, { recursive: true });
+  mkdirSync7(dir, { recursive: true });
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const author = args.author && args.author.length > 0 ? args.author : void 0;
   const contributors = author ? [author] : [];
@@ -5276,7 +5409,7 @@ function writeNewSkill(args) {
 
 ${args.body.trim()}
 `;
-  writeFileSync10(path, text);
+  writeFileSync11(path, text);
   return {
     path,
     action: "created",
@@ -5292,29 +5425,29 @@ function listSkills(skillsRoot) {
     return [];
   const out = [];
   for (const name of readdirSync2(skillsRoot)) {
-    const skillFile = join20(skillsRoot, name, "SKILL.md");
-    if (existsSync17(skillFile) && statSync2(skillFile).isFile()) {
-      out.push({ name, body: readFileSync14(skillFile, "utf-8") });
+    const skillFile = join21(skillsRoot, name, "SKILL.md");
+    if (existsSync17(skillFile) && statSync3(skillFile).isFile()) {
+      out.push({ name, body: readFileSync15(skillFile, "utf-8") });
     }
   }
   return out;
 }
 function resolveSkillsRoot(install, cwd) {
   if (install === "global") {
-    return join20(homedir10(), ".claude", "skills");
+    return join21(homedir11(), ".claude", "skills");
   }
-  return join20(cwd, ".claude", "skills");
+  return join21(cwd, ".claude", "skills");
 }
 
 // dist/src/skillify/manifest.js
-import { existsSync as existsSync18, lstatSync as lstatSync3, mkdirSync as mkdirSync7, readFileSync as readFileSync15, renameSync as renameSync4, unlinkSync as unlinkSync7, writeFileSync as writeFileSync11 } from "node:fs";
-import { homedir as homedir11 } from "node:os";
-import { dirname as dirname3, join as join21 } from "node:path";
+import { existsSync as existsSync18, lstatSync as lstatSync3, mkdirSync as mkdirSync8, readFileSync as readFileSync16, renameSync as renameSync5, unlinkSync as unlinkSync8, writeFileSync as writeFileSync12 } from "node:fs";
+import { homedir as homedir12 } from "node:os";
+import { dirname as dirname3, join as join22 } from "node:path";
 function emptyManifest() {
   return { version: 1, entries: [] };
 }
 function manifestPath() {
-  return join21(homedir11(), ".deeplake", "state", "skillify", "pulled.json");
+  return join22(homedir12(), ".deeplake", "state", "skillify", "pulled.json");
 }
 function loadManifest(path = manifestPath()) {
   migrateLegacyStateDir();
@@ -5322,7 +5455,7 @@ function loadManifest(path = manifestPath()) {
     return emptyManifest();
   let raw;
   try {
-    raw = readFileSync15(path, "utf-8");
+    raw = readFileSync16(path, "utf-8");
   } catch {
     return emptyManifest();
   }
@@ -5369,10 +5502,10 @@ function loadManifest(path = manifestPath()) {
 }
 function saveManifest(m, path = manifestPath()) {
   migrateLegacyStateDir();
-  mkdirSync7(dirname3(path), { recursive: true });
+  mkdirSync8(dirname3(path), { recursive: true });
   const tmp = `${path}.tmp`;
-  writeFileSync11(tmp, JSON.stringify(m, null, 2) + "\n", { mode: 384 });
-  renameSync4(tmp, path);
+  writeFileSync12(tmp, JSON.stringify(m, null, 2) + "\n", { mode: 384 });
+  renameSync5(tmp, path);
 }
 function recordPull(entry, path = manifestPath()) {
   const m = loadManifest(path);
@@ -5404,7 +5537,7 @@ function unlinkSymlinks(paths) {
     if (!st.isSymbolicLink())
       continue;
     try {
-      unlinkSync7(path);
+      unlinkSync8(path);
     } catch {
     }
   }
@@ -5414,7 +5547,7 @@ function pruneOrphanedEntries(path = manifestPath()) {
   const live = [];
   let pruned = 0;
   for (const e of m.entries) {
-    if (existsSync18(join21(e.installRoot, e.dirName))) {
+    if (existsSync18(join22(e.installRoot, e.dirName))) {
       live.push(e);
       continue;
     }
@@ -5428,25 +5561,25 @@ function pruneOrphanedEntries(path = manifestPath()) {
 
 // dist/src/skillify/agent-roots.js
 import { existsSync as existsSync19 } from "node:fs";
-import { homedir as homedir12 } from "node:os";
-import { join as join22 } from "node:path";
+import { homedir as homedir13 } from "node:os";
+import { join as join23 } from "node:path";
 function resolveDetected(home) {
   const out = [];
-  const codexInstalled = existsSync19(join22(home, ".codex"));
-  const piInstalled = existsSync19(join22(home, ".pi", "agent"));
-  const hermesInstalled = existsSync19(join22(home, ".hermes"));
+  const codexInstalled = existsSync19(join23(home, ".codex"));
+  const piInstalled = existsSync19(join23(home, ".pi", "agent"));
+  const hermesInstalled = existsSync19(join23(home, ".hermes"));
   if (codexInstalled || piInstalled) {
-    out.push(join22(home, ".agents", "skills"));
+    out.push(join23(home, ".agents", "skills"));
   }
   if (hermesInstalled) {
-    out.push(join22(home, ".hermes", "skills"));
+    out.push(join23(home, ".hermes", "skills"));
   }
   if (piInstalled) {
-    out.push(join22(home, ".pi", "agent", "skills"));
+    out.push(join23(home, ".pi", "agent", "skills"));
   }
   return out;
 }
-function detectAgentSkillsRoots(canonicalRoot, home = homedir12()) {
+function detectAgentSkillsRoots(canonicalRoot, home = homedir13()) {
   return resolveDetected(home).filter((p) => p !== canonicalRoot);
 }
 
@@ -5490,15 +5623,15 @@ function isMissingTableError(message) {
 }
 function resolvePullDestination(install, cwd) {
   if (install === "global")
-    return join23(homedir13(), ".claude", "skills");
+    return join24(homedir14(), ".claude", "skills");
   if (!cwd)
     throw new Error("install=project requires a cwd");
-  return join23(cwd, ".claude", "skills");
+  return join24(cwd, ".claude", "skills");
 }
 function fanOutSymlinks(canonicalDir, dirName, agentRoots) {
   const out = [];
   for (const root of agentRoots) {
-    const link = join23(root, dirName);
+    const link = join24(root, dirName);
     let existing;
     try {
       existing = lstatSync4(link);
@@ -5520,13 +5653,13 @@ function fanOutSymlinks(canonicalDir, dirName, agentRoots) {
         continue;
       }
       try {
-        unlinkSync8(link);
+        unlinkSync9(link);
       } catch {
         continue;
       }
     }
     try {
-      mkdirSync8(dirname4(link), { recursive: true });
+      mkdirSync9(dirname4(link), { recursive: true });
       symlinkSync2(canonicalDir, link, "dir");
       out.push(link);
     } catch {
@@ -5541,7 +5674,7 @@ function backfillSymlinks(installRoot) {
     return;
   const detected = detectAgentSkillsRoots(installRoot);
   for (const entry of entries) {
-    const canonical = join23(entry.installRoot, entry.dirName);
+    const canonical = join24(entry.installRoot, entry.dirName);
     if (!existsSync20(canonical))
       continue;
     const fresh = fanOutSymlinks(canonical, entry.dirName, detected);
@@ -5655,7 +5788,7 @@ function readLocalVersion(path) {
   if (!existsSync20(path))
     return null;
   try {
-    const text = readFileSync16(path, "utf-8");
+    const text = readFileSync17(path, "utf-8");
     const parsed = parseFrontmatter(text);
     if (!parsed)
       return null;
@@ -5750,8 +5883,8 @@ async function runPull(opts) {
       summary.skipped++;
       continue;
     }
-    const skillDir2 = join23(root, dirName);
-    const skillFile = join23(skillDir2, "SKILL.md");
+    const skillDir2 = join24(root, dirName);
+    const skillFile = join24(skillDir2, "SKILL.md");
     const remoteVersion = Number(row.version ?? 1);
     const localVersion = readLocalVersion(skillFile);
     const action = decideAction({
@@ -5762,14 +5895,14 @@ async function runPull(opts) {
     });
     let manifestError;
     if (action === "wrote") {
-      mkdirSync8(skillDir2, { recursive: true });
+      mkdirSync9(skillDir2, { recursive: true });
       if (existsSync20(skillFile)) {
         try {
-          renameSync5(skillFile, `${skillFile}.bak`);
+          renameSync6(skillFile, `${skillFile}.bak`);
         } catch {
         }
       }
-      writeFileSync12(skillFile, renderSkillFile(row));
+      writeFileSync13(skillFile, renderSkillFile(row));
       const symlinks = opts.install === "global" ? fanOutSymlinks(skillDir2, dirName, detectAgentSkillsRoots(root)) : [];
       try {
         recordPull({
@@ -5811,15 +5944,15 @@ async function runPull(opts) {
 }
 
 // dist/src/skillify/unpull.js
-import { existsSync as existsSync21, readdirSync as readdirSync3, rmSync as rmSync5, statSync as statSync3 } from "node:fs";
-import { homedir as homedir14 } from "node:os";
-import { join as join24 } from "node:path";
+import { existsSync as existsSync21, readdirSync as readdirSync3, rmSync as rmSync5, statSync as statSync4 } from "node:fs";
+import { homedir as homedir15 } from "node:os";
+import { join as join25 } from "node:path";
 function resolveUnpullRoot(install, cwd) {
   if (install === "global")
-    return join24(homedir14(), ".claude", "skills");
+    return join25(homedir15(), ".claude", "skills");
   if (!cwd)
     throw new Error("cwd required when install === 'project'");
-  return join24(cwd, ".claude", "skills");
+  return join25(cwd, ".claude", "skills");
 }
 function runUnpull(opts) {
   const root = resolveUnpullRoot(opts.install, opts.cwd);
@@ -5842,7 +5975,7 @@ function runUnpull(opts) {
   const entries = entriesForRoot(manifest, opts.install, root);
   for (const entry of entries) {
     summary.scanned++;
-    const path = join24(root, entry.dirName);
+    const path = join25(root, entry.dirName);
     if (!existsSync21(path)) {
       if (!opts.dryRun) {
         unlinkSymlinks(entry.symlinks);
@@ -5901,10 +6034,10 @@ function runUnpull(opts) {
     for (const dirName of readdirSync3(root)) {
       if (manifestDirNames.has(dirName))
         continue;
-      const path = join24(root, dirName);
+      const path = join25(root, dirName);
       let st;
       try {
-        st = statSync3(path);
+        st = statSync4(path);
       } catch {
         continue;
       }
@@ -5980,21 +6113,21 @@ function decideTargetForManifestEntry(entry, opts, userFilter, haveUserFilter) {
 
 // dist/src/commands/mine-local.js
 import { spawn } from "node:child_process";
-import { existsSync as existsSync25, mkdirSync as mkdirSync10, readFileSync as readFileSync19, writeFileSync as writeFileSync14 } from "node:fs";
-import { homedir as homedir18 } from "node:os";
-import { basename, dirname as dirname6, join as join28 } from "node:path";
+import { existsSync as existsSync25, mkdirSync as mkdirSync11, readFileSync as readFileSync20, writeFileSync as writeFileSync15 } from "node:fs";
+import { homedir as homedir19 } from "node:os";
+import { basename, dirname as dirname6, join as join29 } from "node:path";
 
 // dist/src/skillify/local-source.js
-import { readdirSync as readdirSync4, readFileSync as readFileSync17, existsSync as existsSync22, statSync as statSync4 } from "node:fs";
-import { homedir as homedir15 } from "node:os";
-import { join as join25 } from "node:path";
-var HOME2 = homedir15();
+import { readdirSync as readdirSync4, readFileSync as readFileSync18, existsSync as existsSync22, statSync as statSync5 } from "node:fs";
+import { homedir as homedir16 } from "node:os";
+import { join as join26 } from "node:path";
+var HOME2 = homedir16();
 function encodeCwdClaudeCode(cwd) {
   return cwd.replace(/[/_]/g, "-");
 }
 function detectInstalledAgents() {
   const installs = [];
-  const claudeRoot = join25(HOME2, ".claude", "projects");
+  const claudeRoot = join26(HOME2, ".claude", "projects");
   if (existsSync22(claudeRoot)) {
     installs.push({
       agent: "claude_code",
@@ -6002,7 +6135,7 @@ function detectInstalledAgents() {
       encodeCwd: encodeCwdClaudeCode
     });
   }
-  const codexRoot = join25(HOME2, ".codex", "sessions");
+  const codexRoot = join26(HOME2, ".codex", "sessions");
   if (existsSync22(codexRoot)) {
     installs.push({
       agent: "codex",
@@ -6030,9 +6163,9 @@ function listLocalSessions(installs, cwd) {
       continue;
     }
     for (const sub of subdirs) {
-      const subdirPath = join25(install.sessionRoot, sub);
+      const subdirPath = join26(install.sessionRoot, sub);
       try {
-        if (!statSync4(subdirPath).isDirectory())
+        if (!statSync5(subdirPath).isDirectory())
           continue;
       } catch {
         continue;
@@ -6047,10 +6180,10 @@ function listLocalSessions(installs, cwd) {
       for (const f of files) {
         if (!f.endsWith(".jsonl"))
           continue;
-        const fullPath = join25(subdirPath, f);
+        const fullPath = join26(subdirPath, f);
         let stats;
         try {
-          stats = statSync4(fullPath);
+          stats = statSync5(fullPath);
         } catch {
           continue;
         }
@@ -6108,7 +6241,7 @@ function pickSessions(candidates, opts) {
 function nativeJsonlToRows(filePath, sessionId, agent) {
   let raw;
   try {
-    raw = readFileSync17(filePath, "utf-8");
+    raw = readFileSync18(filePath, "utf-8");
   } catch {
     return [];
   }
@@ -6200,8 +6333,8 @@ function extractPairs(rows) {
 // dist/src/skillify/gate-runner.js
 import { existsSync as existsSync23 } from "node:fs";
 import { createRequire } from "node:module";
-import { homedir as homedir16 } from "node:os";
-import { join as join26 } from "node:path";
+import { homedir as homedir17 } from "node:os";
+import { join as join27 } from "node:path";
 var requireForCp = createRequire(import.meta.url);
 var { execFileSync: runChildProcess } = requireForCp("node:child_process");
 var inheritedEnv = process;
@@ -6213,7 +6346,7 @@ function firstExistingPath(candidates) {
   return null;
 }
 function findAgentBin(agent) {
-  const home = homedir16();
+  const home = homedir17();
   switch (agent) {
     // /usr/bin/<name> is included in every candidate list — that's the
     // common Linux package-manager install path (apt, dnf, pacman). Old
@@ -6222,45 +6355,45 @@ function findAgentBin(agent) {
     // #170 caught the gap.
     case "claude_code":
       return firstExistingPath([
-        join26(home, ".claude", "local", "claude"),
+        join27(home, ".claude", "local", "claude"),
         "/usr/local/bin/claude",
         "/usr/bin/claude",
-        join26(home, ".npm-global", "bin", "claude"),
-        join26(home, ".local", "bin", "claude"),
+        join27(home, ".npm-global", "bin", "claude"),
+        join27(home, ".local", "bin", "claude"),
         "/opt/homebrew/bin/claude"
-      ]) ?? join26(home, ".claude", "local", "claude");
+      ]) ?? join27(home, ".claude", "local", "claude");
     case "codex":
       return firstExistingPath([
         "/usr/local/bin/codex",
         "/usr/bin/codex",
-        join26(home, ".npm-global", "bin", "codex"),
-        join26(home, ".local", "bin", "codex"),
+        join27(home, ".npm-global", "bin", "codex"),
+        join27(home, ".local", "bin", "codex"),
         "/opt/homebrew/bin/codex"
       ]) ?? "/usr/local/bin/codex";
     case "cursor":
       return firstExistingPath([
         "/usr/local/bin/cursor-agent",
         "/usr/bin/cursor-agent",
-        join26(home, ".npm-global", "bin", "cursor-agent"),
-        join26(home, ".local", "bin", "cursor-agent"),
+        join27(home, ".npm-global", "bin", "cursor-agent"),
+        join27(home, ".local", "bin", "cursor-agent"),
         "/opt/homebrew/bin/cursor-agent"
       ]) ?? "/usr/local/bin/cursor-agent";
     case "hermes":
       return firstExistingPath([
-        join26(home, ".local", "bin", "hermes"),
+        join27(home, ".local", "bin", "hermes"),
         "/usr/local/bin/hermes",
         "/usr/bin/hermes",
-        join26(home, ".npm-global", "bin", "hermes"),
+        join27(home, ".npm-global", "bin", "hermes"),
         "/opt/homebrew/bin/hermes"
-      ]) ?? join26(home, ".local", "bin", "hermes");
+      ]) ?? join27(home, ".local", "bin", "hermes");
     case "pi":
       return firstExistingPath([
-        join26(home, ".local", "bin", "pi"),
+        join27(home, ".local", "bin", "pi"),
         "/usr/local/bin/pi",
         "/usr/bin/pi",
-        join26(home, ".npm-global", "bin", "pi"),
+        join27(home, ".npm-global", "bin", "pi"),
         "/opt/homebrew/bin/pi"
-      ]) ?? join26(home, ".local", "bin", "pi");
+      ]) ?? join27(home, ".local", "bin", "pi");
   }
 }
 
@@ -6290,27 +6423,27 @@ function extractJsonBlock(s) {
 }
 
 // dist/src/skillify/local-manifest.js
-import { existsSync as existsSync24, mkdirSync as mkdirSync9, readFileSync as readFileSync18, writeFileSync as writeFileSync13 } from "node:fs";
-import { homedir as homedir17 } from "node:os";
-import { dirname as dirname5, join as join27 } from "node:path";
-var LOCAL_MANIFEST_PATH = join27(homedir17(), ".claude", "hivemind", "local-mined.json");
-var LOCAL_MINE_LOCK_PATH = join27(homedir17(), ".claude", "hivemind", "local-mined.lock");
+import { existsSync as existsSync24, mkdirSync as mkdirSync10, readFileSync as readFileSync19, writeFileSync as writeFileSync14 } from "node:fs";
+import { homedir as homedir18 } from "node:os";
+import { dirname as dirname5, join as join28 } from "node:path";
+var LOCAL_MANIFEST_PATH = join28(homedir18(), ".claude", "hivemind", "local-mined.json");
+var LOCAL_MINE_LOCK_PATH = join28(homedir18(), ".claude", "hivemind", "local-mined.lock");
 function readLocalManifest(path = LOCAL_MANIFEST_PATH) {
   if (!existsSync24(path))
     return null;
   try {
-    return JSON.parse(readFileSync18(path, "utf-8"));
+    return JSON.parse(readFileSync19(path, "utf-8"));
   } catch {
     return null;
   }
 }
 function writeLocalManifest(m, path = LOCAL_MANIFEST_PATH) {
-  mkdirSync9(dirname5(path), { recursive: true });
-  writeFileSync13(path, JSON.stringify(m, null, 2));
+  mkdirSync10(dirname5(path), { recursive: true });
+  writeFileSync14(path, JSON.stringify(m, null, 2));
 }
 
 // dist/src/commands/mine-local.js
-import { unlinkSync as unlinkSync9 } from "node:fs";
+import { unlinkSync as unlinkSync10 } from "node:fs";
 var EPSILON = 0.3;
 var DEFAULT_N = 8;
 var PAIR_CHAR_CAP = 4e3;
@@ -6321,9 +6454,9 @@ var IN_FLIGHT_MAX_AGE_MS = 6e4;
 var GATE_TIMEOUT_MS = 24e4;
 var MANIFEST_PATH = LOCAL_MANIFEST_PATH;
 function runGateViaStdin(opts) {
-  return new Promise((resolve) => {
+  return new Promise((resolve2) => {
     if (opts.agent !== "claude_code") {
-      resolve({
+      resolve2({
         stdout: "",
         stderr: "",
         errored: true,
@@ -6332,7 +6465,7 @@ function runGateViaStdin(opts) {
       return;
     }
     if (!existsSync25(opts.bin)) {
-      resolve({
+      resolve2({
         stdout: "",
         stderr: "",
         errored: true,
@@ -6359,7 +6492,7 @@ function runGateViaStdin(opts) {
       if (settled)
         return;
       settled = true;
-      resolve(r);
+      resolve2(r);
     };
     const timer = setTimeout(() => {
       try {
@@ -6619,7 +6752,7 @@ async function runMineLocal(args) {
       return;
     lockReleased = true;
     try {
-      unlinkSync9(LOCAL_MINE_LOCK_PATH);
+      unlinkSync10(LOCAL_MINE_LOCK_PATH);
     } catch {
     }
   };
@@ -6676,8 +6809,8 @@ async function runMineLocalImpl(args) {
     console.log(`Dry-run: would invoke ${gateAgent} gate on ${picked.length} session(s) in parallel (concurrency=${GATE_CONCURRENCY}).`);
     return;
   }
-  const tmpDir = join28(homedir18(), ".claude", "hivemind", `mine-local-${Date.now()}`);
-  mkdirSync10(tmpDir, { recursive: true });
+  const tmpDir = join29(homedir19(), ".claude", "hivemind", `mine-local-${Date.now()}`);
+  mkdirSync11(tmpDir, { recursive: true });
   console.log(`Running ${picked.length} gate call(s) in parallel (concurrency=${GATE_CONCURRENCY}, timeout=${GATE_TIMEOUT_MS / 1e3}s each)...`);
   const results = await parallelMap(picked, GATE_CONCURRENCY, async (s) => {
     const shortId = s.sessionId.slice(0, 8);
@@ -6688,23 +6821,23 @@ async function runMineLocalImpl(args) {
       return { session: s, skills: [], reason: "no pairs", error: null };
     }
     const tail = pairs2.slice(-PER_SESSION_PAIR_CAP);
-    const sessionTmp = join28(tmpDir, `s-${shortId}`);
-    mkdirSync10(sessionTmp, { recursive: true });
-    const verdictPath = join28(sessionTmp, "verdict.json");
+    const sessionTmp = join29(tmpDir, `s-${shortId}`);
+    mkdirSync11(sessionTmp, { recursive: true });
+    const verdictPath = join29(sessionTmp, "verdict.json");
     const prompt = buildSessionPrompt(tail, s, verdictPath);
-    writeFileSync14(join28(sessionTmp, "prompt.txt"), prompt);
+    writeFileSync15(join29(sessionTmp, "prompt.txt"), prompt);
     const gate = await runGateViaStdin({ agent: gateAgent, bin: gateBin, prompt, timeoutMs: GATE_TIMEOUT_MS });
     try {
-      writeFileSync14(join28(sessionTmp, "gate-stdout.txt"), gate.stdout);
+      writeFileSync15(join29(sessionTmp, "gate-stdout.txt"), gate.stdout);
       if (gate.stderr)
-        writeFileSync14(join28(sessionTmp, "gate-stderr.txt"), gate.stderr);
+        writeFileSync15(join29(sessionTmp, "gate-stderr.txt"), gate.stderr);
     } catch {
     }
     if (gate.errored) {
       console.log(`  [${shortId}] gate failed: ${gate.errorMessage}`);
       return { session: s, skills: [], reason: null, error: gate.errorMessage ?? "gate failed" };
     }
-    const verdictText = existsSync25(verdictPath) ? readFileSync19(verdictPath, "utf-8") : gate.stdout;
+    const verdictText = existsSync25(verdictPath) ? readFileSync20(verdictPath, "utf-8") : gate.stdout;
     const mv = parseMultiVerdict(verdictText);
     if (!mv) {
       console.log(`  [${shortId}] unparseable verdict (kept at ${sessionTmp})`);
@@ -6920,7 +7053,7 @@ function wrapAt(s, max) {
 
 // dist/src/commands/skillify.js
 function stateDir() {
-  return join29(homedir19(), ".deeplake", "state", "skillify");
+  return join30(homedir20(), ".deeplake", "state", "skillify");
 }
 function showStatus() {
   const cfg = loadScopeConfig();
@@ -6940,7 +7073,7 @@ function showStatus() {
   console.log(`state: ${files.length} project(s) tracked`);
   for (const f of files) {
     try {
-      const s = JSON.parse(readFileSync20(join29(dir, f), "utf-8"));
+      const s = JSON.parse(readFileSync21(join30(dir, f), "utf-8"));
       const last = typeof s.updatedAt === "number" ? new Date(s.updatedAt).toISOString() : s.lastDate ?? "never";
       const skills = Array.isArray(s.skillsGenerated) && s.skillsGenerated.length > 0 ? s.skillsGenerated.join(", ") : "none";
       console.log(`  - ${s.project} (counter=${s.counter}, last=${last}, skills=${skills})`);
@@ -6967,7 +7100,7 @@ function setInstall(loc) {
   }
   const cfg = loadScopeConfig();
   saveScopeConfig({ ...cfg, install: loc });
-  const path = loc === "global" ? join29(homedir19(), ".claude", "skills") : "<cwd>/.claude/skills";
+  const path = loc === "global" ? join30(homedir20(), ".claude", "skills") : "<cwd>/.claude/skills";
   console.log(`Install location set to '${loc}'. New skills will be written to ${path}/<name>/SKILL.md.`);
 }
 function promoteSkill(name, cwd) {
@@ -6975,18 +7108,18 @@ function promoteSkill(name, cwd) {
     console.error("Usage: hivemind skillify promote <skill-name>");
     process.exit(1);
   }
-  const projectPath = join29(cwd, ".claude", "skills", name);
-  const globalPath = join29(homedir19(), ".claude", "skills", name);
-  if (!existsSync26(join29(projectPath, "SKILL.md"))) {
+  const projectPath = join30(cwd, ".claude", "skills", name);
+  const globalPath = join30(homedir20(), ".claude", "skills", name);
+  if (!existsSync26(join30(projectPath, "SKILL.md"))) {
     console.error(`Skill '${name}' not found at ${projectPath}/SKILL.md`);
     process.exit(1);
   }
-  if (existsSync26(join29(globalPath, "SKILL.md"))) {
+  if (existsSync26(join30(globalPath, "SKILL.md"))) {
     console.error(`Skill '${name}' already exists at ${globalPath}/SKILL.md \u2014 refusing to overwrite. Remove it first or rename the project skill.`);
     process.exit(1);
   }
-  mkdirSync11(dirname7(globalPath), { recursive: true });
-  renameSync6(projectPath, globalPath);
+  mkdirSync12(dirname7(globalPath), { recursive: true });
+  renameSync7(projectPath, globalPath);
   console.log(`Promoted '${name}' from ${projectPath} \u2192 ${globalPath}.`);
 }
 function teamAdd(name) {
@@ -7092,7 +7225,7 @@ async function pullSkills(args) {
     console.error(`pull failed: ${e?.message ?? e}`);
     process.exit(1);
   }
-  const dest = toRaw === "global" ? join29(homedir19(), ".claude", "skills") : `${process.cwd()}/.claude/skills`;
+  const dest = toRaw === "global" ? join30(homedir20(), ".claude", "skills") : `${process.cwd()}/.claude/skills`;
   const filterDesc = users.length === 0 ? "all users" : users.join(", ");
   console.log(`Destination: ${dest}`);
   console.log(`Filter:      ${filterDesc}${skillName ? ` \xB7 skill='${skillName}'` : ""}${dryRun ? " \xB7 dry-run" : ""}${force ? " \xB7 force" : ""}`);
@@ -7142,7 +7275,7 @@ async function unpullSkills(args) {
     all,
     legacyCleanup
   });
-  const dest = toRaw === "global" ? join29(homedir19(), ".claude", "skills") : `${process.cwd()}/.claude/skills`;
+  const dest = toRaw === "global" ? join30(homedir20(), ".claude", "skills") : `${process.cwd()}/.claude/skills`;
   const filterParts = [];
   if (users.length > 0)
     filterParts.push(`users=${users.join(",")}`);
@@ -7238,13 +7371,13 @@ if (process.argv[1] && process.argv[1].endsWith("skillify.js")) {
 
 // dist/src/cli/update.js
 import { execFileSync as execFileSync4 } from "node:child_process";
-import { existsSync as existsSync27, readFileSync as readFileSync22, realpathSync } from "node:fs";
+import { existsSync as existsSync27, readFileSync as readFileSync23, realpathSync } from "node:fs";
 import { dirname as dirname9, sep } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // dist/src/utils/version-check.js
-import { readFileSync as readFileSync21 } from "node:fs";
-import { dirname as dirname8, join as join30 } from "node:path";
+import { readFileSync as readFileSync22 } from "node:fs";
+import { dirname as dirname8, join as join31 } from "node:path";
 function isNewer(latest, current) {
   const parse = (v) => v.split(".").map(Number);
   const [la, lb, lc] = parse(latest);
@@ -7268,7 +7401,7 @@ function detectInstallKind(argv1) {
   for (let i = 0; i < 10; i++) {
     const pkgPath = `${dir}${sep}package.json`;
     try {
-      const pkg = JSON.parse(readFileSync22(pkgPath, "utf-8"));
+      const pkg = JSON.parse(readFileSync23(pkgPath, "utf-8"));
       if (pkg.name === PKG_NAME || pkg.name === "hivemind") {
         installDir = dir;
         break;

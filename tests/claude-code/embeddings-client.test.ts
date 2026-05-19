@@ -408,7 +408,13 @@ describe("isTransformersMissingError", () => {
   });
 });
 
-describe("EmbedClient — transformers-missing handling", () => {
+describe("EmbedClient — transformers-missing handling (silent — no user banner)", () => {
+  // Previously this path enqueued a "Hivemind embeddings disabled — deps
+  // missing" notification telling the user to run `hivemind embeddings
+  // install`. The notification was removed; the recycle-stuck-daemon
+  // self-heal stays. These tests pin the contract that no user-visible
+  // notification fires from this code path under any conditions.
+
   beforeEach(() => {
     enqueueNotificationMock.mockReset();
     _resetClientStateForTesting();
@@ -420,7 +426,7 @@ describe("EmbedClient — transformers-missing handling", () => {
     _resetDisableForTesting();
   });
 
-  it("enqueues an embed-deps-missing notification when daemon reports the transformers wrapper error", async () => {
+  it("does NOT enqueue when the daemon reports the transformers wrapper error", async () => {
     _setEnabledReaderForTesting(() => true);
     const dir = makeTmpDir();
     await startFakeDaemon(dir, (req) => {
@@ -430,15 +436,10 @@ describe("EmbedClient — transformers-missing handling", () => {
     const client = new EmbedClient({ socketDir: dir, timeoutMs: 500, autoSpawn: false, daemonEntry: "" });
     const vec = await client.embed("hello");
     expect(vec).toBeNull();
-    expect(enqueueNotificationMock).toHaveBeenCalledTimes(1);
-    const arg = enqueueNotificationMock.mock.calls[0][0];
-    expect(arg.id).toBe("embed-deps-missing");
-    expect(arg.severity).toBe("warn");
-    expect(arg.body).toMatch(/hivemind embeddings install/);
-    expect(arg.dedupKey.reason).toBe("transformers-missing");
+    expect(enqueueNotificationMock).not.toHaveBeenCalled();
   });
 
-  it("does NOT enqueue when the user has disabled embeddings (no nag for explicit opt-out)", async () => {
+  it("does NOT enqueue when the user has disabled embeddings (no banner even pre-removal — guard still holds)", async () => {
     _setEnabledReaderForTesting(() => false);
     const dir = makeTmpDir();
     await startFakeDaemon(dir, (req) => {
@@ -450,7 +451,7 @@ describe("EmbedClient — transformers-missing handling", () => {
     expect(enqueueNotificationMock).not.toHaveBeenCalled();
   });
 
-  it("deduplicates within a single process: second failing call does not double-enqueue", async () => {
+  it("does NOT enqueue across two clients hitting the same broken daemon", async () => {
     _setEnabledReaderForTesting(() => true);
     const dir = makeTmpDir();
     await startFakeDaemon(dir, (req) => {
@@ -461,10 +462,10 @@ describe("EmbedClient — transformers-missing handling", () => {
     const c2 = new EmbedClient({ socketDir: dir, timeoutMs: 500, autoSpawn: false, daemonEntry: "" });
     await c1.embed("a");
     await c2.embed("b");
-    expect(enqueueNotificationMock).toHaveBeenCalledTimes(1);
+    expect(enqueueNotificationMock).not.toHaveBeenCalled();
   });
 
-  it("does not enqueue on a generic daemon error unrelated to transformers", async () => {
+  it("does NOT enqueue on a generic daemon error unrelated to transformers", async () => {
     _setEnabledReaderForTesting(() => true);
     const dir = makeTmpDir();
     await startFakeDaemon(dir, (req) => {

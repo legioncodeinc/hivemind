@@ -294,17 +294,16 @@ describe("enqueueNotification cross-process safety", () => {
   const modPath = new URL("../../src/notifications/queue.ts", import.meta.url).pathname;
 
   it("cross-process producers with identical (id, dedupKey) collapse to one queue entry", async () => {
-    // Regression for CodeRabbit #8/#12: previously the dedup gate
-    // (`_signalledMissingDeps`) lived in-process, so every fresh hook
-    // process would re-enqueue the same `embed-deps-missing` warning
-    // until the next drain. Two subprocesses with identical
-    // (id, dedupKey) must now produce exactly one entry in the queue.
+    // Regression for CodeRabbit #8/#12: previously fresh hook processes
+    // would re-enqueue the same notification until the next drain. Two
+    // subprocesses with identical (id, dedupKey) must now produce exactly
+    // one entry in the queue.
     const code =
       `import("${modPath}").then(async m => { ` +
       `  await m.enqueueNotification({ ` +
-      `    id: "embed-deps-missing", ` +
+      `    id: "dedup-fixture", ` +
       `    title: "T", body: "B", ` +
-      `    dedupKey: { reason: "transformers-missing", detail: "same" } ` +
+      `    dedupKey: { reason: "same-key", detail: "same" } ` +
       `  }); ` +
       `  process.stdout.write("ok"); ` +
       `});`;
@@ -318,7 +317,7 @@ describe("enqueueNotification cross-process safety", () => {
     }
     const q = readQueue().queue;
     expect(q.length).toBe(1);
-    expect(q[0].id).toBe("embed-deps-missing");
+    expect(q[0].id).toBe("dedup-fixture");
   }, 60_000);
 
   it("N parallel producers each append exactly once (no lost writes)", async () => {
@@ -416,6 +415,54 @@ describe("enqueueNotification + drainSessionStart", () => {
     await drainSessionStart({ agent: "claude-code", creds: null });
     expect(writes.length).toBe(1);
     expect(JSON.parse(writes[0]).hookSpecificOutput.additionalContext).toContain("B2");
+  });
+
+  it("transient: true — drain fires it but does NOT record in state.shown, so a re-enqueue refires", async () => {
+    // Regression for the balance-exhausted "show every session until topped
+    // up" semantics. Without transient, state.shown would block the second
+    // drain even though the queue has a fresh entry with the same key.
+    const n = {
+      id: "balance-exhausted",
+      title: "Credits exhausted",
+      body: "Top up.",
+      dedupKey: { reason: "balance-zero" },
+      transient: true as const,
+    };
+    await enqueueNotification(n);
+    await drainSessionStart({ agent: "claude-code", creds: null });
+    expect(writes.length).toBe(1);
+
+    // state.shown must NOT have recorded the transient notification.
+    const state = readState();
+    expect(state.shown["balance-exhausted"]).toBeUndefined();
+
+    // A second cycle: re-enqueue + drain → should fire again (same dedupKey).
+    writes.length = 0;
+    await enqueueNotification(n);
+    await drainSessionStart({ agent: "claude-code", creds: null });
+    expect(writes.length).toBe(1);
+  });
+
+  it("transient: false (default) — drain records in state.shown, blocking refire on same dedupKey", async () => {
+    // Control test: confirms the dedup-via-state contract holds for normal
+    // (non-transient) notifications. Without this, the transient flag's
+    // contract is meaningless.
+    const n = {
+      id: "non-transient",
+      title: "X",
+      body: "Y",
+      dedupKey: { v: 1 },
+    };
+    await enqueueNotification(n);
+    await drainSessionStart({ agent: "claude-code", creds: null });
+    expect(writes.length).toBe(1);
+    const state = readState();
+    expect(state.shown["non-transient"]).toBeDefined();
+
+    writes.length = 0;
+    await enqueueNotification(n);
+    await drainSessionStart({ agent: "claude-code", creds: null });
+    expect(writes.length).toBe(0); // blocked by state.shown
   });
 });
 
@@ -843,6 +890,59 @@ describe("state.tryClaim (per-notification atomic claim)", () => {
     } finally {
       chmodSync(claimsDir, 0o700);
     }
+  });
+});
+
+describe("state.readState malformed-payload branches", () => {
+  it("treats a `false` JSON payload as empty (the !parsed branch)", async () => {
+    mkdirSync(join(TEMP_HOME, ".deeplake"), { recursive: true });
+    writeFileSync(statePath(), "false", "utf-8");
+    expect(readState()).toEqual({ shown: {} });
+  });
+
+  it("treats a number JSON payload as empty (typeof !== object branch)", async () => {
+    mkdirSync(join(TEMP_HOME, ".deeplake"), { recursive: true });
+    writeFileSync(statePath(), "42", "utf-8");
+    expect(readState()).toEqual({ shown: {} });
+  });
+
+  it("treats a missing shown key as empty (typeof shown !== object branch)", async () => {
+    mkdirSync(join(TEMP_HOME, ".deeplake"), { recursive: true });
+    writeFileSync(statePath(), JSON.stringify({ otherKey: "val" }), "utf-8");
+    expect(readState()).toEqual({ shown: {} });
+  });
+});
+
+describe("state.releaseClaim (transient notification cleanup)", () => {
+  it("unlinks the claim file so the next tryClaim with the same key succeeds", async () => {
+    const { tryClaim, releaseClaim } = await import("../../src/notifications/state.js");
+    const n: Notification = { id: "release-test", dedupKey: { v: 1 }, title: "t", body: "b" };
+    expect(tryClaim(n)).toBe(true);
+    // Without releaseClaim, the second claim would EEXIST → false.
+    releaseClaim(n);
+    expect(tryClaim(n)).toBe(true);
+  });
+
+  it("silent no-op when the claim file doesn't exist (ENOENT swallowed)", async () => {
+    const { releaseClaim } = await import("../../src/notifications/state.js");
+    const n: Notification = { id: "never-claimed", dedupKey: { v: 1 }, title: "t", body: "b" };
+    // Never tryClaim'd — no file on disk. Must not throw.
+    expect(() => releaseClaim(n)).not.toThrow();
+  });
+
+  it("logs and continues on non-ENOENT errors (e.g. claim path is a directory)", async () => {
+    const { mkdirSync } = await import("node:fs");
+    const { releaseClaim } = await import("../../src/notifications/state.js");
+    const claimsDir = join(TEMP_HOME, ".deeplake", "notifications-claims");
+    mkdirSync(claimsDir, { recursive: true, mode: 0o700 });
+    // Make the claim path point at a DIRECTORY instead of a file —
+    // unlinkSync on a dir throws EISDIR (POSIX) or EPERM (Linux). Either
+    // way it's not ENOENT, so the fail-soft logging branch fires.
+    const n: Notification = { id: "release-test-2", dedupKey: { v: 2 }, title: "t", body: "b" };
+    const { createHash } = await import("node:crypto");
+    const keyHash = createHash("sha256").update(JSON.stringify(n.dedupKey)).digest("hex").slice(0, 12);
+    mkdirSync(join(claimsDir, `release-test-2-${keyHash}`), { recursive: true });
+    expect(() => releaseClaim(n)).not.toThrow();
   });
 });
 

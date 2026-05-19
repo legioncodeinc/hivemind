@@ -115,10 +115,10 @@ describe("readQueue — malformed JSON branch", () => {
 describe("enqueueNotification — sameDedupKey branches", () => {
   it("skips append when an equivalent (id, dedupKey) is already queued (same-process dedup)", async () => {
     const n = {
-      id: "embed-deps-missing",
+      id: "dedup-fixture",
       title: "T",
       body: "B",
-      dedupKey: { reason: "transformers-missing", detail: "exact" },
+      dedupKey: { reason: "same-key", detail: "exact" },
     };
     await enqueueNotification(n);
     await enqueueNotification(n);

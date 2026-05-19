@@ -83,16 +83,12 @@ describe("shipped capture.js — self-heal + visible-failure notification", () =
         expect(src).toContain("ensurePluginNodeModulesLink");
       });
 
-      it(`capture.js carries the embed-deps-missing notification dedupKey`, () => {
+      it(`capture.js does NOT carry the removed embed-deps-missing notification`, () => {
         const src = readFileSync(a.captureHook, "utf-8");
-        // The notification ID is what the SessionStart drain renders.
-        expect(src).toContain("embed-deps-missing");
-      });
-
-      it(`capture.js still suppresses notifications when user-disabled (no nag for explicit opt-out)`, () => {
-        const src = readFileSync(a.captureHook, "utf-8");
-        // The guard must survive in the shipped artifact.
-        expect(src).toMatch(/user-disabled/);
+        // The notification was removed; if a future refactor reintroduces
+        // the string, this test fails and forces a deliberate decision.
+        expect(src).not.toContain("embed-deps-missing");
+        expect(src).not.toContain("Hivemind embeddings disabled");
       });
     });
   }

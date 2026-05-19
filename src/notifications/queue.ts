@@ -160,11 +160,10 @@ function sameDedupKey(a: Notification, b: Notification): boolean {
  * Idempotent under (id, dedupKey): if an equivalent notification is
  * already queued (i.e. a previous hook enqueued the same warning but the
  * SessionStart drain hasn't run yet), the second call is a no-op. Without
- * this, every hook process that hits an `embed-deps-missing` would pile
- * another copy onto the queue between drains — the in-process
- * `_signalledMissingDeps` flag in client.ts only dedups inside one
- * process. The drain layer already dedups against the *shown* state in
- * state.ts; this guard prevents redundant queue growth between drains.
+ * this, every hook process that produced the same notification would pile
+ * another copy onto the queue between drains. The drain layer already
+ * dedups against the *shown* state in state.ts; this guard prevents
+ * redundant queue growth between drains.
  */
 export async function enqueueNotification(n: Notification): Promise<void> {
   await withQueueLock(() => {
