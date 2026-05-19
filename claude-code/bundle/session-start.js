@@ -928,14 +928,14 @@ function getStateDir() {
 
 // dist/src/skillify/legacy-migration.js
 var dlog = (msg) => log("skillify-migrate", msg);
-var attemptedFor = /* @__PURE__ */ new Set();
+var attempted = false;
 function migrateLegacyStateDir() {
   if (process.env.HIVEMIND_STATE_DIR?.trim())
     return;
-  const current = getStateDir();
-  if (attemptedFor.has(current))
+  if (attempted)
     return;
-  attemptedFor.add(current);
+  attempted = true;
+  const current = getStateDir();
   const legacy = join11(dirname2(current), "skilify");
   if (!existsSync5(legacy))
     return;
