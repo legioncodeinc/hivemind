@@ -14,6 +14,7 @@ import {
 import { ensureLoggedIn, isLoggedIn, loginWithProvidedToken, maybeShowOrgChoice } from "./auth.js";
 import { runAuthCommand } from "../commands/auth-login.js";
 import { runSkillifyCommand } from "../commands/skillify.js";
+import { runRulesCommand } from "../commands/rules.js";
 import { confirm, detectPlatforms, allPlatformIds, log, promptLine, warn, type PlatformId } from "./util.js";
 import { getVersion } from "./version.js";
 import { runUpdate } from "./update.js";
@@ -92,6 +93,13 @@ Semantic search (embeddings):
 
 Skill management (mine + share reusable Claude skills across the org):
 ${renderCliHelpBlock()}
+
+Team-wide rules (principles injected at SessionStart):
+  hivemind rules add "<text>" [--scope team]   Add a new rule (org-wide).
+  hivemind rules list [--status active|done|all] [--limit N]
+                                               List rules. Default: active, 10 newest.
+  hivemind rules edit <rule-id> "<new text>"   Edit a rule (bumps version).
+  hivemind rules done <rule-id>                Mark a rule done.
 
 Account / org / workspace:
   hivemind whoami                          Show current user, org, workspace.
@@ -334,6 +342,11 @@ async function main(): Promise<void> {
 
   if (cmd === "skillify") {
     runSkillifyCommand(args.slice(1));
+    return;
+  }
+
+  if (cmd === "rules") {
+    await runRulesCommand(args.slice(1));
     return;
   }
 
