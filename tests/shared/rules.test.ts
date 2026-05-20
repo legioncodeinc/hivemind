@@ -149,7 +149,8 @@ describe("editRule", () => {
     });
     expect(result).toEqual({ rule_id: "rule-uuid", version: 2 });
     expect(calls).toHaveLength(2);
-    expect(calls[0]).toMatch(/^SELECT .* FROM "hivemind_rules" WHERE rule_id = 'rule-uuid' ORDER BY version DESC LIMIT 1$/);
+    // ORDER BY carries the tie-break compound key (see getRuleLatest test below).
+    expect(calls[0]).toMatch(/^SELECT .* FROM "hivemind_rules" WHERE rule_id = 'rule-uuid' ORDER BY version DESC, created_at DESC LIMIT 1$/);
     expect(calls[1]).toMatch(/^INSERT INTO "hivemind_rules"/);
     expect(calls[1]).toContain(`E'new text'`);
     expect(calls[1]).toContain(", 2, ");
@@ -321,6 +322,20 @@ describe("getRuleLatest", () => {
     expect(row?.text).toBe("current");
     expect(calls[0]).toMatch(/LIMIT 1$/);
     expect(calls[0]).toContain(`rule_id = 'X'`);
+  });
+
+  it("orders by (version DESC, created_at DESC) — deterministic tie-break under concurrent v=N+1 race", async () => {
+    // Regression guard for the race surfaced by codex review on S2:
+    // two concurrent editors both INSERT version=N+1 for the same
+    // rule_id. Without created_at in the ORDER BY, SELECT returns
+    // either row arbitrarily, so a subsequent edit can resurrect the
+    // older v=N+1's text. listRules already uses this compound key
+    // (see "newest-first by created_at" test); getRuleLatest must
+    // match so single-rule and list reads agree.
+    const { calls, query } = mockQuery([() => []]);
+    await getRuleLatest(query, TBL, "X");
+    expect(calls[0]).toContain("ORDER BY version DESC, created_at DESC");
+    expect(calls[0]).not.toMatch(/ORDER BY version DESC LIMIT 1/);
   });
 
   it("returns null when nothing matches", async () => {

@@ -89,10 +89,17 @@ export async function getRuleLatest(
   ruleId: string,
 ): Promise<RuleRow | null> {
   const safe = sqlIdent(tableName);
+  // Two-key ORDER BY: version DESC picks the highest-numbered version,
+  // created_at DESC breaks ties deterministically when a race between
+  // two concurrent edits produced duplicate v=N+1 rows for the same
+  // rule_id. listRules() uses the same compound key (see SELECT below),
+  // so single-rule and list reads agree on which row is "latest"
+  // regardless of which one a query happens to scan first. Codex review
+  // on S2 surfaced this.
   const rows = await query(
     `SELECT ${SELECT_COLS} FROM "${safe}" ` +
       `WHERE rule_id = '${sqlStr(ruleId)}' ` +
-      `ORDER BY version DESC LIMIT 1`,
+      `ORDER BY version DESC, created_at DESC LIMIT 1`,
   );
   if (rows.length === 0) return null;
   return normalize(rows[0]);
