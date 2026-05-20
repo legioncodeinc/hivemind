@@ -88,7 +88,7 @@ describe("tryAutoExtract — match → INSERT", () => {
     const kind = await tryAutoExtract(query, TBL, {
       hook_event_name: "PostToolUse",
       tool_name: "Bash",
-      tool_input: { command: "gh pr merge 123 --auto" },
+      tool_input: { command: "gh pr merge 123 --delete-branch" },
     }, OPTS);
     expect(kind).toBe("gh-pr-merge");
     expect(calls).toHaveLength(1);
@@ -99,7 +99,7 @@ describe("tryAutoExtract — match → INSERT", () => {
     expect(sql).toContain("'auto-extract'");
     expect(sql).toContain("'claude_code'");
     expect(sql).toContain("'0.7.99'");                 // plugin_version
-    expect(sql).toContain(`E'gh pr merge: gh pr merge 123 --auto'`);
+    expect(sql).toContain(`E'gh pr merge: gh pr merge 123 --delete-branch'`);
     // value is 1 (positive integer literal, not quoted)
     expect(sql).toMatch(/, 1, E'/);
   });

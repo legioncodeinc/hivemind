@@ -44,9 +44,12 @@ describe("matchCommand — gh pr merge true positives", () => {
     expect(matchCommand("gh pr merge 123")?.kind).toBe("gh-pr-merge");
   });
 
-  it("matches with flags", () => {
-    expect(matchCommand("gh pr merge --auto")?.kind).toBe("gh-pr-merge");
+  it("matches `gh pr merge --merge` and `--delete-branch` (real merges with options)", () => {
+    expect(matchCommand("gh pr merge --merge")?.kind).toBe("gh-pr-merge");
     expect(matchCommand("gh pr merge --merge --delete-branch")?.kind).toBe("gh-pr-merge");
+    expect(matchCommand("gh pr merge 42 --delete-branch")?.kind).toBe("gh-pr-merge");
+    expect(matchCommand("gh pr merge --rebase")?.kind).toBe("gh-pr-merge");
+    expect(matchCommand("gh pr merge --squash")?.kind).toBe("gh-pr-merge");
   });
 
   it("matches with extra whitespace between tokens", () => {
@@ -54,7 +57,7 @@ describe("matchCommand — gh pr merge true positives", () => {
   });
 
   it("note captures the full command (for human inspection later)", () => {
-    const cmd = "gh pr merge 456 --auto --delete-branch";
+    const cmd = "gh pr merge 456 --merge --delete-branch";
     expect(matchCommand(cmd)?.note).toBe(`gh pr merge: ${cmd}`);
   });
 
@@ -102,6 +105,19 @@ describe("matchCommand — true negatives (false-positive prevention)", () => {
   it("does NOT match 'ghpr merge' or 'gh prmerge' (token boundary check)", () => {
     expect(matchCommand("ghpr merge")).toBeNull();
     expect(matchCommand("gh prmerge")).toBeNull();
+  });
+
+  it("does NOT match `gh pr merge --auto` — codex pass 3 regression guard", () => {
+    // --auto only enables auto-merge (GitHub CLI exits 0 even though
+    // the PR hasn't actually merged yet — it's waiting for CI).
+    // Counting that as +1 KPI progress would inflate merge counts for
+    // PRs that may never merge. This pattern must be inert for
+    // --auto in any position.
+    expect(matchCommand("gh pr merge --auto")).toBeNull();
+    expect(matchCommand("gh pr merge 123 --auto")).toBeNull();
+    expect(matchCommand("gh pr merge --auto 123")).toBeNull();
+    expect(matchCommand("gh pr merge --auto --delete-branch")).toBeNull();
+    expect(matchCommand("gh pr merge 42 --merge --auto")).toBeNull();
   });
 
   it("returns null on empty / whitespace-only command", () => {

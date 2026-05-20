@@ -395,6 +395,21 @@ export async function runTasksCommand(args: string[]): Promise<void> {
       process.exit(1);
       throw new Error("unreachable");
     }
+    // Validate kpi_id against the LATEST task version's kpis. Without
+    // this, a typo (`k_pr_merg` vs `k_pr_merged`) silently writes an
+    // event the report never displays — ghost progress. We surface the
+    // typo at write time with the list of valid kpi_ids. Codex review
+    // pass 3 surfaced this.
+    if (task.kpis.length > 0 && !task.kpis.some(k => k.kpi_id === kpiId)) {
+      const valid = task.kpis.map(k => k.kpi_id).join(", ");
+      console.error(`Unknown kpi_id '${kpiId}' on task ${taskId}. Valid: ${valid}`);
+      process.exit(1);
+      throw new Error("unreachable");
+    }
+    // When the task has zero KPIs (LLM gen lands in T4), we accept any
+    // kpi_id rather than blocking the user — they can still record
+    // progress against a forthcoming KPI shape. The note column carries
+    // the kpi_id label for future attribution.
     try {
       const out = await appendEvent(
         api.query.bind(api),

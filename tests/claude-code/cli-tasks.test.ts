@@ -445,6 +445,47 @@ describe("runTasksCommand — progress", () => {
     expect(queryMock).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects unknown kpi_id with valid list — codex pass 3 regression guard", async () => {
+    // Without this validation, a typo like `k_pr_merg` (vs `k_pr_merged`)
+    // would silently INSERT an event that report never displays — ghost
+    // progress. Surface the typo at write time with the list of valid
+    // kpi_ids so the user can fix the command and retry.
+    const KPI_A = {
+      kpi_id: "k_pr_merged", name: "PRs merged", target: 5, unit: "count",
+      generated_by: "manual", generated_at: "2026-05-20T10:00:00Z",
+    };
+    const KPI_B = {
+      kpi_id: "k_lines", name: "Lines reviewed", target: 200, unit: "lines",
+      generated_by: "manual", generated_at: "2026-05-20T10:00:00Z",
+    };
+    queryMock.mockResolvedValueOnce([fakeRow({
+      kpis: JSON.stringify([KPI_A, KPI_B]),
+    })]);
+    await expectExit(1, () => runTasksCommand([
+      "progress", "task-id", "k_pr_merg",   // typo — missing "ed"
+      "--value", "1",
+    ]));
+    expect(erred.some(l =>
+      l.includes("Unknown kpi_id 'k_pr_merg'") &&
+      l.includes("k_pr_merged") &&
+      l.includes("k_lines"),
+    )).toBe(true);
+    // SELECT happened; INSERT did NOT.
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts any kpi_id when task has zero KPIs (T4 not yet wired)", async () => {
+    // Zero-KPI tasks (the T3-default state) can still record progress
+    // against forthcoming KPIs; the validation only fires once
+    // task.kpis is non-empty.
+    queryMock.mockResolvedValueOnce([fakeRow({ kpis: "[]", version: 1 })]);
+    queryMock.mockResolvedValueOnce([]); // INSERT succeeds
+    await runTasksCommand(["progress", "task-id", "future_kpi", "--value", "1"]);
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    expect(queryMock.mock.calls[1][0]).toContain("'future_kpi'");
+    expect(logged.some(l => l.includes("Recorded progress"))).toBe(true);
+  });
+
   it("lazy-creates task_events on first event of a fresh session, then retries", async () => {
     // SELECT (success) → INSERT (table missing) → INSERT (after ensure)
     queryMock.mockResolvedValueOnce([fakeRow({ version: 1 })]);

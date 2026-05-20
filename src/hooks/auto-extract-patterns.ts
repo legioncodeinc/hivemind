@@ -64,9 +64,17 @@ export const PATTERNS: readonly PatternDef[] = Object.freeze([
   {
     id: "gh-pr-merge",
     // ^[whitespace]* gh [whitespace]+ pr [whitespace]+ merge \b
-    // Allows leading whitespace and arguments after `merge`; rejects
-    // anything that doesn't have `gh pr merge` as the leading command.
-    regex: /^\s*gh\s+pr\s+merge\b/,
+    //   (?! lookahead asserting --auto is NOT anywhere in the rest)
+    //
+    // Allows leading whitespace and PR-number / --merge /
+    // --delete-branch arguments after `merge`. Explicitly REJECTS
+    // `gh pr merge --auto` (and `gh pr merge 123 --auto`, etc.)
+    // because `--auto` only enables auto-merge — GitHub CLI exits 0
+    // even when the PR hasn't actually merged yet (it sits waiting
+    // for required CI checks). Counting that as +1 KPI progress
+    // inflates merge counts for PRs that may never merge. Codex
+    // review pass 3 surfaced this.
+    regex: /^\s*gh\s+pr\s+merge\b(?!.*\s--auto\b)/,
     build: (_m, command) => ({
       kind: "gh-pr-merge",
       value: 1,
