@@ -123,17 +123,15 @@ describe("cursor session-start hook — placeholder creation", () => {
     expect(queryMock).toHaveBeenCalledTimes(4);
   });
 
-  it("skips placeholder when HIVEMIND_CAPTURE=false but STILL renders rules+tasks (codex P2 pass 2)", async () => {
-    // HIVEMIND_CAPTURE gates WRITES only. The renderer is read-only
-    // and must still run for a logged-in user who disables capture.
-    // Prior to the codex fix, cursor (and hermes) silently skipped
-    // the renderer because the outer block was gated on both
-    // creds.token AND captureEnabled. Locks in the corrected gate.
+  it("HIVEMIND_CAPTURE=false: no placeholder, no DDL ensure, but renderer still runs (codex P2 pass 2 + pass 4)", async () => {
+    // HIVEMIND_CAPTURE=false means full read-only mode. ensureTable
+    // and ensureSessionsTable are DDL writes (create/heal), so they
+    // are gated together with the placeholder INSERT. The renderer
+    // is read-only and runs unconditionally.
     await runHook({ HIVEMIND_CAPTURE: "false" });
-    expect(ensureTableMock).toHaveBeenCalledTimes(1);
-    expect(ensureSessionsTableMock).toHaveBeenCalledTimes(1);
-    // 3 renderer SELECTs (rules + team-tasks + mine-tasks); placeholder
-    // SELECT + INSERT are skipped because captureEnabled=false.
+    expect(ensureTableMock).not.toHaveBeenCalled();
+    expect(ensureSessionsTableMock).not.toHaveBeenCalled();
+    // 3 renderer SELECTs (rules + team-tasks + mine-tasks).
     expect(queryMock).toHaveBeenCalledTimes(3);
     expect(queryMock.mock.calls[0][0]).toMatch(/^SELECT .* FROM "hivemind_rules"/);
   });

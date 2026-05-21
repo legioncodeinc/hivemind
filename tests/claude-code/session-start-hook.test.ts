@@ -214,19 +214,22 @@ describe("session-start hook — placeholder branching", () => {
     expect(queryMock).toHaveBeenCalledTimes(4);
   });
 
-  it("skips placeholder INSERT when HIVEMIND_CAPTURE=false but still ensures tables AND renders the rules+tasks block", async () => {
+  it("HIVEMIND_CAPTURE=false: no placeholder, no DDL (ensure), but renderer still runs (codex P2 pass 4)", async () => {
     await runHook({ HIVEMIND_CAPTURE: "false" });
-    expect(ensureTableMock).toHaveBeenCalled();
-    expect(ensureSessionsTableMock).toHaveBeenCalled();
-    // Placeholder SELECT + INSERT skipped; renderer still runs
-    // because it's read-only (HIVEMIND_CAPTURE gates WRITES, not reads).
-    // 3 renderer SELECTs total (rules + team + mine).
+    // ensureTable + ensureSessionsTable are DDL writes (create/heal),
+    // so they're gated on captureEnabled along with the placeholder
+    // INSERT. The renderer runs unconditionally because it's read-only.
+    expect(ensureTableMock).not.toHaveBeenCalled();
+    expect(ensureSessionsTableMock).not.toHaveBeenCalled();
+    // 3 renderer SELECTs (rules + team + mine). The rules/tasks/events
+    // tables are lazy-created by their own CLI writes; SessionStart
+    // never DDL-touches them.
     expect(queryMock).toHaveBeenCalledTimes(3);
     expect(queryMock.mock.calls[0][0]).toMatch(/^SELECT .* FROM "hivemind_rules"/);
     expect(queryMock.mock.calls[1][0]).toMatch(/^SELECT .* FROM "hivemind_tasks"/);
     expect(queryMock.mock.calls[2][0]).toMatch(/^SELECT .* FROM "hivemind_tasks"/);
     expect(debugLogMock).toHaveBeenCalledWith(
-      "placeholder skipped (HIVEMIND_CAPTURE=false)",
+      "placeholder + schema ensure skipped (HIVEMIND_CAPTURE=false)",
     );
   });
 

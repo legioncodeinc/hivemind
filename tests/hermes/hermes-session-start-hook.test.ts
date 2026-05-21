@@ -126,11 +126,12 @@ describe("hermes session-start hook — placeholder creation", () => {
     expect(queryMock).not.toHaveBeenCalled();
   });
 
-  it("skips placeholder when HIVEMIND_CAPTURE=false but STILL renders rules+tasks (codex P2 pass 2)", async () => {
-    // HIVEMIND_CAPTURE gates WRITES only. The renderer is read-only.
+  it("HIVEMIND_CAPTURE=false: no placeholder, no DDL ensure, but renderer still runs (codex P2 pass 2 + pass 4)", async () => {
     // See cursor session-start tests for the identical contract.
+    // ensure*Table are DDL writes gated on captureEnabled; renderer
+    // is read-only and runs regardless.
     await runHook({ HIVEMIND_CAPTURE: "false" });
-    expect(queryMock).toHaveBeenCalledTimes(3); // rules + team + mine, no placeholder writes
+    expect(queryMock).toHaveBeenCalledTimes(3); // rules + team + mine
     expect(queryMock.mock.calls[0][0]).toMatch(/^SELECT .* FROM "hivemind_rules"/);
   });
 

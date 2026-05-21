@@ -154,13 +154,12 @@ async function main(): Promise<void> {
   const current = getInstalledVersion(__bundleDir, ".claude-plugin");
   const pluginVersion = current ?? "";
 
-  // HIVEMIND_CAPTURE=false gates WRITES (the placeholder INSERT and any
-  // session capture), NOT reads. The renderer is read-only — it must
-  // still run when a logged-in user disables capture for benchmarks or
-  // privacy. Codex review pass 2 surfaced the prior gating bug where
-  // cursor's renderer was silently skipped under capture=false. Now
-  // matches the claude-code shape exactly: outer block on creds?.token;
-  // captureEnabled gates ONLY createPlaceholder.
+  // HIVEMIND_CAPTURE=false means full read-only mode — no INSERTs
+  // AND no DDL. ensureTable + ensureSessionsTable create/heal tables
+  // (DDL writes), so they're gated on captureEnabled too. The
+  // renderer is read-only and runs regardless. Codex review pass 2
+  // + pass 4 together surfaced this layering: only writes (placeholder
+  // + ensure DDL) are gated; reads (renderer) always run.
   const captureEnabled = process.env.HIVEMIND_CAPTURE !== "false";
   let rulesTasksBlock = "";
   if (creds?.token) {
@@ -170,19 +169,19 @@ async function main(): Promise<void> {
         const table = config.tableName;
         const sessionsTable = config.sessionsTableName;
         const api = new DeeplakeApi(config.token, config.apiUrl, config.orgId, config.workspaceId, table);
-        await api.ensureTable();
-        await api.ensureSessionsTable(sessionsTable);
         if (captureEnabled) {
+          await api.ensureTable();
+          await api.ensureSessionsTable(sessionsTable);
           await createPlaceholder(api, table, sessionId, cwd, config.userName, config.orgName, config.workspaceId, pluginVersion);
           log("placeholder created");
         } else {
-          log("placeholder skipped (HIVEMIND_CAPTURE=false)");
+          log("placeholder + schema ensure skipped (HIVEMIND_CAPTURE=false)");
         }
-        // T6: render the rules + tasks block (same shape as claude-code).
-        // Cursor's additional_context is invisible to the user (model-only),
-        // so the full block is fine — matches the existing DEEPLAKE MEMORY
-        // injection above. Renderer absorbs its own errors and returns ""
-        // on any failure.
+        // T6: read-only renderer. Cursor's additional_context is
+        // invisible to the user (model-only), so the full block is
+        // fine. Renderer absorbs its own errors and returns "" on
+        // any failure (including missing rules/tasks/events tables —
+        // see context-renderer.ts for the per-section sub-tries).
         rulesTasksBlock = await renderContextBlock(
           (sql: string) => api.query(sql) as Promise<Array<Record<string, unknown>>>,
           {

@@ -174,6 +174,13 @@ async function main(): Promise<void> {
   // fresh data — only the placeholder INSERT is skipped when HIVEMIND_CAPTURE=false
   // (benchmark runs, explicit opt-out). Mirrors the guard already in
   // session-start-setup.ts / session-end.ts / codex hooks.
+  // HIVEMIND_CAPTURE=false means full read-only mode — no INSERTs and
+  // no DDL. ensureTable + ensureSessionsTable both create/heal tables
+  // (DDL writes), so they MUST be gated on captureEnabled. Codex
+  // review pass 4 surfaced this — the prior code ran ensure* even
+  // under capture=false. The renderer is read-only and runs
+  // regardless; the rules/tasks/task_events tables it queries are
+  // lazy-created by their own CLI writes (rules/tasks/progress).
   const captureEnabled = process.env.HIVEMIND_CAPTURE !== "false";
   let rulesTasksBlock = "";
   if (input.session_id && creds?.token) {
@@ -183,18 +190,18 @@ async function main(): Promise<void> {
         const table = config.tableName;
         const sessionsTable = config.sessionsTableName;
         const api = new DeeplakeApi(config.token, config.apiUrl, config.orgId, config.workspaceId, table);
-        await api.ensureTable();
-        await api.ensureSessionsTable(sessionsTable);
         if (captureEnabled) {
+          await api.ensureTable();
+          await api.ensureSessionsTable(sessionsTable);
           await createPlaceholder(api, table, input.session_id, input.cwd ?? "", config.userName, config.orgName, config.workspaceId, pluginVersion);
           log("placeholder created");
         } else {
-          log("placeholder skipped (HIVEMIND_CAPTURE=false)");
+          log("placeholder + schema ensure skipped (HIVEMIND_CAPTURE=false)");
         }
-        // T6: render the rules + tasks block to inject into the agent
-        // context. The renderer absorbs its own errors (missing table,
-        // network, etc.) and returns "" on any failure — SessionStart
-        // MUST NOT fail because of a bad rules/tasks read.
+        // Renderer is read-only and runs regardless of captureEnabled.
+        // It absorbs its own errors (missing table, network, etc.)
+        // and returns "" on any failure — SessionStart MUST NOT fail
+        // because of a bad rules/tasks read.
         rulesTasksBlock = await renderContextBlock(
           (sql: string) => api.query(sql) as Promise<Array<Record<string, unknown>>>,
           {

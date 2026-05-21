@@ -129,30 +129,27 @@ async function main(): Promise<void> {
   const current = getInstalledVersion(__bundleDir, ".claude-plugin");
   const pluginVersion = current ?? "";
 
-  // HIVEMIND_CAPTURE=false gates WRITES (placeholder INSERT, session
-  // capture) only. The renderer is read-only and must still run when
-  // a logged-in user disables capture for benchmarks/privacy. Codex
-  // review pass 2 surfaced the prior bug where hermes silently
-  // skipped the renderer under capture=false. Now mirrors claude-code:
-  // outer block on creds?.token; captureEnabled gates ONLY
-  // createPlaceholder.
+  // HIVEMIND_CAPTURE=false means full read-only mode — no INSERTs
+  // AND no DDL. ensureTable + ensureSessionsTable create/heal tables
+  // (DDL writes), so they're gated on captureEnabled too. Renderer
+  // is read-only and runs regardless. See cursor session-start for
+  // the same layering rationale.
   let rulesTasksBlock = "";
   if (creds?.token) {
     try {
       const config = loadConfig();
       if (config) {
         const api = new DeeplakeApi(config.token, config.apiUrl, config.orgId, config.workspaceId, config.tableName);
-        await api.ensureTable();
-        await api.ensureSessionsTable(config.sessionsTableName);
         if (captureEnabled) {
+          await api.ensureTable();
+          await api.ensureSessionsTable(config.sessionsTableName);
           await createPlaceholder(api, config.tableName, sessionId, cwd, config.userName, config.orgName, config.workspaceId, pluginVersion);
           log("placeholder created");
         } else {
-          log("placeholder skipped (HIVEMIND_CAPTURE=false)");
+          log("placeholder + schema ensure skipped (HIVEMIND_CAPTURE=false)");
         }
-        // T6: render the rules + tasks block (same as claude-code / cursor).
-        // Hermes's context field is invisible to the user (model-only),
-        // so the full block is fine. Renderer absorbs its own errors.
+        // T6: read-only renderer. Hermes's context field is invisible
+        // to the user (model-only). Renderer absorbs its own errors.
         rulesTasksBlock = await renderContextBlock(
           (sql: string) => api.query(sql) as Promise<Array<Record<string, unknown>>>,
           {
