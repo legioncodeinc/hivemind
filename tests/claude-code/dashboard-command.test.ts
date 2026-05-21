@@ -59,6 +59,21 @@ describe("parseDashboardArgs", () => {
     expect(parseDashboardArgs(["--out", "--no-open"]).error).toMatch(/--out requires a value/);
     expect(parseDashboardArgs(["--out", "-foo"]).error).toMatch(/--out requires a value/);
   });
+  it("parses --serve (default port undefined → server picks 8123)", () => {
+    const r = parseDashboardArgs(["--serve"]);
+    expect(r.args?.serve).toBe(true);
+    expect(r.args?.port).toBeUndefined();
+  });
+  it("parses --port N AND --port=N forms", () => {
+    expect(parseDashboardArgs(["--serve", "--port", "9000"]).args?.port).toBe(9000);
+    expect(parseDashboardArgs(["--serve", "--port=9000"]).args?.port).toBe(9000);
+  });
+  it("rejects non-integer / out-of-range ports", () => {
+    expect(parseDashboardArgs(["--port", "abc"]).error).toMatch(/--port must be an integer/);
+    expect(parseDashboardArgs(["--port", "-1"]).error).toMatch(/--port requires a value/); // - prefix triggers earlier guard
+    expect(parseDashboardArgs(["--port=70000"]).error).toMatch(/--port must be an integer/);
+    expect(parseDashboardArgs(["--port="]).error).toMatch(/--port requires a value/);
+  });
 });
 
 describe("defaultDashboardOutPath", () => {
@@ -169,5 +184,114 @@ describe("runDashboardCommand", () => {
     expect(stderr).toContain("failed to write");
     // No node-style stack trace in the rendered error.
     expect(stderr).not.toContain("at Object.");
+  });
+
+  describe("--serve mode", () => {
+    function makeFakeServer() {
+      let resolveStopped!: () => void;
+      const stopped = new Promise<void>(r => { resolveStopped = r; });
+      const close = vi.fn(async () => { resolveStopped(); });
+      const server = vi.fn(async (_opts: any) => ({
+        host: "127.0.0.1",
+        port: 8123,
+        stopped,
+        close,
+      }));
+      return { server, close, resolveStopped };
+    }
+
+    function makeSignalSink() {
+      let captured: { signal: NodeJS.Signals; handler: () => void } | null = null;
+      const off = vi.fn();
+      const onSignal = vi.fn((signal: NodeJS.Signals, handler: () => void) => {
+        if (signal === "SIGINT") captured = { signal, handler };
+        return off;
+      });
+      return { onSignal, off, fire: () => captured?.handler() };
+    }
+
+    it("starts the server, prints the URL, opens it (URL not path), and exits 0 on SIGINT", async () => {
+      const { server, close } = makeFakeServer();
+      const { onSignal, off, fire } = makeSignalSink();
+      const opener = vi.fn().mockReturnValue({ attempted: true, command: "xdg-open" });
+
+      const runP = runDashboardCommand(
+        ["--cwd", "/tmp", "--serve"],
+        { out, err, opener, server: server as any, onSignal },
+      );
+      // give the runner a microtask to bind handlers
+      await new Promise(r => setImmediate(r));
+      fire(); // simulate Ctrl+C
+      const code = await runP;
+
+      expect(code).toBe(0);
+      expect(server).toHaveBeenCalledWith({ html: expect.any(String), port: undefined });
+      expect(stdout).toContain("Serving dashboard at http://127.0.0.1:8123/");
+      expect(stdout).toContain("Opening via xdg-open");
+      expect(opener).toHaveBeenCalledWith("http://127.0.0.1:8123/");
+      expect(close).toHaveBeenCalled();
+      // both SIGINT and SIGTERM handlers were registered and unregistered
+      expect(onSignal).toHaveBeenCalledTimes(2);
+      expect(off).toHaveBeenCalledTimes(2);
+    });
+
+    it("--serve --no-open does NOT call the opener", async () => {
+      const { server } = makeFakeServer();
+      const { onSignal, fire } = makeSignalSink();
+      const opener = vi.fn();
+
+      const runP = runDashboardCommand(
+        ["--cwd", "/tmp", "--serve", "--no-open"],
+        { out, err, opener, server: server as any, onSignal },
+      );
+      await new Promise(r => setImmediate(r));
+      fire();
+      await runP;
+
+      expect(opener).not.toHaveBeenCalled();
+      expect(stdout).toContain("Serving dashboard at http://127.0.0.1:8123/");
+    });
+
+    it("forwards --port to the server module", async () => {
+      const { server } = makeFakeServer();
+      const { onSignal, fire } = makeSignalSink();
+
+      const runP = runDashboardCommand(
+        ["--cwd", "/tmp", "--serve", "--no-open", "--port", "9090"],
+        { out, err, opener: vi.fn(), server: server as any, onSignal },
+      );
+      await new Promise(r => setImmediate(r));
+      fire();
+      await runP;
+
+      expect(server).toHaveBeenCalledWith({ html: expect.any(String), port: 9090 });
+    });
+
+    it("exits cleanly when the server stops on its own (no SIGINT)", async () => {
+      const { server, resolveStopped } = makeFakeServer();
+      const { onSignal } = makeSignalSink();
+
+      const runP = runDashboardCommand(
+        ["--cwd", "/tmp", "--serve", "--no-open"],
+        { out, err, opener: vi.fn(), server: server as any, onSignal },
+      );
+      await new Promise(r => setImmediate(r));
+      resolveStopped(); // emulate server.close() fired by something else
+      const code = await runP;
+      expect(code).toBe(0);
+    });
+
+    it("returns 1 on server-start failure with a one-line stderr", async () => {
+      const server = vi.fn(async () => { throw new Error("EACCES bind"); });
+      const { onSignal } = makeSignalSink();
+      const code = await runDashboardCommand(
+        ["--cwd", "/tmp", "--serve"],
+        { out, err, opener: vi.fn(), server: server as any, onSignal },
+      );
+      expect(code).toBe(1);
+      expect(stderr).toContain("failed to start server");
+      expect(stderr).toContain("EACCES");
+      expect(stderr).not.toContain("at Object.");
+    });
   });
 });

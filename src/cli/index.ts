@@ -64,12 +64,16 @@ Usage:
       every detected agent bundle. Single command for all agents.
 
   hivemind dashboard [--cwd <path>] [--out <path>] [--no-open]
-      Build a self-contained HTML dashboard for this repo and open it
-      in the default browser. Combines KPI cards (tokens saved, skills
-      created, memory recalls, sessions) with the codebase-graph
-      visualization. Writes to ~/.hivemind/dashboards/<repo-key>/
-      index.html by default; --no-open skips the browser launch
-      (useful in headless / CI scenarios).
+                     [--serve] [--port <n>]
+      Build a self-contained HTML dashboard for this repo. Combines
+      KPI cards (tokens saved, skills created, memory recalls,
+      sessions) with the codebase-graph visualization. Writes to
+      ~/.hivemind/dashboards/<repo-key>/index.html by default.
+      --no-open skips the browser launch (headless / CI scenarios).
+      --serve starts a loopback HTTP server at http://127.0.0.1:<port>
+      (default 8123) so the dashboard is reachable via a URL — useful
+      over SSH; VS Code / Cursor Remote-SSH auto-forwards the port
+      and opens it in the integrated Simple Browser tab on click.
 
 Semantic search (embeddings):
   hivemind embeddings install                Download @huggingface/transformers
