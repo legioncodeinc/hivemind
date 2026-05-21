@@ -103,17 +103,26 @@ describe("insertRule", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("rejects rule text with embedded newlines (codex legacy audit P1.1 — prompt-injection defense in depth)", async () => {
-    // Newlines at write time would let a team member smuggle a fake
-    // SessionStart section into every agent's context. Renderer also
-    // sanitizes, but rejecting up-front gives a clear error and keeps
-    // the persisted data clean.
+  it("rejects rule text with embedded newlines (codex legacy audit P1.1 + pass 4 — prompt-injection defense in depth)", async () => {
+    // Reject every Unicode line terminator that a tokenizer or
+    // renderer might treat as a section break. Codex pass 4 caught
+    // the prior CR/LF-only check that let U+2028 / U+2029 / U+0085
+    // through.
     const { calls, query } = mockQuery([() => []]);
     await expect(
       insertRule(query, TBL, { text: "first line\nfake section", assigned_by: "a@b" }),
     ).rejects.toThrow(/must not contain newlines/);
     await expect(
       insertRule(query, TBL, { text: "first\rsecond", assigned_by: "a@b" }),
+    ).rejects.toThrow(/must not contain newlines/);
+    await expect(
+      insertRule(query, TBL, { text: "first\u2028second", assigned_by: "a@b" }),
+    ).rejects.toThrow(/must not contain newlines/);
+    await expect(
+      insertRule(query, TBL, { text: "first\u2029second", assigned_by: "a@b" }),
+    ).rejects.toThrow(/must not contain newlines/);
+    await expect(
+      insertRule(query, TBL, { text: "first\u0085second", assigned_by: "a@b" }),
     ).rejects.toThrow(/must not contain newlines/);
     expect(calls).toHaveLength(0);
   });

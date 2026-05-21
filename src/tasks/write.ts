@@ -87,7 +87,7 @@ function assertValidText(text: string): void {
   // prompt-injection through the SessionStart inject block.
   // Renderer also sanitizes at render time for already-persisted
   // rows from a vulnerable older client.
-  if (/[\r\n]/.test(text)) {
+  if (/[\r\n\u2028\u2029\u0085]/.test(text)) {
     throw new Error("Task text must not contain newlines (use one task per line)");
   }
 }

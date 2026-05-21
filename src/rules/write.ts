@@ -67,7 +67,11 @@ function assertValidText(text: string): void {
   if (text.length > MAX_TEXT_LENGTH) {
     throw new Error(`Rule text exceeds ${MAX_TEXT_LENGTH} chars (got ${text.length})`);
   }
-  if (/[\r\n]/.test(text)) {
+  // Reject CR, LF, CRLF, U+2028, U+2029, U+0085 — anything a
+  // tokenizer or renderer might treat as a section break. Codex
+  // pass 4 caught the prior CR/LF-only check that let Unicode line
+  // separators through.
+  if (/[\r\n\u2028\u2029\u0085]/.test(text)) {
     throw new Error("Rule text must not contain newlines (use one rule per line)");
   }
 }

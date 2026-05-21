@@ -306,20 +306,39 @@ function formatTaskLine(
  * flagged this as P1.
  *
  * Strategy:
- *   - replace any newline or carriage return with a literal "\\n" so
+ *   - replace any Unicode line terminator with a literal "\\n" so
  *     the model sees the intent ("there was a newline here") without
  *     the section break;
- *   - leave everything else (Unicode, em-dashes, special chars) alone
+ *   - leave everything else (em-dashes, emoji, other Unicode) alone
  *     so legitimate rules stay readable.
  *
- * Defense-in-depth: src/rules/write.ts and src/tasks/write.ts also
- * reject newlines at write time so users see an error before the row
- * lands. This render-side guard handles the in-flight rows already
- * persisted by a vulnerable older client.
+ * Codex legacy audit pass 4 P1 follow-up: the prior regex only
+ * matched CR / LF and silently passed Unicode line separators
+ * (U+2028 LINE SEPARATOR, U+2029 PARAGRAPH SEPARATOR, U+0085 NEXT
+ * LINE). These characters are treated as line breaks by many
+ * tokenizers and render paths, so a malicious row using them could
+ * still inject a forged section. LINE_TERMINATOR_RE matches the
+ * full Unicode line-terminator set and is the single source of
+ * truth shared with the write-side validators.
+ *
+ * Defense-in-depth: src/rules/write.ts, src/tasks/write.ts, and
+ * src/tasks/kpi-validator.ts reject these characters at write time
+ * so users see an error before the row lands. This render-side
+ * guard handles in-flight rows already persisted by a vulnerable
+ * older client.
  */
 function sanitizeForInject(text: string): string {
-  return text.replace(/\r\n?|\n/g, "\\n");
+  return text.replace(LINE_TERMINATOR_RE, "\\n");
 }
+
+// Source of truth shared by sanitizeForInject and the write-time
+// validators. Matches every Unicode character a tokenizer or
+// renderer might treat as a line break: CR, LF, CRLF, U+2028
+// (LINE SEPARATOR), U+2029 (PARAGRAPH SEPARATOR), and U+0085 (NEL).
+// Codex pass 4 caught the original CR/LF-only regex letting
+// U+2028 through.
+export const LINE_TERMINATOR_RE = /\r\n?|[\n\u2028\u2029\u0085]/g;
+export const LINE_TERMINATOR_TEST_RE = /[\r\n\u2028\u2029\u0085]/;
 
 function formatKpiSummary(
   kpis: Kpi[],

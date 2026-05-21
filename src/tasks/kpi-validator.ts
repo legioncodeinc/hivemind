@@ -145,16 +145,18 @@ function str(v: unknown): string | null {
 }
 
 /**
- * Like `str` but additionally rejects any embedded CR/LF — KPI
- * metadata gets inlined into the SessionStart prompt block, and a
- * newline-bearing value is a prompt-injection vector. See
- * src/hooks/shared/context-renderer.ts `sanitizeForInject` for the
- * render-side counterpart that handles already-persisted rows.
+ * Like `str` but additionally rejects any embedded line terminator
+ * (CR, LF, CRLF, U+2028, U+2029, U+0085). KPI metadata gets inlined
+ * into the SessionStart prompt block, and a line-bearing value is a
+ * prompt-injection vector. See src/hooks/shared/context-renderer.ts
+ * for the render-side counterpart that handles already-persisted
+ * rows from older clients. Codex pass 4 surfaced that the original
+ * CR/LF-only check let Unicode line separators through.
  */
 function safeStr(v: unknown): string | null {
   const s = str(v);
   if (s === null) return null;
-  if (/[\r\n]/.test(s)) return null;
+  if (/[\r\n\u2028\u2029\u0085]/.test(s)) return null;
   return s;
 }
 
