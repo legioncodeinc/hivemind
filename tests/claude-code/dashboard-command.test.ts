@@ -52,6 +52,13 @@ describe("parseDashboardArgs", () => {
     expect(parseDashboardArgs(["--cwd"]).error).toMatch(/requires a value/);
     expect(parseDashboardArgs(["--out"]).error).toMatch(/requires a value/);
   });
+  it("rejects a flag token used as the value for --cwd / --out", () => {
+    // codex review on commit 4: `--out --no-open` previously wrote a
+    // file called `./--no-open`.
+    expect(parseDashboardArgs(["--cwd", "--no-open"]).error).toMatch(/--cwd requires a value/);
+    expect(parseDashboardArgs(["--out", "--no-open"]).error).toMatch(/--out requires a value/);
+    expect(parseDashboardArgs(["--out", "-foo"]).error).toMatch(/--out requires a value/);
+  });
 });
 
 describe("defaultDashboardOutPath", () => {

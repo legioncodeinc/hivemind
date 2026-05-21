@@ -82,14 +82,23 @@ export function parseDashboardArgs(args: string[]): ParseResult {
     if (a === "--no-open") { open = false; continue; }
     if (a === "--cwd") {
       const v = args[++i];
-      if (!v) return { error: "--cwd requires a value" };
+      // Reject flag tokens used as a value — `--cwd --no-open` should
+      // be a usage error, not "set cwd to the literal string '--no-open'
+      // and silently do the wrong thing". Codex review on commit 4
+      // surfaced this: `hivemind dashboard --out --no-open` was
+      // happily writing a file named `./--no-open`.
+      if (v === undefined || v.startsWith("-")) {
+        return { error: "--cwd requires a value" };
+      }
       cwd = v;
       continue;
     }
     if (a.startsWith("--cwd=")) { cwd = a.slice("--cwd=".length); continue; }
     if (a === "--out") {
       const v = args[++i];
-      if (!v) return { error: "--out requires a value" };
+      if (v === undefined || v.startsWith("-")) {
+        return { error: "--out requires a value" };
+      }
       outPath = v;
       continue;
     }

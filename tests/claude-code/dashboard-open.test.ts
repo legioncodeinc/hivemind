@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 
 import {
+  findBinaryOnPath,
   openCommandFor,
   openInBrowser,
   resolveOpenPlatform,
@@ -55,6 +56,7 @@ describe("openInBrowser", () => {
     const result = openInBrowser("/tmp/dash.html", {
       platformOverride: "linux",
       spawner: spawner as any,
+      binaryExists: () => true,
     });
     expect(result.attempted).toBe(true);
     expect(result.command).toBe("xdg-open");
@@ -66,20 +68,49 @@ describe("openInBrowser", () => {
     expect(child.unref).toHaveBeenCalled();
   });
 
-  it("returns attempted=false when spawner throws (helper not installed)", () => {
+  it("returns attempted=false WITHOUT spawning when the helper isn't on PATH", () => {
+    // codex review on commit 4: spawn() doesn't throw synchronously
+    // for missing binaries, so the CLI was lying about opening.
+    const spawner = vi.fn();
+    const result = openInBrowser("/tmp/dash.html", {
+      platformOverride: "linux",
+      spawner: spawner as any,
+      binaryExists: () => false,
+    });
+    expect(result.attempted).toBe(false);
+    expect(result.command).toBeUndefined();
+    expect(spawner).not.toHaveBeenCalled();
+  });
+
+  it("passes the platform's helper name to binaryExists", () => {
+    const seen: string[] = [];
+    const binaryExists = (cmd: string) => { seen.push(cmd); return true; };
+    const child = fakeChild();
+    openInBrowser("/x", { platformOverride: "darwin", binaryExists, spawner: vi.fn().mockReturnValue(child) as any });
+    openInBrowser("/x", { platformOverride: "linux",  binaryExists, spawner: vi.fn().mockReturnValue(child) as any });
+    openInBrowser("/x", { platformOverride: "win32",  binaryExists, spawner: vi.fn().mockReturnValue(child) as any });
+    expect(seen).toEqual(["open", "xdg-open", "cmd"]);
+  });
+
+  it("returns attempted=false when spawner throws (defense-in-depth)", () => {
     const spawner = vi.fn(() => { throw new Error("ENOENT xdg-open"); });
     const result = openInBrowser("/tmp/dash.html", {
       platformOverride: "linux",
       spawner: spawner as any,
+      binaryExists: () => true,
     });
     expect(result.attempted).toBe(false);
     expect(result.command).toBeUndefined();
   });
 
-  it("swallows post-spawn 'error' events so a missing helper doesn't crash the CLI", () => {
+  it("swallows post-spawn 'error' events so a flaky helper doesn't crash the CLI", () => {
     const child = fakeChild();
     const spawner = vi.fn().mockReturnValue(child);
-    openInBrowser("/tmp/dash.html", { platformOverride: "darwin", spawner: spawner as any });
+    openInBrowser("/tmp/dash.html", {
+      platformOverride: "darwin",
+      spawner: spawner as any,
+      binaryExists: () => true,
+    });
     // Fire the error AFTER the call returned — the handler attached
     // inside openInBrowser should absorb it without re-throwing.
     expect(() => child.emit("error", new Error("helper crashed"))).not.toThrow();
@@ -91,6 +122,20 @@ describe("openInBrowser", () => {
     expect(() => openInBrowser("/tmp/dash.html", {
       platformOverride: "linux",
       spawner: spawner as any,
+      binaryExists: () => true,
     })).not.toThrow();
+  });
+});
+
+describe("findBinaryOnPath", () => {
+  it("locates a binary that is in PATH (uses /usr/bin/env or /bin/sh as probe)", () => {
+    // Use a binary essentially guaranteed to exist on POSIX hosts and
+    // CI. If neither is present (extremely minimal container) the test
+    // is environment-dependent; in that case skip.
+    const candidate = findBinaryOnPath("sh") ?? findBinaryOnPath("env");
+    expect(candidate).not.toBeNull();
+  });
+  it("returns null for a clearly non-existent binary name", () => {
+    expect(findBinaryOnPath("definitely-not-a-real-helper-xxx-12345")).toBeNull();
   });
 });

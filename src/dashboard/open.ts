@@ -13,7 +13,9 @@
  */
 
 import { spawn } from "node:child_process";
+import { statSync } from "node:fs";
 import { platform as nodePlatform } from "node:os";
+import { delimiter, join } from "node:path";
 
 export type OpenPlatform = "linux" | "darwin" | "win32";
 
@@ -54,6 +56,43 @@ export interface OpenResult {
   command?: string;
 }
 
+/**
+ * Walk PATH (PATHEXT on Windows) to confirm a helper binary is
+ * callable BEFORE spawning. `child_process.spawn` does NOT throw
+ * synchronously when the binary is missing — it returns a child
+ * process and emits the `error` event later, asynchronously. By
+ * then the CLI has already printed "Opening via xdg-open" and
+ * exited, so the user sees a lie. Codex review on commit 4 caught
+ * this: `PATH=/usr/bin node bundle/cli.js dashboard` on a host
+ * without xdg-open would still claim it opened the browser.
+ *
+ * Pure: no subprocess. POSIX semantics on linux/darwin (PATH split
+ * on `:`, no extension), Windows semantics on win32 (PATH split on
+ * `;`, PATHEXT-driven extension search, case-insensitive matters
+ * less because the filesystem handles it).
+ */
+export function findBinaryOnPath(name: string): string | null {
+  const PATH = process.env.PATH ?? "";
+  if (!PATH) return null;
+  const isWin = nodePlatform() === "win32";
+  const exts = isWin
+    ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").map(e => e.trim()).filter(Boolean)
+    : [""];
+  for (const dir of PATH.split(delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const candidate = join(dir, name + ext);
+      try {
+        const st = statSync(candidate);
+        if (st.isFile()) return candidate;
+      } catch {
+        // not there; keep looking
+      }
+    }
+  }
+  return null;
+}
+
 export interface OpenInBrowserOptions {
   /** Override platform detection. Tests only — production callers
    *  let `resolveOpenPlatform()` decide. */
@@ -61,6 +100,10 @@ export interface OpenInBrowserOptions {
   /** Injected spawner. Tests substitute this to avoid touching the
    *  real child_process. Default: node:child_process spawn. */
   spawner?: typeof spawn;
+  /** Predicate for "is this helper installed?". Tests stub it to
+   *  emulate environments with/without xdg-open. Defaults to
+   *  findBinaryOnPath. */
+  binaryExists?: (cmd: string) => boolean;
 }
 
 /**
@@ -83,12 +126,19 @@ export function openInBrowser(
   if (!p) return { attempted: false };
 
   const { command, args } = openCommandFor(p, path);
+  const exists = opts.binaryExists ?? ((cmd: string) => findBinaryOnPath(cmd) !== null);
+  // Pre-check PATH because spawn() never throws synchronously for a
+  // missing binary — it'd lie to the caller (and the user) about
+  // having launched the helper.
+  if (!exists(command)) return { attempted: false };
+
   const useSpawn = opts.spawner ?? spawn;
   try {
     const child = useSpawn(command, args, { stdio: "ignore", detached: true });
-    // The child errors AFTER spawn() returns (e.g. helper not on PATH).
-    // We don't want that to crash the parent; swallowing here is the
-    // contract: "best-effort, user already has the path on stdout".
+    // Defense-in-depth: even with PATH pre-check, the helper might
+    // crash on launch (permissions, broken alias). Swallow that —
+    // the CLI already printed the file path to stdout, so the user
+    // can open it manually.
     child.on("error", () => { /* best-effort */ });
     if (typeof (child as { unref?: () => void }).unref === "function") {
       child.unref();
