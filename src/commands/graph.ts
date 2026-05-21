@@ -18,6 +18,11 @@ import { join, relative, sep } from "node:path";
 
 import { getVersion } from "../cli/version.js";
 import { fileContentHash, readCache, writeCache } from "../graph/cache.js";
+import {
+  diffSnapshots,
+  loadSnapshotByCommit,
+  printDiffHuman,
+} from "../graph/diff.js";
 import { extractTypeScript } from "../graph/extract/typescript.js";
 import { buildSnapshot, repoDir, writeSnapshot } from "../graph/snapshot.js";
 import type {
@@ -33,13 +38,20 @@ Usage:
   hivemind graph build [--cwd <path>]
       Walk the project for TypeScript source files, extract symbols + edges,
       and write a snapshot to ~/.hivemind/graphs/<repo-key>/snapshots/<commit-sha>.json.
-      Also updates ~/.hivemind/graphs/<repo-key>/latest-commit.txt.
+      Also updates ~/.hivemind/graphs/<repo-key>/latest-commit.txt and the
+      per-repo .last-build.json (consumed by the Stop-hook auto-build).
+
+  hivemind graph diff <sha1> <sha2> [--cwd <path>] [--json] [--limit N]
+      Diff two snapshots by their git commit SHA. Prints added/removed
+      counts for nodes and edges, plus up to N=10 (default) examples of each.
+      --json: emit machine-readable JSON instead of the human format.
+      --limit N: cap the per-category examples (human format only).
 
   hivemind graph --help
       Show this message.
 
-  Future subcommands (not in Phase 1): daemon, diff, history, search, latest,
-  push, pull, init, uninstall, prune.
+  Future subcommands (Phase 1.5+): daemon, history, search, latest, push,
+  pull, init, uninstall, prune.
 `;
 
 /**
@@ -67,9 +79,91 @@ export function runGraphCommand(args: string[]): void {
     runBuildCommand(args.slice(1));
     return;
   }
+  if (sub === "diff") {
+    runDiffCommand(args.slice(1));
+    return;
+  }
   console.error(`hivemind graph: unknown subcommand '${sub}'`);
   console.error(USAGE);
   process.exit(2);
+}
+
+interface DiffOptions {
+  cwd: string;
+  sha1: string;
+  sha2: string;
+  json: boolean;
+  limit: number;
+}
+
+function parseDiffArgs(args: string[]): DiffOptions {
+  let cwd = process.cwd();
+  let json = false;
+  let limit = 10;
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--cwd" && i + 1 < args.length) {
+      cwd = args[i + 1]!;
+      i += 1;
+    } else if (a === "--json") {
+      json = true;
+    } else if (a === "--limit" && i + 1 < args.length) {
+      const n = parseInt(args[i + 1]!, 10);
+      if (!Number.isFinite(n) || n < 0) {
+        console.error("hivemind graph diff: --limit must be a non-negative integer");
+        process.exit(2);
+      }
+      limit = n;
+      i += 1;
+    } else if (a === "--help" || a === "-h") {
+      console.log(USAGE);
+      process.exit(0);
+    } else if (a !== undefined && !a.startsWith("--")) {
+      positional.push(a);
+    } else {
+      console.error(`hivemind graph diff: unknown argument '${a}'`);
+      console.error(USAGE);
+      process.exit(2);
+    }
+  }
+  if (positional.length !== 2) {
+    console.error("hivemind graph diff: expected exactly two commit SHAs");
+    console.error(USAGE);
+    process.exit(2);
+  }
+  return { cwd, sha1: positional[0]!, sha2: positional[1]!, json, limit };
+}
+
+function runDiffCommand(args: string[]): void {
+  const opts = parseDiffArgs(args);
+  const { key: repoKey } = deriveProjectKey(opts.cwd);
+  const baseDir = repoDir(repoKey);
+
+  const from = loadSnapshotByCommit(baseDir, opts.sha1);
+  if (from === null) {
+    console.error(`hivemind graph diff: snapshot not found for ${opts.sha1}`);
+    console.error(`  expected: ${baseDir}/snapshots/${opts.sha1}.json`);
+    console.error("  hint: run 'hivemind graph build' on the relevant commit, or check the commit sha");
+    process.exit(1);
+  }
+  const to = loadSnapshotByCommit(baseDir, opts.sha2);
+  if (to === null) {
+    console.error(`hivemind graph diff: snapshot not found for ${opts.sha2}`);
+    console.error(`  expected: ${baseDir}/snapshots/${opts.sha2}.json`);
+    process.exit(1);
+  }
+
+  const diff = diffSnapshots(from, to);
+
+  if (opts.json) {
+    console.log(JSON.stringify(diff, null, 2));
+    return;
+  }
+
+  console.log(`Diff: ${opts.sha1} → ${opts.sha2}`);
+  console.log("");
+  printDiffHuman(diff, opts.limit);
 }
 
 interface BuildOptions {
