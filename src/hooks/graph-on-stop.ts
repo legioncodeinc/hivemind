@@ -179,7 +179,7 @@ export function main(): void {
   if (!decision.fire) return;
 
   try {
-    runBuildCommand([]);
+    runBuildCommand(["--trigger", "stop-hook"]);
   } catch (err) {
     logToFile(ctx.cwd, `build threw: ${err instanceof Error ? err.message : String(err)}`);
   }

@@ -20,6 +20,7 @@ import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { appendHistoryEntry, entryFromSnapshot, type SnapshotTrigger } from "./history.js";
 import { writeLastBuild } from "./last-build.js";
 import type {
   FileExtraction,
@@ -173,6 +174,7 @@ export interface WriteSnapshotResult {
 export function writeSnapshot(
   snapshot: GraphSnapshot,
   baseDir: string,
+  trigger: SnapshotTrigger = "unknown",
 ): WriteSnapshotResult {
   const sha256 = computeSnapshotSha256(snapshot);
   const commitSha = snapshot.graph.commit_sha;
@@ -200,6 +202,11 @@ export function writeSnapshot(
     commit_sha: commitSha,
     snapshot_sha256: sha256,
   });
+
+  // history.jsonl — append a one-line audit record. Best-effort; failure
+  // doesn't roll back the snapshot. Trigger comes from the caller — if
+  // they don't pass one, we record "unknown" rather than guess.
+  appendHistoryEntry(baseDir, entryFromSnapshot(snapshot, sha256, trigger));
 
   return { snapshotPath, latestCommitPath, snapshotSha256: sha256 };
 }

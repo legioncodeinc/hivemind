@@ -24,6 +24,7 @@ import {
   printDiffHuman,
 } from "../graph/diff.js";
 import { extractTypeScript } from "../graph/extract/typescript.js";
+import { countHistoryEntries, readHistoryTail, type SnapshotTrigger } from "../graph/history.js";
 import { buildSnapshot, repoDir, writeSnapshot } from "../graph/snapshot.js";
 import type {
   FileExtraction,
@@ -47,11 +48,17 @@ Usage:
       --json: emit machine-readable JSON instead of the human format.
       --limit N: cap the per-category examples (human format only).
 
+  hivemind graph history [--cwd <path>] [-n N] [--json]
+      Print the last N (default 20) entries from the per-repo history.jsonl,
+      newest last. Each entry shows ts, commit_sha (short), snapshot_sha256
+      (short), node/edge counts, and the trigger that fired the build.
+      --json: emit raw JSONL (one parsed entry per line, full fields).
+
   hivemind graph --help
       Show this message.
 
-  Future subcommands (Phase 1.5+): daemon, history, search, latest, push,
-  pull, init, uninstall, prune.
+  Future subcommands (Phase 1.5+): daemon, search, latest, push, pull,
+  init, uninstall, prune.
 `;
 
 /**
@@ -83,9 +90,77 @@ export function runGraphCommand(args: string[]): void {
     runDiffCommand(args.slice(1));
     return;
   }
+  if (sub === "history") {
+    runHistoryCommand(args.slice(1));
+    return;
+  }
   console.error(`hivemind graph: unknown subcommand '${sub}'`);
   console.error(USAGE);
   process.exit(2);
+}
+
+interface HistoryOptions {
+  cwd: string;
+  n: number;
+  json: boolean;
+}
+
+function parseHistoryArgs(args: string[]): HistoryOptions {
+  let cwd = process.cwd();
+  let n = 20;
+  let json = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--cwd" && i + 1 < args.length) {
+      cwd = args[i + 1]!;
+      i += 1;
+    } else if (a === "-n" && i + 1 < args.length) {
+      const parsed = parseInt(args[i + 1]!, 10);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        console.error("hivemind graph history: -n must be a non-negative integer");
+        process.exit(2);
+      }
+      n = parsed;
+      i += 1;
+    } else if (a === "--json") {
+      json = true;
+    } else if (a === "--help" || a === "-h") {
+      console.log(USAGE);
+      process.exit(0);
+    } else {
+      console.error(`hivemind graph history: unknown argument '${a}'`);
+      console.error(USAGE);
+      process.exit(2);
+    }
+  }
+  return { cwd, n, json };
+}
+
+function runHistoryCommand(args: string[]): void {
+  const opts = parseHistoryArgs(args);
+  const { key: repoKey } = deriveProjectKey(opts.cwd);
+  const baseDir = repoDir(repoKey);
+  const total = countHistoryEntries(baseDir);
+  const entries = readHistoryTail(baseDir, opts.n);
+
+  if (opts.json) {
+    for (const e of entries) console.log(JSON.stringify(e));
+    return;
+  }
+
+  if (total === 0) {
+    console.log("No history yet. Run `hivemind graph build` to record one.");
+    return;
+  }
+  console.log(`history.jsonl: ${total} total entries; showing last ${entries.length}`);
+  console.log("");
+  for (const e of entries) {
+    const commit = e.commit_sha === null ? "(no-git)" : e.commit_sha.slice(0, 7);
+    const snap = e.snapshot_sha256.slice(0, 7);
+    console.log(
+      `  ${e.ts}  commit=${commit}  snap=${snap}  nodes=${e.node_count}  edges=${e.edge_count}  trigger=${e.trigger}`,
+    );
+  }
 }
 
 interface DiffOptions {
@@ -168,14 +243,25 @@ function runDiffCommand(args: string[]): void {
 
 interface BuildOptions {
   cwd: string;
+  trigger: SnapshotTrigger;
 }
 
 function parseBuildArgs(args: string[]): BuildOptions {
   let cwd = process.cwd();
+  let trigger: SnapshotTrigger = "manual";
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--cwd" && i + 1 < args.length) {
       cwd = args[i + 1]!;
+      i += 1;
+    } else if (a === "--trigger" && i + 1 < args.length) {
+      const v = args[i + 1]!;
+      if (v === "manual" || v === "stop-hook" || v === "post-commit" || v === "unknown") {
+        trigger = v;
+      } else {
+        console.error(`hivemind graph build: --trigger must be one of manual|stop-hook|post-commit|unknown (got '${v}')`);
+        process.exit(2);
+      }
       i += 1;
     } else if (a === "--help" || a === "-h") {
       console.log(USAGE);
@@ -186,7 +272,7 @@ function parseBuildArgs(args: string[]): BuildOptions {
       process.exit(2);
     }
   }
-  return { cwd };
+  return { cwd, trigger };
 }
 
 export function runBuildCommand(args: string[]): void {
@@ -258,7 +344,7 @@ export function runBuildCommand(args: string[]): void {
   };
 
   const snapshot = buildSnapshot(extractions, metadata, observation);
-  const result = writeSnapshot(snapshot, baseDir);
+  const result = writeSnapshot(snapshot, baseDir, opts.trigger);
 
   console.log("");
   console.log(`Snapshot:      ${result.snapshotPath}`);

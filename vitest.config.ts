@@ -372,6 +372,7 @@ export default defineConfig({
         "src/graph/snapshot.ts":             { statements: 90, branches: 85, functions: 90, lines: 90 },
         "src/graph/cache.ts":                { statements: 90, branches: 85, functions: 90, lines: 90 },
         "src/graph/diff.ts":                 { statements: 90, branches: 80, functions: 90, lines: 90 },
+        "src/graph/history.ts":              { statements: 90, branches: 75, functions: 90, lines: 90 },
         "src/graph/last-build.ts":           { statements: 90, branches: 80, functions: 90, lines: 90 },
         "src/hooks/graph-on-stop.ts":        { statements: 80, branches: 70, functions: 70, lines: 80 },
         "src/commands/graph.ts":             { statements: 80, branches: 60, functions: 90, lines: 80 },
