@@ -49,10 +49,11 @@ const BYTES_PER_TOKEN = 4;
 const SAVINGS_MULTIPLIER = 1.7;
 
 /** Tokens-saved threshold above which the savings recap replaces the
- *  welcome banner. Below this, the displayed savings number reads as
- *  rounding-error and "your team saved a few hundred tokens" feels worse
- *  than just a friendly welcome. */
-const MEANINGFUL_SAVINGS_TOKENS = 1_000_000;
+ *  welcome banner. Lowered from 1M to 1k so early-adopter teams see the
+ *  savings recap from their first day of usage instead of staring at the
+ *  generic welcome until their cumulative org bytes cross the 7-figure
+ *  mark — for a team with a handful of recalls/day, that took weeks. */
+const MEANINGFUL_SAVINGS_TOKENS = 1_000;
 
 /** Skip the "you contributed ~X" segment when the user's own
  *  contribution is below this many bytes — keeps the banner from reading

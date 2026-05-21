@@ -66,12 +66,13 @@ describe("pickPrimaryBanner — welcome (default when savings ≤ 1M)", () => {
     expect(n!.dedupKey).toEqual({ session: "s-1" });
   });
 
-  it("renders welcome when org-stats present but savings < 1M", async () => {
-    // 5M bytes → Y = 1.25M tokens → Z = 0.7 × 1.25M = 0.875M tokens
-    // → below the 1M threshold, so welcome wins
+  it("renders welcome when org-stats present but savings < 1k", async () => {
+    // 4k bytes → Y = 1000 tokens → Z = 0.7 × 1000 = 700 tokens
+    // → below the 1k threshold, so welcome still wins for brand-new
+    // teams whose cumulative bytes haven't crossed even the lowered bar.
     orgStatsMock.mockResolvedValue({
-      org:  { sessionsCount: 100, memoryRecallCount: 1000, memorySearchBytes: 5_000_000 },
-      user: { sessionsCount: 10,  memoryRecallCount: 50,   memorySearchBytes: 500_000 },
+      org:  { sessionsCount: 2, memoryRecallCount: 1, memorySearchBytes: 4_000 },
+      user: { sessionsCount: 1, memoryRecallCount: 1, memorySearchBytes: 4_000 },
     });
     const n = await pickPrimaryBanner("s-edge", FRESH_CREDS);
     expect(n!.id).toBe("welcome");
@@ -105,8 +106,8 @@ describe("pickPrimaryBanner — welcome (default when savings ≤ 1M)", () => {
   });
 });
 
-describe("pickPrimaryBanner — savings recap (when org savings > 1M)", () => {
-  it("renders online savings recap when org tokens-saved > 1M", async () => {
+describe("pickPrimaryBanner — savings recap (when org savings > 1k)", () => {
+  it("renders online savings recap when org tokens-saved > 1k", async () => {
     // 6M bytes → Y = 1.5M tokens → Z = 0.7 × 1.5M = 1.05M → above 1M threshold
     orgStatsMock.mockResolvedValue({
       org:  { sessionsCount: 187, memoryRecallCount: 42000, memorySearchBytes: 6_000_000 },
@@ -143,7 +144,7 @@ describe("pickPrimaryBanner — savings recap (when org savings > 1M)", () => {
     expect(n!.body).toContain("you contributed");
   });
 
-  it("renders OFFLINE savings recap when org-stats is null but local jsonl > 1M tokens", async () => {
+  it("renders OFFLINE savings recap when org-stats is null but local jsonl > 1k tokens", async () => {
     // 6M local bytes → Z = 1.05M tokens → above threshold
     appendUsageRecord({
       endedAt: "2026-05-18T00:00:00Z",
