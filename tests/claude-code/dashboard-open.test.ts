@@ -138,4 +138,38 @@ describe("findBinaryOnPath", () => {
   it("returns null for a clearly non-existent binary name", () => {
     expect(findBinaryOnPath("definitely-not-a-real-helper-xxx-12345")).toBeNull();
   });
+  it("ignores a same-named non-executable file on PATH (POSIX)", async () => {
+    // Codex/CodeRabbit on PR #194: without an X_OK check, a man page
+    // or sentinel file named the same as the helper would claim
+    // "found". Stage a fake binary that's NOT marked executable and
+    // verify the helper doesn't accept it.
+    if (nodePlatform() !== "linux" && nodePlatform() !== "darwin") return; // skip on win32
+    const { mkdtempSync, writeFileSync, chmodSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "hm-path-probe-"));
+    try {
+      const bin = join(dir, "fake-not-exec-helper-xyz");
+      writeFileSync(bin, "#!/bin/sh\necho hi\n");
+      chmodSync(bin, 0o644); // explicitly NON-executable
+      const originalPath = process.env.PATH;
+      process.env.PATH = `${dir}${":"}${originalPath ?? ""}`;
+      try {
+        expect(findBinaryOnPath("fake-not-exec-helper-xyz")).toBeNull();
+        // Then mark it executable and expect it to be found.
+        chmodSync(bin, 0o755);
+        expect(findBinaryOnPath("fake-not-exec-helper-xyz")).toBe(bin);
+      } finally {
+        if (originalPath === undefined) delete process.env.PATH;
+        else process.env.PATH = originalPath;
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
+
+// Import node:os platform for the conditional skip above. Imported at
+// the bottom because the test block needs it but we don't want it
+// polluting the top of the file for tests that don't reference it.
+import { platform as nodePlatform } from "node:os";

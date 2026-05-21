@@ -13,7 +13,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { statSync } from "node:fs";
+import { accessSync, constants as fsConstants, statSync } from "node:fs";
 import { platform as nodePlatform } from "node:os";
 import { delimiter, join } from "node:path";
 
@@ -84,7 +84,22 @@ export function findBinaryOnPath(name: string): string | null {
       const candidate = join(dir, name + ext);
       try {
         const st = statSync(candidate);
-        if (st.isFile()) return candidate;
+        if (!st.isFile()) continue;
+        // CodeRabbit on PR #194: without an executable check, a
+        // same-named regular file on PATH (e.g. a man page, a sentinel)
+        // would claim "found" and openInBrowser would happily report
+        // attempted=true for something that can't actually run. On
+        // POSIX, require X_OK; on Windows, PATHEXT-driven extension
+        // matching is the executability signal (the OS rule is "if it
+        // ends in .EXE/.BAT/.CMD/.COM, it's a candidate"), so we
+        // accept the stat.isFile() result there.
+        if (isWin) return candidate;
+        try {
+          accessSync(candidate, fsConstants.X_OK);
+          return candidate;
+        } catch {
+          // file exists but isn't executable — keep looking
+        }
       } catch {
         // not there; keep looking
       }
