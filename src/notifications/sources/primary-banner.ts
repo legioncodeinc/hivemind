@@ -123,13 +123,14 @@ export async function pickPrimaryBanner(
 
   // Open-goals summary runs in parallel — best-effort, never blocks
   // the banner. A network/auth failure returns null and the banner
-  // renders as before. The memory table name comes from config so
-  // staging / `memory_test` works automatically when env vars set it.
+  // renders as before. The goals table name comes from config so the
+  // staging override (HIVEMIND_GOALS_TABLE=hivemind_goals_test) works
+  // automatically.
   let openGoals: OpenGoalsSummary | null = null;
   try {
     const cfg = loadConfig();
-    if (cfg?.tableName) {
-      openGoals = await fetchOpenGoals(creds, cfg.tableName);
+    if (cfg?.goalsTableName) {
+      openGoals = await fetchOpenGoals(creds, cfg.goalsTableName);
     }
   } catch (e: unknown) {
     log(`open-goals lookup failed: ${(e as Error).message}`);

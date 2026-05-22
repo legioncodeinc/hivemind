@@ -1,23 +1,20 @@
 /**
  * Open-goals SessionStart summary.
  *
- * Reads the user's goal JSON files from the memory table
- * (path LIKE 'goals/%.json'), filters to those owned by current_user
- * with status='active', and produces a short one-line summary the
- * primary banner appends to its body.
+ * Reads the user's open goals from the dedicated hivemind_goals
+ * table (owner + status filter on indexed columns, no LIKE scan)
+ * and produces a short one-line summary the primary banner appends
+ * to its body.
  *
  * Returns null when:
  *   - creds are missing
- *   - the memory table is unreachable (network / auth / missing)
+ *   - the goals table is unreachable (network / auth / missing)
  *   - no open goals match
  *
- * The query is intentionally permissive (LIKE on JSON substrings) so
- * we don't depend on JSONB query support — the memory table column is
- * just TEXT. False positives are harmless (we re-parse each row in JS
- * and drop anything that doesn't pass JSON validation).
- *
  * Hard timeout: caller's responsibility — `pickPrimaryBanner` already
- * runs under the SessionStart hook's overall budget.
+ * runs under the SessionStart hook's overall budget. Goal content
+ * lives in markdown, so the first line of the body is the
+ * human-readable label for the banner.
  */
 
 import type { Credentials } from "../../commands/auth-creds.js";
@@ -34,67 +31,68 @@ export interface OpenGoalsSummary {
   sample: string[];
 }
 
-interface GoalShape {
-  goal_id?: unknown;
-  text?: unknown;
-  scope?: unknown;
-  status?: unknown;
-  assigned_to?: unknown;
-  kpis?: unknown;
-}
-
 /**
- * Fetch and summarize the current user's open goals.
- * Resolves to `null` on any error or when there is nothing to show.
+ * Fetch and summarize the current user's open goals. "Open" =
+ * status IN ('opened', 'in_progress'). Resolves to `null` on any
+ * error or when there is nothing to show.
  */
 export async function fetchOpenGoals(
   creds: Credentials,
-  tableName: string,
+  goalsTableName: string,
 ): Promise<OpenGoalsSummary | null> {
-  if (!creds.token || !creds.userName) return null;
+  if (!creds.token || !creds.userName || !creds.orgId) return null;
   try {
-    if (!creds.orgId) return null;
     const api = new DeeplakeApi(
       creds.token,
       creds.apiUrl ?? "https://api.deeplake.ai",
       creds.orgId,
       creds.workspaceId ?? "default",
-      tableName,
+      goalsTableName,
     );
-    const safe = sqlIdent(tableName);
-    // Two LIKE filters narrow the scan to plausibly-active goals
-    // for current_user. The path filter accepts both '/goals/...'
-    // (VFS canonical form, leading slash) and 'goals/...' (relative)
-    // because different writers may have used either. Final JSON
-    // parse re-validates each row.
+    const safe = sqlIdent(goalsTableName);
+    // Latest version per goal_id, filtered to current owner +
+    // non-closed status. The (goal_id, version) and (owner, status)
+    // indexes both apply, so this stays a cheap point lookup even
+    // on a large hivemind_goals table.
+    //
+    // We tolerate userName in either short ("emanuele.fenocchi") or
+    // full-email form ("emanuele.fenocchi@activeloop.ai") by using
+    // a LIKE substring match on the owner column. Different agents
+    // historically populated this field with one or the other; the
+    // skill instructs the agent to use whatever userName the
+    // credentials carry, but staleness in older rows is real.
     const sql =
-      `SELECT path, summary FROM "${safe}" ` +
-      `WHERE path LIKE '%goals/%.json' ` +
-      `  AND summary LIKE '%${sqlStr(creds.userName)}%' ` +
-      `  AND summary LIKE '%"status":%active%' ` +
-      `ORDER BY last_update_date DESC LIMIT 25`;
-    const rows = (await api.query(sql)) as Array<{ path?: string; summary?: string }>;
+      `SELECT goal_id, owner, status, content FROM "${safe}" ` +
+      `WHERE (goal_id, version) IN (` +
+      `  SELECT goal_id, MAX(version) FROM "${safe}" GROUP BY goal_id` +
+      `) ` +
+      `  AND owner LIKE '%${sqlStr(creds.userName)}%' ` +
+      `  AND status IN ('opened', 'in_progress') ` +
+      `ORDER BY created_at DESC LIMIT 25`;
+    const rows = (await api.query(sql)) as Array<{
+      goal_id?: string;
+      owner?: string;
+      status?: string;
+      content?: string;
+    }>;
     if (!Array.isArray(rows) || rows.length === 0) return null;
 
-    const goals: Array<{ text: string }> = [];
+    const goals: Array<{ label: string }> = [];
     for (const r of rows) {
-      const goal = parseGoal(r.summary);
-      if (!goal) continue;
-      if (goal.status !== "active") continue;
-      // Tolerate both forms: bare userName ("emanuele.fenocchi") and
-      // full email ("emanuele.fenocchi@activeloop.ai"). The skill
-      // teaches the agent to use the full email when available, but
-      // creds.userName is just the local-part for some orgs. Match
-      // either by substring containment, both directions.
-      const a = goal.assigned_to;
+      const owner = String(r.owner ?? "");
+      const content = String(r.content ?? "");
+      if (!owner || !content) continue;
+      // Bi-directional substring match — same userName variant
+      // problem as the previous LIKE narrowing did at the SQL
+      // layer. Belt-and-braces guard for older rows.
       const u = creds.userName;
-      if (a !== u && !a.includes(u) && !u.includes(a)) continue;
-      goals.push({ text: goal.text });
+      if (owner !== u && !owner.includes(u) && !u.includes(owner)) continue;
+      goals.push({ label: firstLine(content) });
     }
     if (goals.length === 0) return null;
     return {
       count: goals.length,
-      sample: goals.slice(0, 3).map(g => truncate(g.text, 60)),
+      sample: goals.slice(0, 3).map(g => truncate(g.label, 60)),
     };
   } catch (e: unknown) {
     log(`fetchOpenGoals: ${(e as Error).message}`);
@@ -102,26 +100,17 @@ export async function fetchOpenGoals(
   }
 }
 
-interface ValidGoal {
-  text: string;
-  status: string;
-  assigned_to: string;
-}
-
-function parseGoal(summary: string | undefined): ValidGoal | null {
-  if (typeof summary !== "string" || summary.length === 0) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(summary);
-  } catch {
-    return null;
+/**
+ * The first non-empty line of a markdown body — used as the goal's
+ * banner label. Falls back to the whole content when there are no
+ * newlines.
+ */
+function firstLine(content: string): string {
+  for (const ln of content.split(/\r?\n/)) {
+    const trimmed = ln.trim();
+    if (trimmed.length > 0) return trimmed;
   }
-  if (typeof parsed !== "object" || parsed == null) return null;
-  const g = parsed as GoalShape;
-  if (typeof g.text !== "string" || g.text.length === 0) return null;
-  if (typeof g.status !== "string") return null;
-  if (typeof g.assigned_to !== "string") return null;
-  return { text: g.text, status: g.status, assigned_to: g.assigned_to };
+  return content.trim();
 }
 
 function truncate(s: string, max: number): string {
