@@ -62,11 +62,10 @@ export async function fetchOpenGoals(
     // skill instructs the agent to use whatever userName the
     // credentials carry, but staleness in older rows is real.
     const sql =
+      // One row per goal_id (UPDATE-or-INSERT model), so a direct
+      // WHERE on owner+status is the cheap and correct path.
       `SELECT goal_id, owner, status, content FROM "${safe}" ` +
-      `WHERE (goal_id, version) IN (` +
-      `  SELECT goal_id, MAX(version) FROM "${safe}" GROUP BY goal_id` +
-      `) ` +
-      `  AND owner LIKE '%${sqlStr(creds.userName)}%' ` +
+      `WHERE owner LIKE '%${sqlStr(creds.userName)}%' ` +
       `  AND status IN ('opened', 'in_progress') ` +
       `ORDER BY created_at DESC LIMIT 25`;
     const rows = (await api.query(sql)) as Array<{

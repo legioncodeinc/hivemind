@@ -211,14 +211,10 @@ export class DeeplakeFs implements IFileSystem {
     const goalsBootstrap = fs.goalsTable ? (async () => {
       try {
         const goalRows = await client.query(
-          // Latest version per goal_id. The compound index (goal_id,
-          // version) makes this cheap. Synthesize the canonical path
-          // from owner / status / goal_id.
-          `SELECT goal_id, owner, status, content, version, created_at ` +
-          `FROM "${fs.goalsTable}" ` +
-          `WHERE (goal_id, version) IN (` +
-          `  SELECT goal_id, MAX(version) FROM "${fs.goalsTable}" GROUP BY goal_id` +
-          `) ORDER BY created_at DESC`
+          // One row per goal_id (UPDATE-or-INSERT model). Synthesize
+          // the canonical VFS path from owner / status / goal_id.
+          `SELECT goal_id, owner, status, content, created_at ` +
+          `FROM "${fs.goalsTable}" ORDER BY created_at DESC`
         );
         for (const row of goalRows) {
           const owner = String(row["owner"] ?? "");
@@ -245,11 +241,9 @@ export class DeeplakeFs implements IFileSystem {
     const kpisBootstrap = fs.kpisTable ? (async () => {
       try {
         const kpiRows = await client.query(
-          `SELECT goal_id, kpi_id, content, version, created_at ` +
-          `FROM "${fs.kpisTable}" ` +
-          `WHERE (goal_id, kpi_id, version) IN (` +
-          `  SELECT goal_id, kpi_id, MAX(version) FROM "${fs.kpisTable}" GROUP BY goal_id, kpi_id` +
-          `) ORDER BY created_at DESC`
+          // One row per (goal_id, kpi_id) (UPDATE-or-INSERT model).
+          `SELECT goal_id, kpi_id, content, created_at ` +
+          `FROM "${fs.kpisTable}" ORDER BY created_at DESC`
         );
         for (const row of kpiRows) {
           const goal_id = String(row["goal_id"] ?? "");
@@ -398,75 +392,93 @@ export class DeeplakeFs implements IFileSystem {
   }
 
   /**
-   * INSERT-only version-bump for a goal row. The path encodes owner,
-   * status, and goal_id; the content column stores the markdown body.
-   * If a row already exists for this goal_id, the new row gets
-   * version = max(version) + 1; otherwise version = 1.
+   * UPDATE-or-INSERT for a goal row, keyed by goal_id. One row per
+   * goal forever — status changes, owner reassignments, and text
+   * edits all mutate the same row in place. The version column
+   * stays at 1 (vestigial in the schema; kept so the column is
+   * already there if we ever bring back the audit-trail pattern).
    *
-   * We never UPDATE — this sidesteps the Deeplake UPDATE-coalescing
-   * quirk and preserves a full audit trail of every change (text
-   * edit, status flip, owner reassignment).
+   * Trade-off versus the prior INSERT-only-version-bump design:
+   *   - Pros: 1 row per goal makes the Deeplake table view obvious,
+   *     no row proliferation, simpler bootstrap queries.
+   *   - Cons: no audit trail; vulnerable to Deeplake's
+   *     UPDATE-coalescing quirk if two writes hit the same row
+   *     within microseconds. For the v1 single-user / small-team
+   *     workflow the user explicitly chose this trade-off.
    */
   private async upsertGoalRow(r: PendingRow): Promise<void> {
     if (!this.goalsTable) throw new Error("goalsTable not configured");
     const parts = decomposeGoalPath(r.path);
     const safe = this.goalsTable;
-    // Look up the latest version for this goal_id. Range over all
-    // owners/statuses — the same goal_id can have rows with different
-    // owners/statuses (after a reassignment or mv). version is
-    // monotone across all of them.
-    const versionRows = await this.client.query(
-      `SELECT MAX(version) AS v FROM "${safe}" WHERE goal_id = '${esc(parts.goal_id)}'`
-    );
-    const prev = Number((versionRows[0] as { v?: number | string } | undefined)?.v ?? 0);
-    const nextVersion = Number.isFinite(prev) && prev > 0 ? prev + 1 : 1;
-    const id = randomUUID();
     const ts = r.lastUpdateDate ?? r.creationDate ?? new Date().toISOString();
-    await this.client.query(
-      `INSERT INTO "${safe}" (id, goal_id, owner, status, content, version, created_at, agent, plugin_version) VALUES (` +
-      `'${id}', ` +
-      `'${esc(parts.goal_id)}', ` +
-      `'${esc(parts.owner)}', ` +
-      `'${esc(parts.status)}', ` +
-      `E'${esc(r.contentText)}', ` +
-      `${nextVersion}, ` +
-      `'${esc(ts)}', ` +
-      `'manual', ` +
-      `''` +
-      `)`
+    const existing = await this.client.query(
+      `SELECT id FROM "${safe}" WHERE goal_id = '${esc(parts.goal_id)}' LIMIT 1`
     );
+    if (existing.length > 0) {
+      await this.client.query(
+        `UPDATE "${safe}" SET ` +
+        `owner = '${esc(parts.owner)}', ` +
+        `status = '${esc(parts.status)}', ` +
+        `content = E'${esc(r.contentText)}', ` +
+        `created_at = '${esc(ts)}' ` +
+        `WHERE goal_id = '${esc(parts.goal_id)}'`
+      );
+    } else {
+      const id = randomUUID();
+      await this.client.query(
+        `INSERT INTO "${safe}" (id, goal_id, owner, status, content, version, created_at, agent, plugin_version) VALUES (` +
+        `'${id}', ` +
+        `'${esc(parts.goal_id)}', ` +
+        `'${esc(parts.owner)}', ` +
+        `'${esc(parts.status)}', ` +
+        `E'${esc(r.contentText)}', ` +
+        `1, ` +
+        `'${esc(ts)}', ` +
+        `'manual', ` +
+        `''` +
+        `)`
+      );
+    }
     this.flushed.add(r.path);
   }
 
   /**
-   * INSERT-only version-bump for a KPI row. Path encodes goal_id and
-   * kpi_id; content carries the markdown body (free text by
-   * convention with target/current/unit key:value lines).
+   * UPDATE-or-INSERT for a KPI row, keyed by (goal_id, kpi_id).
+   * Same trade-off as upsertGoalRow — one row per KPI forever,
+   * no version proliferation. Progress bumps (Edit on the `current:`
+   * line) and any other content edits mutate the same row in place.
    */
   private async upsertKpiRow(r: PendingRow): Promise<void> {
     if (!this.kpisTable) throw new Error("kpisTable not configured");
     const parts = decomposeKpiPath(r.path);
     const safe = this.kpisTable;
-    const versionRows = await this.client.query(
-      `SELECT MAX(version) AS v FROM "${safe}" ` +
-      `WHERE goal_id = '${esc(parts.goal_id)}' AND kpi_id = '${esc(parts.kpi_id)}'`
-    );
-    const prev = Number((versionRows[0] as { v?: number | string } | undefined)?.v ?? 0);
-    const nextVersion = Number.isFinite(prev) && prev > 0 ? prev + 1 : 1;
-    const id = randomUUID();
     const ts = r.lastUpdateDate ?? r.creationDate ?? new Date().toISOString();
-    await this.client.query(
-      `INSERT INTO "${safe}" (id, goal_id, kpi_id, content, version, created_at, agent, plugin_version) VALUES (` +
-      `'${id}', ` +
-      `'${esc(parts.goal_id)}', ` +
-      `'${esc(parts.kpi_id)}', ` +
-      `E'${esc(r.contentText)}', ` +
-      `${nextVersion}, ` +
-      `'${esc(ts)}', ` +
-      `'manual', ` +
-      `''` +
-      `)`
+    const existing = await this.client.query(
+      `SELECT id FROM "${safe}" ` +
+      `WHERE goal_id = '${esc(parts.goal_id)}' AND kpi_id = '${esc(parts.kpi_id)}' LIMIT 1`
     );
+    if (existing.length > 0) {
+      await this.client.query(
+        `UPDATE "${safe}" SET ` +
+        `content = E'${esc(r.contentText)}', ` +
+        `created_at = '${esc(ts)}' ` +
+        `WHERE goal_id = '${esc(parts.goal_id)}' AND kpi_id = '${esc(parts.kpi_id)}'`
+      );
+    } else {
+      const id = randomUUID();
+      await this.client.query(
+        `INSERT INTO "${safe}" (id, goal_id, kpi_id, content, version, created_at, agent, plugin_version) VALUES (` +
+        `'${id}', ` +
+        `'${esc(parts.goal_id)}', ` +
+        `'${esc(parts.kpi_id)}', ` +
+        `E'${esc(r.contentText)}', ` +
+        `1, ` +
+        `'${esc(ts)}', ` +
+        `'manual', ` +
+        `''` +
+        `)`
+      );
+    }
     this.flushed.add(r.path);
   }
 
