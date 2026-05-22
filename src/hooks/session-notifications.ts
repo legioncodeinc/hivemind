@@ -16,7 +16,7 @@ import { loadCredentials } from "../commands/auth.js";
 import { readStdin } from "../utils/stdin.js";
 import { drainSessionStart, registerRule } from "../notifications/index.js";
 import { localMinedRule } from "../notifications/rules/local-mined.js";
-import { countLocalManifestEntries } from "../skillify/local-manifest.js";
+import { countLocalManifestEntries, getLatestInsightEntry } from "../skillify/local-manifest.js";
 import { log as _log } from "../utils/debug.js";
 
 const log = (msg: string) => _log("session-notifications", msg);
@@ -52,14 +52,19 @@ async function main(): Promise<void> {
   const sessionId = rawSessionId.length > 0 ? rawSessionId : undefined;
 
   const creds = loadCredentials();
-  // Read the local-mined count here (rules stay pure / IO-free).
-  // countLocalManifestEntries returns 0 when the manifest is missing or
-  // malformed — we coerce to null in that case so the rule can
-  // distinguish "no mining run yet" from "ran, found 0".
+  // Read the local-mined count + latest insight entry here (rules stay
+  // pure / IO-free). countLocalManifestEntries returns 0 when the manifest
+  // is missing or malformed — we coerce to null in that case so the rule
+  // can distinguish "no mining run yet" from "ran, found 0".
+  // getLatestInsightEntry returns null cleanly when no insight-bearing
+  // entry exists, so the rule's concrete-insight branch stays gated.
   let localSkillsCount: number | null = null;
+  let latestInsightEntry: ReturnType<typeof getLatestInsightEntry> = null;
   try { localSkillsCount = countLocalManifestEntries(); }
   catch { /* keep null */ }
-  await drainSessionStart({ agent: "claude-code", creds, sessionId, localSkillsCount });
+  try { latestInsightEntry = getLatestInsightEntry(); }
+  catch { /* keep null */ }
+  await drainSessionStart({ agent: "claude-code", creds, sessionId, localSkillsCount, latestInsightEntry });
 }
 
 main().catch((e) => { log(`fatal: ${e?.message ?? String(e)}`); process.exit(0); });

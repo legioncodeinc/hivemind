@@ -6,6 +6,7 @@
  */
 
 import type { Credentials } from "../commands/auth-creds.js";
+import type { LocalManifestEntry } from "../skillify/local-manifest.js";
 
 export type Severity = "info" | "warn" | "error";
 
@@ -50,6 +51,14 @@ export interface NotificationContext {
    * when the manifest is absent or malformed; 0 when present but empty.
    */
   localSkillsCount?: number | null;
+  /**
+   * Most recent manifest entry whose `insight` field is non-empty, or null.
+   * Powers the concrete-insight branch of the local-mined notification —
+   * when present, the rule renders the gate's quantified finding instead
+   * of the generic count. Read by the hook entry point so rules remain
+   * IO-free.
+   */
+  latestInsightEntry?: LocalManifestEntry | null;
 }
 
 export interface Rule {

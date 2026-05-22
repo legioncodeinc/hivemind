@@ -191,6 +191,100 @@ describe("localMinedRule", () => {
     });
     expect(r5!.dedupKey).not.toEqual(r7!.dedupKey);
   });
+
+  it("fires the concrete-insight branch when latestInsightEntry is populated", () => {
+    // Conversion-surface guard: when the gate produced a quantified
+    // insight, we MUST render it instead of the abstract count copy.
+    // The whole install→signup pitch depends on this branch firing.
+    const result = localMinedRule.evaluate({
+      agent: "claude-code",
+      creds: null,
+      state: { shown: {} },
+      localSkillsCount: 11,
+      latestInsightEntry: {
+        skill_name: "verify-before-done",
+        canonical_path: "/x/SKILL.md",
+        symlinks: [],
+        source_session_ids: ["sid"],
+        source_session_paths: ["/x/sid.jsonl"],
+        source_agent: "claude_code",
+        gate_agent: "claude_code",
+        created_at: "2026-05-22T08:58:07.613Z",
+        uploaded: false,
+        insight: "You revisited 4 merged PRs in the last month because tests weren't run before merge.",
+      },
+    });
+    expect(result).not.toBeNull();
+    expect(result!.title).toContain("Hivemind found a pattern");
+    // Title MUST NOT carry the bee — format.ts prepends the severity icon
+    // (info → 🐝), so double-bee output is the bug we're guarding against.
+    expect(result!.title).not.toContain("🐝");
+    expect(result!.body).toContain("You revisited 4 merged PRs");
+    expect(result!.body).toContain("`verify-before-done`");
+    expect(result!.body).toContain("claude -p '/verify-before-done");
+    expect(result!.body).toContain("hivemind login");
+    // Negative: must NOT carry the abstract count phrasing when an
+    // insight is being rendered — that branch is mutually exclusive.
+    expect(result!.title).not.toContain("11 skills");
+    // Dedup keyed on the entry identity, not the count: a new insight
+    // refires, the same entry dedupes.
+    expect(result!.dedupKey).toEqual({
+      skill_name: "verify-before-done",
+      created_at: "2026-05-22T08:58:07.613Z",
+    });
+  });
+
+  it("falls back to the count branch when latestInsightEntry has empty insight", () => {
+    // Defense-in-depth: getLatestInsightEntry filters empty strings, but
+    // a malformed manifest could slip a non-trimmed entry through. The
+    // rule double-checks and falls back to the legacy count surface
+    // rather than rendering a vacuous "Hivemind found a pattern: " line.
+    const result = localMinedRule.evaluate({
+      agent: "claude-code",
+      creds: null,
+      state: { shown: {} },
+      localSkillsCount: 3,
+      latestInsightEntry: {
+        skill_name: "verify-before-done",
+        canonical_path: "/x/SKILL.md",
+        symlinks: [],
+        source_session_ids: ["sid"],
+        source_session_paths: ["/x/sid.jsonl"],
+        source_agent: "claude_code",
+        gate_agent: "claude_code",
+        created_at: "2026-05-22T08:58:07.613Z",
+        uploaded: false,
+        insight: "   ",
+      },
+    });
+    expect(result).not.toBeNull();
+    expect(result!.title).toContain("3 skills");
+    expect(result!.title).not.toContain("Hivemind found a pattern");
+    expect(result!.dedupKey).toEqual({ count: 3 });
+  });
+
+  it("insight-branch dedupKey changes across distinct insights so a fresh insight re-fires", () => {
+    const entryA = {
+      skill_name: "verify-before-done",
+      canonical_path: "/x/A/SKILL.md",
+      symlinks: [],
+      source_session_ids: ["s1"],
+      source_session_paths: ["/x/s1.jsonl"],
+      source_agent: "claude_code",
+      gate_agent: "claude_code",
+      created_at: "2026-05-22T08:00:00.000Z",
+      uploaded: false,
+      insight: "Insight A.",
+    };
+    const entryB = { ...entryA, skill_name: "ask-first-propose-second", canonical_path: "/x/B/SKILL.md", insight: "Insight B." };
+    const a = localMinedRule.evaluate({
+      agent: "claude-code", creds: null, state: { shown: {} }, localSkillsCount: 1, latestInsightEntry: entryA,
+    });
+    const b = localMinedRule.evaluate({
+      agent: "claude-code", creds: null, state: { shown: {} }, localSkillsCount: 1, latestInsightEntry: entryB,
+    });
+    expect(a!.dedupKey).not.toEqual(b!.dedupKey);
+  });
 });
 
 // ---------------------------------------------------------------------------
