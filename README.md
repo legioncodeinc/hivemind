@@ -8,7 +8,7 @@
   <br>
 </h1>
 
-<h4 align="center">Your coding agents are smart. They forget everything. Hivemind gives your team one shared brain.</h4>
+<h4 align="center">One brain for all your agents</h4>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@deeplake/hivemind"><img src="https://img.shields.io/npm/v/@deeplake/hivemind?color=blue&label=npm" alt="npm"></a>
@@ -20,12 +20,14 @@
 </p>
 
 <p align="center">
-  Shared memory for <b>Claude Code • OpenClaw • Codex • Cursor • Hermes • pi</b> — wired by one command.
+  Auto-learning, cloud-backed shared brain for <b>Claude Code • OpenClaw • Codex • Cursor • Hermes • pi</b> agents.<br>
 </p>
 
-One engineer's agent figures out a tricky migration on Monday. By Tuesday morning, every agent on the team can execute the pattern — no copy-paste, no "let me re-explain the codebase."
+> One engineer's agent figures out a tricky migration on Monday.
+>
+> Tuesday, every agent on the team can execute the pattern.
 
-On [LoCoMo](https://arxiv.org/abs/2402.17753), the public long-context memory benchmark, this is **25% cheaper, 1.7× fewer tokens, and 31% fewer turns** than running without shared memory. ([See the numbers below.](#benchmarks))
+On [LoCoMo](https://arxiv.org/abs/2402.17753), the public long-context memory benchmark, Hivemind is **25% cheaper, 1.7× fewer tokens, and 31% fewer turns** than running without shared memory. ([See the numbers below.](#benchmarks))
 
 **Beyond memory.** Hivemind doesn't just remember — it mines your team's traces for repeated patterns and codifies them into reusable skills that propagate back into every agent on the team. The agent your junior engineer used this morning is sharper because of what your senior engineer's agent figured out last week.
 
@@ -48,6 +50,12 @@ On the [LoCoMo](https://arxiv.org/abs/2402.17753) long-context memory benchmark 
 | Turns / question  | 8.9      | 6.2      | **31% fewer**    |
 
 The agent reaches the answer in fewer turns with less context, because the prior work is already in scope at recall time — not re-derived per session.
+
+<p align="center">
+  <a href="https://star-history.com/#activeloopai/hivemind&Date">
+    <img src="https://api.star-history.com/svg?repos=activeloopai/hivemind&type=Date" alt="Star History Chart" width="600">
+  </a>
+</p>
 
 ## How Hivemind compares
 
@@ -343,22 +351,18 @@ Per-agent integration mechanisms (marketplace plugin, hooks, skills, native exte
 
 Hivemind Cloud is the default. When that isn't enough, point Hivemind at storage in your own cloud — we handle the orchestration, data never leaves your perimeter.
 
-| Provider                   | Status     | Setup                                                |
-|----------------------------|------------|------------------------------------------------------|
-| Google Cloud Storage       | Available  | [docs](https://docs.deeplake.ai/latest/guide/gcs/)   |
-| Azure Blob Storage         | Available  | [docs](https://docs.deeplake.ai/latest/guide/azure/) |
-| Amazon S3                  | Available  | [docs](https://docs.deeplake.ai/latest/guide/s3/)    |
-| S3-compatible on-prem      | On request | hello@activeloop.ai                                  |
+| Provider                   | Status     | Setup                                                  |
+|----------------------------|------------|--------------------------------------------------------|
+| Google Cloud Storage       | Available  | [docs](https://docs.deeplake.ai/latest/guide/gcs/)     |
+| Azure Blob Storage         | Available  | [docs](https://docs.deeplake.ai/latest/guide/azure/)   |
+| Amazon S3                  | Available  | [contact us](https://deeplake.ai/hivemind#security)    |
+| S3-compatible on-prem      | On request | [contact us](https://deeplake.ai/hivemind#security)    |
 
 ## Who builds Hivemind
 
 Hivemind is built and maintained by [Activeloop](https://activeloop.ai) — the open-source team behind [Deeplake](https://github.com/activeloopai/deeplake), backed by Y Combinator.
 
 We run Hivemind ourselves, all day, across Claude Code, OpenClaw, Codex, and Cursor. Every benchmark number above came from our own internal eval against the LoCoMo public benchmark. If you're running coding agents at a team or org and want to talk through your setup, drop us a line: [hello@activeloop.ai](mailto:hello@activeloop.ai).
-
-## Star history
-
-[![Star History Chart](https://api.star-history.com/svg?repos=activeloopai/hivemind&type=Date)](https://star-history.com/#activeloopai/hivemind&Date)
 
 ## Development
 
