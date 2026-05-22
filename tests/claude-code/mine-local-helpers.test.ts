@@ -244,6 +244,45 @@ describe("parseMultiVerdict", () => {
     expect(mv!.skills[1].insight).toBeUndefined();
   });
 
+  it("normalizes embedded whitespace (drops newlines that could carry prompt-like text)", () => {
+    // Sanitization-at-the-boundary: gate output is unbounded model text.
+    // Multi-line insight that gets stored verbatim could leak prompt-like
+    // instructions into future SessionStart context. We collapse any run
+    // of whitespace to a single space before persisting.
+    const raw = JSON.stringify({
+      reason: "ok",
+      skills: [
+        {
+          name: "k",
+          description: "d",
+          body: "b",
+          insight: "Line one.\n\nLine two.\tTabbed.   Multi-spaced.",
+        },
+      ],
+    });
+    const mv = parseMultiVerdict(raw);
+    expect(mv!.skills[0].insight).toBe(
+      "Line one. Line two. Tabbed. Multi-spaced.",
+    );
+    expect(mv!.skills[0].insight).not.toContain("\n");
+    expect(mv!.skills[0].insight).not.toContain("\t");
+  });
+
+  it("caps insight at 280 chars to bound hook payload size", () => {
+    // Pathological gate outputs (haiku occasionally returns 1k+ chars)
+    // would bloat the manifest and every SessionStart hook stdout. Hard
+    // cap at the parse boundary so downstream consumers see a bounded
+    // string regardless of model behavior.
+    const long = "x".repeat(500);
+    const raw = JSON.stringify({
+      reason: "ok",
+      skills: [{ name: "k", description: "d", body: "b", insight: long }],
+    });
+    const mv = parseMultiVerdict(raw);
+    expect(mv!.skills[0].insight!.length).toBe(280);
+    expect(mv!.skills[0].insight).toBe("x".repeat(280));
+  });
+
   it("ignores non-string insight values", () => {
     const raw = JSON.stringify({
       reason: "ok",

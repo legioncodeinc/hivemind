@@ -110,10 +110,20 @@ export function getLatestInsightEntry(
   const m = readLocalManifest(path);
   if (!m || !Array.isArray(m.entries)) return null;
   let best: LocalManifestEntry | null = null;
+  let bestTs = Number.NEGATIVE_INFINITY;
   for (const e of m.entries) {
     if (!e || typeof e.insight !== "string" || e.insight.trim().length === 0) continue;
-    if (!best || (e.created_at ?? "") > (best.created_at ?? "")) {
+    // Compare as parsed timestamps, not raw ISO strings: lexical sort
+    // works for canonical UTC `Z` form but mis-orders when entries use
+    // different timezone offsets (e.g. `+00:00` vs `Z`) or when a
+    // future schema embeds non-ISO date variants. Date.parse returns
+    // NaN for unparseable strings; we skip those entries so a single
+    // malformed row can't shadow valid ones.
+    const ts = Date.parse(e.created_at ?? "");
+    if (!Number.isFinite(ts)) continue;
+    if (ts > bestTs) {
       best = e;
+      bestTs = ts;
     }
   }
   return best;

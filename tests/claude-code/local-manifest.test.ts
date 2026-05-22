@@ -205,10 +205,11 @@ describe("getLatestInsightEntry", () => {
     expect(getLatestInsightEntry(path)).toBeNull();
   });
 
-  it("handles entries with missing `created_at` via the empty-string fallback", () => {
-    // Branch coverage for the `(e.created_at ?? "")` fallback chain —
-    // tie-breaks across entries that legitimately lack the field
-    // without throwing on undefined comparison.
+  it("skips entries with missing or unparseable `created_at`", () => {
+    // Date.parse returns NaN for unparseable / missing strings. We
+    // SKIP such entries rather than ordering them at -Infinity so a
+    // single malformed row can't shadow valid ones — and entries with
+    // a real timestamp win deterministically over those without.
     const path = manifestPath("missing-created-at");
     writeFileSync(path, JSON.stringify({
       created_at: "x",
@@ -222,7 +223,19 @@ describe("getLatestInsightEntry", () => {
           source_agent: "claude_code",
           gate_agent: "claude_code",
           uploaded: false,
-          insight: "First found.",
+          insight: "Skipped — no parseable date.",
+        },
+        {
+          skill_name: "unparseable-date",
+          canonical_path: "/x/C/SKILL.md",
+          symlinks: [],
+          source_session_ids: [],
+          source_session_paths: [],
+          source_agent: "claude_code",
+          gate_agent: "claude_code",
+          created_at: "not-a-date",
+          uploaded: false,
+          insight: "Also skipped.",
         },
         {
           skill_name: "with-date",
@@ -234,13 +247,51 @@ describe("getLatestInsightEntry", () => {
           gate_agent: "claude_code",
           created_at: "2026-05-22T00:00:00.000Z",
           uploaded: false,
-          insight: "Newer.",
+          insight: "Picked.",
         },
       ],
     }));
     const latest = getLatestInsightEntry(path);
-    // Entry with a real created_at wins the > comparison against "".
     expect(latest!.skill_name).toBe("with-date");
+  });
+
+  it("orders timezone-variant timestamps correctly via Date.parse, not lexical comparison", () => {
+    // Coderabbit regression guard: raw-string comparison would order
+    // "2026-05-21T23:59:00+00:00" AFTER "2026-05-22T00:00:00Z" because
+    // '+' < 'Z' lexically. Date.parse normalizes both to the same
+    // numeric instant, so the chronologically-later entry wins.
+    const path = manifestPath("tz-variants");
+    writeFileSync(path, JSON.stringify({
+      created_at: "x",
+      entries: [
+        {
+          skill_name: "older-tz-offset",
+          canonical_path: "/x/A/SKILL.md",
+          symlinks: [],
+          source_session_ids: [],
+          source_session_paths: [],
+          source_agent: "claude_code",
+          gate_agent: "claude_code",
+          created_at: "2026-05-21T23:59:00+00:00",
+          uploaded: false,
+          insight: "Older instant.",
+        },
+        {
+          skill_name: "newer-z-form",
+          canonical_path: "/x/B/SKILL.md",
+          symlinks: [],
+          source_session_ids: [],
+          source_session_paths: [],
+          source_agent: "claude_code",
+          gate_agent: "claude_code",
+          created_at: "2026-05-22T00:00:00Z",
+          uploaded: false,
+          insight: "Newer instant.",
+        },
+      ],
+    }));
+    const latest = getLatestInsightEntry(path);
+    expect(latest!.skill_name).toBe("newer-z-form");
   });
 
   it("picks the most recent insight-bearing entry across mixed entries", () => {

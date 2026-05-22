@@ -298,12 +298,20 @@ export function parseMultiVerdict(raw: string): MultiVerdict | null {
     const description = typeof s.description === "string" ? s.description.trim() : "";
     const body = typeof s.body === "string" ? s.body.trim() : "";
     const trigger = typeof s.trigger === "string" ? s.trigger.trim() : undefined;
-    // Insight is optional — the gate omits it when it can't ground a
-    // concrete + quantified line. Empty / whitespace-only strings collapse
-    // to undefined so the manifest entry stays free of an empty-string
-    // sentinel that downstream code would treat as "present".
-    const rawInsight = typeof s.insight === "string" ? s.insight.trim() : "";
-    const insight = rawInsight.length > 0 ? rawInsight : undefined;
+    // Insight is optional and is unbounded model output — apply
+    // sanitization at this parse boundary so the manifest can be trusted
+    // by every downstream consumer (banner renderer, future surfaces,
+    // hook payload size budgets). Collapse all whitespace to a single
+    // space (drops embedded newlines that could carry prompt-like
+    // instructions into future SessionStart context) and cap length so
+    // a pathological gate output can't bloat the hook payload. Empty /
+    // whitespace-only strings collapse to undefined so the manifest
+    // entry stays free of an empty-string sentinel.
+    const rawInsight = typeof s.insight === "string" ? s.insight : "";
+    const normalizedInsight = rawInsight.replace(/\s+/g, " ").trim();
+    const insight = normalizedInsight.length > 0
+      ? normalizedInsight.slice(0, 280)
+      : undefined;
     if (!name || !body) continue;
     out.push({ name, description, body, trigger, insight });
   }
