@@ -97,16 +97,16 @@ Semantic search (embeddings):
 Skill management (mine + share reusable Claude skills across the org):
 ${renderCliHelpBlock()}
 
-Team-wide rules (SessionStart injection wired in a follow-up):
+Team-wide rules:
   hivemind rules add "<text>" [--scope team]   Add a new rule (org-wide).
   hivemind rules list [--status active|done|all] [--limit N]
                                                List rules. Default: active, 10 newest.
   hivemind rules edit <rule-id> "<new text>"   Edit a rule (bumps version).
   hivemind rules done <rule-id>                Mark a rule done.
-  Note: today rules are persisted only. Per-agent SessionStart injection
-  lands in a follow-up commit (T6 of the rules-and-tasks-kpis plan).
+  Note: active rules are auto-injected into the SessionStart block for
+  claude-code / cursor / hermes; codex / pi / openclaw use 'hivemind context'.
 
-Personal + team tasks (SessionStart injection + KPI gen in follow-ups):
+Personal + team tasks:
   hivemind tasks add "<text>" [--scope me|team] [--assign <user>]
                                                Add a task (default --scope me, self-assigned).
   hivemind tasks list [--mine|--team|--all] [--status active|done|all] [--limit N]
@@ -117,9 +117,10 @@ Personal + team tasks (SessionStart injection + KPI gen in follow-ups):
   hivemind tasks progress <task-id> <kpi-id> --value N [--note "..."]
                                                Append a KPI progress event.
   hivemind tasks report [<task-id>]            KPI progress summary (computed from events).
-  Note: KPIs land empty until T4 adds LLM-driven generation. SessionStart
-  injection of relevant tasks lands in T6. <user> values must match the
-  target user's 'hivemind whoami' output exactly (no fuzzy email matching in v1).
+  Note: KPIs are generated automatically from task text when
+  ANTHROPIC_API_KEY is set (set HIVEMIND_KPI_LLM=disable to opt out).
+  <user> values must match the target user's 'hivemind whoami' output
+  exactly (no fuzzy email matching in v1).
 
 Cross-agent helpers:
   hivemind context                             Print the rules+tasks block on demand.

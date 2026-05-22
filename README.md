@@ -313,7 +313,7 @@ hivemind context                             # print the injection block on dema
 deliberately excluded to keep its user-visible TUI clean; pi/openclaw
 fall back to `hivemind context`):
 
-```
+```text
 === HIVEMIND RULES (N active) ===
 - <rule_id>: <text>
 (X more — run 'hivemind rules list' to see all)

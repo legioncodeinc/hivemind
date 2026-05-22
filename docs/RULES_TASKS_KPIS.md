@@ -13,7 +13,7 @@ generation, and the env vars. For a quick CLI reference see the
 
 ## Data model — 3 Deeplake tables
 
-```
+```text
 hivemind_rules           — team-wide principles (no scope flexibility)
   scope = 'team' (hardcoded)
   status: active | done
@@ -46,7 +46,7 @@ the `skills` table.
 
 ## CLI surface
 
-```
+```bash
 hivemind rules add "<text>" [--scope team]
 hivemind rules list [--status active|done|all] [--limit N]
 hivemind rules edit <rule-id> "<new text>"
@@ -102,7 +102,7 @@ tasks via the `hivemind rules list` / `hivemind tasks list` /
 
 ### Block format
 
-```
+```text
 === HIVEMIND RULES (N active) ===
 - <rule_id>: <text>
 (X more — run 'hivemind rules list' to see all)
@@ -158,7 +158,7 @@ omits the block.
 `src/hooks/auto-extract-patterns.ts` defines an allow-list of shell
 command regexes. v1 ships exactly ONE pattern:
 
-```
+```text
 gh pr merge   →   +1 KPI event (orphan in v1)
 ```
 
