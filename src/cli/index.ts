@@ -14,6 +14,7 @@ import {
 import { ensureLoggedIn, isLoggedIn, loginWithProvidedToken, maybeShowOrgChoice } from "./auth.js";
 import { runAuthCommand } from "../commands/auth-login.js";
 import { runGraphCommand } from "../commands/graph.js";
+import { runDashboardCommand } from "../commands/dashboard.js";
 import { runSkillifyCommand } from "../commands/skillify.js";
 import { confirm, detectPlatforms, allPlatformIds, log, promptLine, warn, type PlatformId } from "./util.js";
 import { getVersion } from "./version.js";
@@ -62,6 +63,18 @@ Usage:
   hivemind update [--dry-run]
       Check npm for a newer @deeplake/hivemind, upgrade the CLI, and refresh
       every detected agent bundle. Single command for all agents.
+
+  hivemind dashboard [--cwd <path>] [--out <path>] [--no-open]
+                     [--serve] [--port <n>]
+      Build a self-contained HTML dashboard for this repo. Combines
+      KPI cards (tokens saved, skills created, memory recalls,
+      sessions) with the codebase-graph visualization. Writes to
+      ~/.hivemind/dashboards/<repo-key>/index.html by default.
+      --no-open skips the browser launch (headless / CI scenarios).
+      --serve starts a loopback HTTP server at http://127.0.0.1:<port>
+      (default 8123) so the dashboard is reachable via a URL — useful
+      over SSH; VS Code / Cursor Remote-SSH auto-forwards the port
+      and opens it in the integrated Simple Browser tab on click.
 
 Semantic search (embeddings):
   hivemind embeddings install                Download @huggingface/transformers
@@ -357,6 +370,11 @@ async function main(): Promise<void> {
   if (cmd === "graph") {
     await runGraphCommand(args.slice(1));
     return;
+  }
+
+  if (cmd === "dashboard") {
+    const code = await runDashboardCommand(args.slice(1));
+    process.exit(code);
   }
 
   if (cmd === "embeddings") {
