@@ -14,7 +14,7 @@ npx @deeplake/hivemind@latest codex install
 
 The installer:
 
-- Enables the `codex_hooks` feature flag
+- Enables the `hooks` feature flag (and strips the legacy `codex_hooks` key, if a previous install added it)
 - Writes `~/.codex/hooks.json` with hivemind entries
 - Copies the plugin bundle to `~/.codex/hivemind/`
 - Symlinks the skill into `~/.agents/skills/hivemind-memory`

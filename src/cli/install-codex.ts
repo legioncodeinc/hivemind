@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { HOME, pkgRoot, ensureDir, copyDir, writeJson, symlinkForce, writeVersionStamp, log, warn } from "./util.js";
@@ -166,10 +166,39 @@ function reportForeignHivemindHooks(existing: Record<string, unknown>): void {
 }
 
 function tryEnableCodexHooks(): void {
+  // codex 0.130.0 renamed the `codex_hooks` feature flag to `hooks`. The legacy
+  // key still works but prints a deprecation warning on every startup, so we
+  // enable the new name and strip the legacy key if it lingers from an older
+  // install of this plugin.
+  //
+  // The strip is gated on a successful enable: on pre-0.130 codex (or if the
+  // codex CLI isn't on PATH) the `hooks` feature is unknown and the call
+  // throws — in that case we must leave any existing `codex_hooks = true`
+  // entry alone, otherwise we'd silently disable hooks on the user's box.
+  let enabled = false;
   try {
-    execFileSync("codex", ["features", "enable", "codex_hooks"], { stdio: "ignore" });
+    execFileSync("codex", ["features", "enable", "hooks"], { stdio: "ignore" });
+    enabled = true;
   } catch {
-    // codex CLI may not be on PATH (e.g., running under a separate user); not fatal.
+    // codex CLI may not be on PATH (e.g., running under a separate user) or
+    // the codex version pre-dates the rename; not fatal.
+  }
+  if (enabled) stripLegacyCodexHooksKey();
+}
+
+function stripLegacyCodexHooksKey(): void {
+  const cfgPath = join(CODEX_HOME, "config.toml");
+  if (!existsSync(cfgPath)) return;
+  try {
+    const original = readFileSync(cfgPath, "utf-8");
+    // Match a top-level `codex_hooks = ...` line in the `[features]` table.
+    // The regex requires the key at line start (after optional whitespace) and
+    // immediately followed by `=` or whitespace+`=`, so it won't touch keys
+    // like `codex_hooks_other` or `[features.codex_hooks]` table headers.
+    const cleaned = original.replace(/^[ \t]*codex_hooks[ \t]*=[^\n]*\r?\n?/gm, "");
+    if (cleaned !== original) writeFileSync(cfgPath, cleaned);
+  } catch {
+    // best-effort cleanup; never fail the install over it.
   }
 }
 

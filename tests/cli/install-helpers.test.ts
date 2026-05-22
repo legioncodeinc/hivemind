@@ -95,6 +95,18 @@ describe("isHivemindHookEntry", () => {
       ],
     }, PD)).toBe(true);
   });
+
+  // Tightens the per-element type guard inside the `.some()` callback so a
+  // refactor that drops `!h || typeof h !== "object"` can't start matching
+  // arrays full of garbage.
+  it.each([
+    ["hooks[] contains null",      { hooks: [null] }],
+    ["hooks[] contains undefined", { hooks: [undefined] }],
+    ["hooks[] contains a string",  { hooks: ["not-an-object"] }],
+    ["hooks[] contains a number",  { hooks: [42] }],
+  ])("false when %s", (_label, entry) => {
+    expect(isHivemindHookEntry(entry, PD)).toBe(false);
+  });
 });
 
 // ─── codex: mergeHooks (the data-loss-fix surface) ────────────────────────
