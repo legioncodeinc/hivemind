@@ -16,6 +16,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg" alt="Node"></a>
   <a href="https://deeplake.ai"><img src="https://img.shields.io/badge/Powered%20by-Deeplake-orange.svg" alt="Deeplake"></a>
+  <a href="https://www.ycombinator.com"><img src="https://img.shields.io/badge/Y%20Combinator-backed-ff6600.svg" alt="Y Combinator backed"></a>
 </p>
 
 <p align="center">
@@ -26,14 +27,35 @@
 >
 > Tuesday, every agent on the team can execute the pattern.
 
-**Beyond memory.** Hivemind captures every coding-agent interaction in your org as a structured trace, codifies repeated patterns into reusable skills, and propagates those skills to every agent on your team.
+On [LoCoMo](https://arxiv.org/abs/2402.17753), the public long-context memory benchmark, Hivemind is **25% cheaper, 1.7× fewer tokens, and 31% fewer turns** than running without shared memory. ([See the numbers below.](#benchmarks))
+
+**Beyond memory.** Hivemind doesn't just remember — it mines your team's traces for repeated patterns and codifies them into reusable skills that propagate back into every agent on the team. The agent your junior engineer used this morning is sharper because of what your senior engineer's agent figured out last week.
 
 - 📥 **Captures** every session's prompts, tool calls, and responses as structured traces in Deeplake
-- 🧠 **Codifies** patterns in those traces into reusable skills, available to every agent on your team
-- 🔍 **Searches** across all traces and skills with lexical retrieval (grep fallback when index unavailable)
+- 🧠 **Codifies** patterns into reusable `SKILL.md` files, available to every agent on your team
+- 🔍 **Searches** traces and skills with hybrid lexical + semantic retrieval (BM25 fallback when embeddings off)
 - 🔗 **Propagates** capability across sessions, agents, teammates, and machines in real time
 - 📁 **Intercepts** file operations on `~/.deeplake/memory/` through a virtual filesystem backed by SQL
 - 📝 **Summarizes** sessions into AI-generated wiki pages via a background worker at session end
+- ☁️ **BYOC**: keep data in your own GCS, Azure, S3, or on-prem bucket — [see Security & storage](#security--storage)
+
+## Benchmarks
+
+On the [LoCoMo](https://arxiv.org/abs/2402.17753) long-context memory benchmark (100 QA pairs, Claude Haiku via `claude -p`, hybrid lexical + semantic retrieval), Hivemind cuts cost, tokens, and turns versus a no-memory baseline:
+
+| Metric            | Baseline | Hivemind | Improvement      |
+|-------------------|----------|----------|------------------|
+| Cost / 100 QA     | $8.94    | $6.65    | **25% cheaper**  |
+| Tokens / question | 1,700    | 1,008    | **1.7× fewer**   |
+| Turns / question  | 8.9      | 6.2      | **31% fewer**    |
+
+The agent reaches the answer in fewer turns with less context, because the prior work is already in scope at recall time — not re-derived per session.
+
+<p align="center">
+  <a href="https://star-history.com/#activeloopai/hivemind&Date">
+    <img src="https://api.star-history.com/svg?repos=activeloopai/hivemind&type=Date" alt="Star History Chart" width="600">
+  </a>
+</p>
 
 ## Quick start
 
@@ -360,13 +382,37 @@ Per-agent integration mechanisms (marketplace plugin, hooks, skills, native exte
 - **Skill versioning and review.** Pre-release human review for codified skills before they propagate org-wide, for teams that want a curation step.
 - **More agents.** If your team uses an agent that isn't on the supported-assistants list above, open an issue.
 
-## Security
+## Security & storage
+
+### Tenant isolation & encryption
+
+- TLS between every agent and Deep Lake. AES-256 on the bytes once they land. Your cloud credentials live in Deep Lake's vault — Hivemind never sees the raw keys.
+- Org and workspace boundaries enforced at the storage layer, not just the API. Sessions never share a row, a partition, or an index with another workspace.
+- Disable capture per session with `HIVEMIND_CAPTURE=false`. Delete a workspace and the underlying objects go with it.
+
+### Code-level controls
 
 - SQL values escaped with `sqlStr()`, `sqlLike()`, `sqlIdent()`
 - ~70 allowlisted builtins run in the virtual FS; unrecognized commands are denied
 - Credentials stored with mode `0600`, config dir with mode `0700`
 - Device flow login: no tokens in environment or code
-- `HIVEMIND_CAPTURE=false` fully disables data collection
+
+### Bring your own cloud (BYOC)
+
+Hivemind Cloud is the default. When that isn't enough, point Hivemind at storage in your own cloud — we handle the orchestration, data never leaves your perimeter.
+
+| Provider                   | Status     | Setup                                                  |
+|----------------------------|------------|--------------------------------------------------------|
+| Google Cloud Storage       | Available  | [docs](https://docs.deeplake.ai/latest/guide/gcs/)     |
+| Azure Blob Storage         | Available  | [docs](https://docs.deeplake.ai/latest/guide/azure/)   |
+| Amazon S3                  | Available  | [contact us](https://deeplake.ai/hivemind#security)    |
+| S3-compatible on-prem      | On request | [contact us](https://deeplake.ai/hivemind#security)    |
+
+## Who builds Hivemind
+
+Hivemind is built and maintained by [Activeloop](https://activeloop.ai) — the open-source team behind [Deeplake](https://github.com/activeloopai/deeplake), backed by Y Combinator.
+
+We run Hivemind ourselves, all day, across Claude Code, OpenClaw, Codex, and Cursor. Every benchmark number above came from our own internal eval against the LoCoMo public benchmark. If you're running coding agents at a team or org and want to talk through your setup, drop us a line: [hello@activeloop.ai](mailto:hello@activeloop.ai).
 
 ## Development
 
