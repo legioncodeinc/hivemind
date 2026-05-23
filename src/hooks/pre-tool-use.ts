@@ -53,6 +53,13 @@ export interface ClaudePreToolDecision {
    * got undefined" if the hook hands it the Bash-shaped input.
    */
   file_path?: string;
+  /**
+   * When set, main() emits a `permissionDecision: "deny"` response carrying
+   * this reason. Used for tools the VFS cannot route (Write / Edit) so the
+   * agent sees a clear "use Bash instead" message rather than a cryptic
+   * "Path must be a string, received undefined" from a shape mismatch.
+   */
+  deny?: string;
 }
 
 const READ_CACHE_ROOT = join(homedir(), ".deeplake", "query-cache");
@@ -90,6 +97,18 @@ export function writeReadCacheFile(
 export function buildReadDecision(file_path: string, description: string): ClaudePreToolDecision {
   return { command: "", description, file_path };
 }
+
+export function buildDenyDecision(reason: string, description: string): ClaudePreToolDecision {
+  return { command: "", description, deny: reason };
+}
+
+const WRITE_EDIT_DENY_REASON =
+  "Write and Edit tools cannot route through the Deeplake VFS at ~/.deeplake/memory/. " +
+  "The pre-tool-use hook only intercepts Bash, Read, Grep, and Glob; tool-shape mismatches make a " +
+  "Write/Edit rewrite unsafe. Use the Bash tool instead:\n" +
+  "  - Single-line:  echo '<content>' > '<path>'\n" +
+  "  - Multi-line:   cat > '<path>' <<'EOF'\\n<content>\\nEOF\n" +
+  "Bash IS intercepted and writes through to the team-shared SQL backend.";
 
 function getReadTargetPath(toolInput: Record<string, unknown>): string | null {
   const rawPath = (toolInput.file_path ?? toolInput.path) as string | undefined;
@@ -221,6 +240,17 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
   const cmd = (input.tool_input.command as string) ?? "";
   const shellCmd = getShellCommand(input.tool_name, input.tool_input);
   const toolPath = (getReadTargetPath(input.tool_input) ?? input.tool_input.path ?? "") as string;
+
+  // Write / Edit on memory paths cannot be safely rewritten: the hook can only
+  // mutate tool_input, not the tool itself, so emitting a Bash-shaped decision
+  // (command/description) leaves the Write tool with file_path=undefined → the
+  // harness errors out with "Path must be a string, received undefined". Deny
+  // with a clear message pointing at Bash instead — Bash IS intercepted and
+  // routes through the SQL backend.
+  if ((input.tool_name === "Write" || input.tool_name === "Edit") && touchesMemory(toolPath)) {
+    logFn(`deny Write/Edit on memory path: ${toolPath}`);
+    return buildDenyDecision(WRITE_EDIT_DENY_REASON, `[DeepLake] ${input.tool_name} denied on memory path`);
+  }
 
   if (!shellCmd && (touchesMemory(cmd) || touchesMemory(toolPath))) {
     const guidance = "[RETRY REQUIRED] The command you tried is not available for ~/.deeplake/memory/. " +
@@ -495,6 +525,16 @@ async function main(): Promise<void> {
   const input = await readStdin<PreToolUseInput>();
   const decision = await processPreToolUse(input);
   if (!decision) return;
+  if (decision.deny !== undefined) {
+    console.log(JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: decision.deny,
+      },
+    }));
+    return;
+  }
   const updatedInput: Record<string, unknown> = decision.file_path !== undefined
     ? { file_path: decision.file_path }
     : { command: decision.command, description: decision.description };

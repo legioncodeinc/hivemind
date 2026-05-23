@@ -1,7 +1,7 @@
 ---
 name: hivemind-goals
 description: Create, track and update team goals + KPIs via the Deeplake virtual filesystem at memory/goal/ and memory/kpi/. Use whenever the user mentions a goal, objective, KPI, target, milestone, or asks to track progress on something measurable.
-allowed-tools: Read Write Edit Bash
+allowed-tools: Read Bash
 ---
 
 # Hivemind Goals
@@ -60,8 +60,14 @@ The `target:`, `current:`, `unit:` lines must stay on a single line each. The fi
 When the user expresses a new goal:
 
 1. Get the current owner with `hivemind whoami` (use the userName, e.g. `emanuele.fenocchi`).
-2. Generate a UUIDv4: `uuidgen` or `node -e 'console.log(crypto.randomUUID())'`.
-3. Write the goal file at `~/.deeplake/memory/goal/<owner>/opened/<uuid>.md` with the goal description as body.
+2. Generate a UUIDv4: `uuidgen` (do NOT use `node -e` — Node is not available under the VFS path).
+3. Write the goal file via **Bash** (Write / Edit are denied on memory paths; only Bash is intercepted and routed to SQL):
+   ```bash
+   cat > ~/.deeplake/memory/goal/<owner>/opened/<uuid>.md <<'EOF'
+   <goal description here, multiple lines OK>
+   EOF
+   ```
+   For a single-line goal, `echo '<text>' > ~/.deeplake/memory/goal/<owner>/opened/<uuid>.md` is equivalent.
 4. Respond to the user that the goal is created.
 
 **Do NOT auto-generate KPIs.** A goal is created with zero KPI files by default. Generate KPIs ONLY when the user explicitly asks you to ("aggiungi KPI per …", "add metrics for this goal", "track these metrics: …"). When the user asks, write each KPI as a separate file at `~/.deeplake/memory/kpi/<goal_id>/<kpi-slug>.md` with the body format documented above.
@@ -78,9 +84,14 @@ Then `cat` each `<uuid>.md` to read the body. Optionally `ls ~/.deeplake/memory/
 ### 3. Edit a goal description
 
 ```bash
-# Use Read + Edit (or Write) on the existing file. The VFS handles
-# version-bumping — every write produces a fresh row in the
-# hivemind_goals table.
+# Read the existing body, then overwrite via Bash heredoc. Edit / Write
+# tools are denied on memory paths in claude-code (the hook can only
+# rewrite Bash). The VFS handles version-bumping — every overwrite
+# produces a fresh row in the hivemind_goals table.
+cat ~/.deeplake/memory/goal/<owner>/opened/<uuid>.md   # read current
+cat > ~/.deeplake/memory/goal/<owner>/opened/<uuid>.md <<'EOF'
+<new body here>
+EOF
 ```
 
 ### 4. Move a goal to in_progress
@@ -108,27 +119,33 @@ rm ~/.deeplake/memory/goal/<owner>/opened/<uuid>.md
 ### 6. Add a KPI manually
 
 ```bash
-Write the file at ~/.deeplake/memory/kpi/<uuid>/<kpi-slug>.md with:
-  <KPI name>
+cat > ~/.deeplake/memory/kpi/<uuid>/<kpi-slug>.md <<'EOF'
+<KPI name>
 
-  - target: <N>
-  - current: 0
-  - unit: <unit>
+- target: <N>
+- current: 0
+- unit: <unit>
+EOF
 ```
 
 ### 7. Record progress on a KPI
 
-Read the KPI file, increment the `current:` line, write it back:
+Read the KPI file, increment the `current:` line, write it back via Bash. The
+Edit tool is denied on memory paths — overwrite the full file via heredoc:
 
-```
+```bash
+cat ~/.deeplake/memory/kpi/<uuid>/<kpi-slug>.md   # read current
+cat > ~/.deeplake/memory/kpi/<uuid>/<kpi-slug>.md <<'EOF'
 <KPI name>
 
 - target: 5
-- current: 3       ← incremented from 2
+- current: 3
 - unit: count
+EOF
 ```
 
-Use the Edit tool for the most surgical change (just the line with `current:`).
+A surgical `sed -i 's/^- current: .*/- current: 3/'` also works since `sed`
+is an allowed builtin under the VFS path.
 
 ### 8. Reassign a goal (transfer ownership)
 

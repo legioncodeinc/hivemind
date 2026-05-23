@@ -491,3 +491,61 @@ describe("pre-tool-use: path variant handling", () => {
     }
   });
 });
+
+// ── Write / Edit on memory paths: deny with Bash guidance ───────────────────
+// The hook can only mutate tool_input, not the tool itself, so emitting a
+// Bash-shaped decision for Write would leave file_path undefined and the
+// harness would error with "Path must be a string, received undefined".
+// These tests pin the new behaviour: deny + clear reason pointing at Bash.
+
+describe("pre-tool-use: Write / Edit on memory paths are denied with Bash guidance", () => {
+  it("denies Write to an absolute memory path", () => {
+    const { homedir } = require("node:os");
+    const r = runPreToolUse("Write", {
+      file_path: `${homedir()}/.deeplake/memory/goal/u/opened/x.md`,
+      content: "hello",
+    });
+    expect(r.empty).toBe(false);
+    if (!r.empty) {
+      expect(r.decision).toBe("deny");
+      expect(r.reason).toBeDefined();
+      expect(r.reason).toContain("Bash");
+      expect(r.reason).toContain("echo");
+      expect(r.reason).toContain("cat >");
+      expect(r.updatedCommand).toBeUndefined();
+    }
+  });
+
+  it("denies Write with tilde-prefixed memory path", () => {
+    const r = runPreToolUse("Write", {
+      file_path: "~/.deeplake/memory/kpi/g/k.md",
+      content: "x",
+    });
+    expect(r.empty).toBe(false);
+    if (!r.empty) {
+      expect(r.decision).toBe("deny");
+    }
+  });
+
+  it("denies Edit on a memory path", () => {
+    const r = runPreToolUse("Edit", {
+      file_path: "~/.deeplake/memory/goal/u/opened/x.md",
+      old_string: "a",
+      new_string: "b",
+    });
+    expect(r.empty).toBe(false);
+    if (!r.empty) {
+      expect(r.decision).toBe("deny");
+      expect(r.reason).toContain("Bash");
+    }
+  });
+
+  it("does NOT deny Write outside the memory path", () => {
+    const r = runPreToolUse("Write", {
+      file_path: "/tmp/some-other-file.txt",
+      content: "hello",
+    });
+    // Outside memory: hook should pass through (no decision emitted)
+    expect(r.empty).toBe(true);
+  });
+});
