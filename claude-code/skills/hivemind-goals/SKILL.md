@@ -161,7 +161,6 @@ Goal ownership lives in the path. KPI files do NOT have an owner segment — the
 - Do NOT use status values other than `opened`, `in_progress`, `closed`.
 - Do NOT rename the goal_id (the UUID in the filename) via `mv`. The VFS rejects goal_id renames.
 - Do NOT block on the KPI generator subprocess — always spawn it detached (`nohup … &`).
-- Do NOT use the old `hivemind tasks` CLI — that belonged to an earlier design and is being removed.
 
 ## Auto-progress from `git commit`
 
