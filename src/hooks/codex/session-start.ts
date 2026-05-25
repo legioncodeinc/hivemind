@@ -13,7 +13,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { loadCredentials } from "../../commands/auth.js";
+import { loadCredentials, healDriftedOrgToken } from "../../commands/auth.js";
 import { readStdin } from "../../utils/stdin.js";
 import { countLocalManifestEntries } from "../../skillify/local-manifest.js";
 import { maybeAutoMineLocal } from "../../skillify/spawn-mine-local-worker.js";
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
 
   const input = await readStdin<CodexSessionStartInput>();
 
-  const creds = loadCredentials();
+  let creds = loadCredentials();
 
   if (!creds?.token) {
     log("no credentials found — run auth login to authenticate");
@@ -55,6 +55,7 @@ async function main(): Promise<void> {
     log(`auto-mine: ${auto.triggered ? "triggered (background)" : `skipped (${auto.reason})`}`);
   } else {
     log(`credentials loaded: org=${creds.orgName ?? creds.orgId}`);
+    creds = await healDriftedOrgToken(creds, log);
   }
 
   // Spawn async setup (table creation, placeholder, version check) as detached process.

@@ -20,7 +20,7 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { loadCredentials } from "../../commands/auth.js";
+import { loadCredentials, healDriftedOrgToken } from "../../commands/auth.js";
 import { loadConfig } from "../../config.js";
 import { DeeplakeApi } from "../../deeplake-api.js";
 import { renderContextBlock } from "../shared/context-renderer.js";
@@ -137,13 +137,14 @@ async function main(): Promise<void> {
   const sessionId = resolveSessionId(input);
   const cwd = resolveCwd(input);
 
-  const creds = loadCredentials();
+  let creds = loadCredentials();
   if (!creds?.token) {
     log("no credentials found");
     const auto = maybeAutoMineLocal();
     log(`auto-mine: ${auto.triggered ? "triggered (background)" : `skipped (${auto.reason})`}`);
   } else {
     log(`credentials loaded: org=${creds.orgName ?? creds.orgId}`);
+    creds = await healDriftedOrgToken(creds, log);
   }
 
   // Centralized autoupdate fires BEFORE the DB ensure-table calls — those

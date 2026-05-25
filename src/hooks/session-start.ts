@@ -9,7 +9,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { loadCredentials, saveCredentials } from "../commands/auth.js";
+import { loadCredentials, saveCredentials, healDriftedOrgToken } from "../commands/auth.js";
 import { loadConfig } from "../config.js";
 import { DeeplakeApi } from "../deeplake-api.js";
 import { sqlStr } from "../utils/sql.js";
@@ -148,6 +148,11 @@ async function main(): Promise<void> {
     log(`auto-mine: ${auto.triggered ? "triggered (background)" : `skipped (${auto.reason})`}`);
   } else {
     log(`credentials loaded: org=${creds.orgName ?? creds.orgId}`);
+    // Self-heal the legacy `org switch` regression: pre-fix versions only
+    // rewrote orgId without re-minting, so creds.token still carries the
+    // old org_id claim. Detect drift here and re-bind; non-fatal on
+    // failure (logged + continue with stale token).
+    creds = await healDriftedOrgToken(creds, log);
     // Backfill userName if missing (for users who logged in before this field was added)
     if (creds.token && !creds.userName) {
       try {

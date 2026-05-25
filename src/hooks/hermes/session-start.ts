@@ -11,7 +11,7 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { loadCredentials } from "../../commands/auth.js";
+import { loadCredentials, healDriftedOrgToken } from "../../commands/auth.js";
 import { loadConfig } from "../../config.js";
 import { DeeplakeApi } from "../../deeplake-api.js";
 import { renderContextBlock } from "../shared/context-renderer.js";
@@ -110,7 +110,7 @@ async function main(): Promise<void> {
   const sessionId = input.session_id ?? `hermes-${Date.now()}`;
   const cwd = input.cwd ?? process.cwd();
 
-  const creds = loadCredentials();
+  let creds = loadCredentials();
   const captureEnabled = process.env.HIVEMIND_CAPTURE !== "false";
 
   if (!creds?.token) {
@@ -119,6 +119,8 @@ async function main(): Promise<void> {
     // full set of guards. Next session shows the count via
     // countLocalManifestEntries().
     maybeAutoMineLocal();
+  } else {
+    creds = await healDriftedOrgToken(creds, log);
   }
 
   // Centralized autoupdate fires BEFORE the DB ensure-table calls — those
