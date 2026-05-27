@@ -65,6 +65,10 @@ function toClient(n: ServerNotification): Notification | null {
     // dedup_key is hashed in here so a server that reuses the same UUID
     // with a fresh dedup_key (rare but supported) re-fires for the user.
     dedupKey: { id: n.id, dedup_key: n.dedup_key ?? "" },
+    // Server-controlled content must not reach the model's additionalContext:
+    // an attacker who can push a notification can otherwise inject arbitrary
+    // instructions into the agent's system prompt.
+    userVisibleOnly: true,
   };
 }
 
