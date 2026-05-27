@@ -1,0 +1,812 @@
+#!/usr/bin/env node
+
+// dist/src/hooks/codex/wiki-worker.js
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, existsSync as existsSync4, appendFileSync as appendFileSync2, mkdirSync as mkdirSync3, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { dirname as dirname2, join as join6 } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// dist/src/hooks/summary-state.js
+import { readFileSync, writeFileSync, writeSync, mkdirSync, renameSync, existsSync, unlinkSync, openSync, closeSync } from "node:fs";
+import { homedir as homedir2 } from "node:os";
+import { join as join2 } from "node:path";
+
+// dist/src/utils/debug.js
+import { appendFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+var LOG = join(homedir(), ".deeplake", "hook-debug.log");
+function isDebug() {
+  return process.env.HIVEMIND_DEBUG === "1";
+}
+function log(tag, msg) {
+  if (!isDebug())
+    return;
+  appendFileSync(LOG, `${(/* @__PURE__ */ new Date()).toISOString()} [${tag}] ${msg}
+`);
+}
+
+// dist/src/hooks/summary-state.js
+var dlog = (msg) => log("summary-state", msg);
+var STATE_DIR = join2(homedir2(), ".claude", "hooks", "summary-state");
+var YIELD_BUF = new Int32Array(new SharedArrayBuffer(4));
+function statePath(sessionId) {
+  return join2(STATE_DIR, `${sessionId}.json`);
+}
+function lockPath(sessionId) {
+  return join2(STATE_DIR, `${sessionId}.lock`);
+}
+function readState(sessionId) {
+  const p = statePath(sessionId);
+  if (!existsSync(p))
+    return null;
+  try {
+    return JSON.parse(readFileSync(p, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function writeState(sessionId, state) {
+  mkdirSync(STATE_DIR, { recursive: true });
+  const p = statePath(sessionId);
+  const tmp = `${p}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, JSON.stringify(state));
+  renameSync(tmp, p);
+}
+function withRmwLock(sessionId, fn) {
+  mkdirSync(STATE_DIR, { recursive: true });
+  const rmwLock = statePath(sessionId) + ".rmw";
+  const deadline = Date.now() + 2e3;
+  let fd = null;
+  while (fd === null) {
+    try {
+      fd = openSync(rmwLock, "wx");
+    } catch (e) {
+      if (e.code !== "EEXIST")
+        throw e;
+      if (Date.now() > deadline) {
+        dlog(`rmw lock deadline exceeded for ${sessionId}, reclaiming stale lock`);
+        try {
+          unlinkSync(rmwLock);
+        } catch (unlinkErr) {
+          dlog(`stale rmw lock unlink failed for ${sessionId}: ${unlinkErr.message}`);
+        }
+        continue;
+      }
+      Atomics.wait(YIELD_BUF, 0, 0, 10);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    closeSync(fd);
+    try {
+      unlinkSync(rmwLock);
+    } catch (unlinkErr) {
+      dlog(`rmw lock cleanup failed for ${sessionId}: ${unlinkErr.message}`);
+    }
+  }
+}
+function finalizeSummary(sessionId, jsonlLines) {
+  withRmwLock(sessionId, () => {
+    const prev = readState(sessionId);
+    writeState(sessionId, {
+      lastSummaryAt: Date.now(),
+      lastSummaryCount: jsonlLines,
+      totalCount: Math.max(prev?.totalCount ?? 0, jsonlLines)
+    });
+  });
+}
+function releaseLock(sessionId) {
+  try {
+    unlinkSync(lockPath(sessionId));
+  } catch (e) {
+    if (e?.code !== "ENOENT") {
+      dlog(`releaseLock unlink failed for ${sessionId}: ${e.message}`);
+    }
+  }
+}
+
+// dist/src/hooks/upload-summary.js
+import { randomUUID } from "node:crypto";
+
+// dist/src/embeddings/sql.js
+function embeddingSqlLiteral(vec) {
+  if (!vec || vec.length === 0)
+    return "NULL";
+  const parts = [];
+  for (const v of vec) {
+    if (!Number.isFinite(v))
+      return "NULL";
+    parts.push(String(v));
+  }
+  return `ARRAY[${parts.join(",")}]::float4[]`;
+}
+
+// dist/src/hooks/upload-summary.js
+function esc(s) {
+  return s.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+function extractDescription(text) {
+  const match = text.match(/## What Happened\n([\s\S]*?)(?=\n##|$)/);
+  return match ? match[1].trim().slice(0, 300) : "completed";
+}
+async function uploadSummary(query2, params) {
+  const { tableName, vpath, fname, userName, project, agent, text } = params;
+  const ts = params.ts ?? (/* @__PURE__ */ new Date()).toISOString();
+  const desc = extractDescription(text);
+  const sizeBytes = Buffer.byteLength(text);
+  const embSql = embeddingSqlLiteral(params.embedding ?? null);
+  const pluginVersion = params.pluginVersion;
+  const existing = await query2(`SELECT path FROM "${tableName}" WHERE path = '${esc(vpath)}' LIMIT 1`);
+  if (existing.length > 0) {
+    const pluginVersionSet = pluginVersion === void 0 ? "" : `plugin_version = '${esc(pluginVersion)}', `;
+    const sql2 = `UPDATE "${tableName}" SET summary = E'${esc(text)}', summary_embedding = ${embSql}, size_bytes = ${sizeBytes}, description = E'${esc(desc)}', ` + pluginVersionSet + `last_update_date = '${ts}' WHERE path = '${esc(vpath)}'`;
+    await query2(sql2);
+    return { path: "update", sql: sql2, descLength: desc.length, summaryLength: text.length };
+  }
+  const pluginVersionForInsert = pluginVersion ?? "";
+  const sql = `INSERT INTO "${tableName}" (id, path, filename, summary, summary_embedding, author, mime_type, size_bytes, project, description, agent, plugin_version, creation_date, last_update_date) VALUES ('${randomUUID()}', '${esc(vpath)}', '${esc(fname)}', E'${esc(text)}', ${embSql}, '${esc(userName)}', 'text/markdown', ${sizeBytes}, '${esc(project)}', E'${esc(desc)}', '${esc(agent)}', '${esc(pluginVersionForInsert)}', '${ts}', '${ts}')`;
+  await query2(sql);
+  return { path: "insert", sql, descLength: desc.length, summaryLength: text.length };
+}
+
+// dist/src/embeddings/client.js
+import { connect } from "node:net";
+import { spawn } from "node:child_process";
+import { openSync as openSync2, closeSync as closeSync2, writeSync as writeSync2, unlinkSync as unlinkSync2, existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
+import { homedir as homedir3 } from "node:os";
+import { join as join3 } from "node:path";
+
+// dist/src/embeddings/protocol.js
+var DEFAULT_SOCKET_DIR = "/tmp";
+var DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1e3;
+var DEFAULT_CLIENT_TIMEOUT_MS = 2e3;
+function socketPathFor(uid, dir = DEFAULT_SOCKET_DIR) {
+  return `${dir}/hivemind-embed-${uid}.sock`;
+}
+function pidPathFor(uid, dir = DEFAULT_SOCKET_DIR) {
+  return `${dir}/hivemind-embed-${uid}.pid`;
+}
+
+// dist/src/embeddings/client.js
+var SHARED_DAEMON_PATH = join3(homedir3(), ".hivemind", "embed-deps", "embed-daemon.js");
+var log2 = (m) => log("embed-client", m);
+function getUid() {
+  const uid = typeof process.getuid === "function" ? process.getuid() : void 0;
+  return uid !== void 0 ? String(uid) : process.env.USER ?? "default";
+}
+var _recycledStuckDaemon = false;
+var EmbedClient = class {
+  socketPath;
+  pidPath;
+  timeoutMs;
+  daemonEntry;
+  autoSpawn;
+  spawnWaitMs;
+  nextId = 0;
+  helloVerified = false;
+  constructor(opts = {}) {
+    const uid = getUid();
+    const dir = opts.socketDir ?? "/tmp";
+    this.socketPath = socketPathFor(uid, dir);
+    this.pidPath = pidPathFor(uid, dir);
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_CLIENT_TIMEOUT_MS;
+    this.daemonEntry = opts.daemonEntry ?? process.env.HIVEMIND_EMBED_DAEMON ?? (existsSync2(SHARED_DAEMON_PATH) ? SHARED_DAEMON_PATH : void 0);
+    this.autoSpawn = opts.autoSpawn ?? true;
+    this.spawnWaitMs = opts.spawnWaitMs ?? 5e3;
+  }
+  /**
+   * Returns an embedding vector, or null on timeout/failure. Hooks MUST treat
+   * null as "skip embedding column" — never block the write path on us.
+   *
+   * Fire-and-forget spawn on miss: if the daemon isn't up, this call returns
+   * null AND kicks off a background spawn. The next call finds a ready daemon.
+   *
+   * Stuck-daemon recycle: if the daemon returns a transformers-missing
+   * error (typical after a marketplace upgrade left an older daemon process
+   * alive but with no node_modules accessible from its bundle path), we
+   * SIGTERM it and clear its sock/pid so the very next call spawns a fresh
+   * daemon from the current bundle. Without this, the stuck daemon would
+   * keep poisoning every session until its 10-minute idle-out fires.
+   */
+  async embed(text, kind = "document") {
+    const v = await this.embedAttempt(text, kind);
+    if (v !== "recycled")
+      return v;
+    if (!this.autoSpawn)
+      return null;
+    this.trySpawnDaemon();
+    await this.waitForDaemonReady();
+    const retry = await this.embedAttempt(text, kind);
+    return retry === "recycled" ? null : retry;
+  }
+  /**
+   * One round-trip: connect → verify → embed. Returns:
+   *  - number[]  : embedding vector (happy path)
+   *  - null      : timeout / daemon error / transformers-missing
+   *  - "recycled": verifyDaemonOnce killed the daemon mid-call;
+   *                caller should respawn and retry once.
+   */
+  async embedAttempt(text, kind) {
+    let sock;
+    try {
+      sock = await this.connectOnce();
+    } catch {
+      if (this.autoSpawn)
+        this.trySpawnDaemon();
+      return null;
+    }
+    try {
+      const recycled = await this.verifyDaemonOnce(sock);
+      if (recycled) {
+        return "recycled";
+      }
+      const id = String(++this.nextId);
+      const req = { op: "embed", id, kind, text };
+      const resp = await this.sendAndWait(sock, req);
+      if (resp.error || !("embedding" in resp) || !resp.embedding) {
+        const err = resp.error ?? "no embedding";
+        log2(`embed err: ${err}`);
+        if (isTransformersMissingError(err)) {
+          this.handleTransformersMissing(err);
+        }
+        return null;
+      }
+      return resp.embedding;
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      log2(`embed failed: ${err}`);
+      return null;
+    } finally {
+      try {
+        sock.end();
+      } catch {
+      }
+    }
+  }
+  /**
+   * Poll for the sock file to come back after `trySpawnDaemon` — used by
+   * the recycle retry path. Best-effort: caps at `spawnWaitMs` and
+   * returns regardless so the retry attempt can run.
+   */
+  async waitForDaemonReady() {
+    const deadline = Date.now() + this.spawnWaitMs;
+    while (Date.now() < deadline) {
+      if (existsSync2(this.socketPath))
+        return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+  /**
+   * Send a `hello` on first successful connect per EmbedClient instance.
+   * If the daemon answers with a path that doesn't match our configured
+   * daemonEntry — typical after a marketplace upgrade replaced the bundle
+   * — SIGTERM the daemon + clear sock/pid so the next call spawns from the
+   * current bundle.
+   *
+   * `helloVerified` is set ONLY after we've seen a compatible response,
+   * so a transient probe failure or a recycle-triggering mismatch leaves
+   * the flag false; the next reconnect re-runs verification against
+   * whatever daemon is then live (typically the fresh spawn).
+   */
+  async verifyDaemonOnce(sock) {
+    if (this.helloVerified)
+      return false;
+    if (!this.daemonEntry) {
+      this.helloVerified = true;
+      return false;
+    }
+    const id = String(++this.nextId);
+    const req = { op: "hello", id };
+    let resp;
+    try {
+      resp = await this.sendAndWait(sock, req);
+    } catch (e) {
+      log2(`hello probe failed (inconclusive, will retry next connect): ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
+    const hello = resp;
+    if (_recycledStuckDaemon) {
+      return false;
+    }
+    if (!hello.daemonPath) {
+      _recycledStuckDaemon = true;
+      log2(`daemon does not implement hello (older protocol); recycling`);
+      this.recycleDaemon(hello.pid);
+      return true;
+    }
+    if (hello.daemonPath !== this.daemonEntry && !existsSync2(hello.daemonPath)) {
+      _recycledStuckDaemon = true;
+      log2(`daemon path no longer on disk \u2014 running=${hello.daemonPath} (gone) expected=${this.daemonEntry}; recycling`);
+      this.recycleDaemon(hello.pid);
+      return true;
+    }
+    this.helloVerified = true;
+    return false;
+  }
+  /**
+   * On a transformers-missing error from the daemon, SIGTERM the stuck
+   * daemon (the bundle daemon that can't find its deps) and clear
+   * sock/pid so the next call spawns fresh.
+   *
+   * Previously this also enqueued a user-visible "Hivemind embeddings
+   * disabled — deps missing" notification telling the user to run
+   * `hivemind embeddings install`. The notification was removed because
+   * (a) the recycle alone often fixes the issue silently, and (b) the
+   * warning kept stacking on top of the primary session-start banner
+   * which clashed with the single-slot priority model. The `detail`
+   * argument is retained for future telemetry / debug logging.
+   */
+  handleTransformersMissing(_detail) {
+    if (!_recycledStuckDaemon) {
+      _recycledStuckDaemon = true;
+      this.recycleDaemon(null);
+    }
+  }
+  /**
+   * Best-effort SIGTERM + sock/pid cleanup. Tolerant of every missing-file
+   * combination and dead-PID cases.
+   *
+   * Identity check: gate the SIGTERM on the daemon's socket file still
+   * existing. We know the daemon was alive moments ago (we either just
+   * got a hello response or the caller saw a transformers-missing error
+   * the daemon emitted), but if the socket file is gone by the time we
+   * try to kill, the daemon process is also gone and the PID we
+   * captured may already have been recycled by the OS to an unrelated
+   * user process. Mirrors the gate added to `killEmbedDaemon` in the
+   * CLI — same failure mode, rarer trigger.
+   */
+  recycleDaemon(reportedPid) {
+    let pid = reportedPid;
+    if (pid === null) {
+      try {
+        pid = Number.parseInt(readFileSync2(this.pidPath, "utf-8").trim(), 10);
+      } catch {
+      }
+    }
+    if (Number.isFinite(pid) && pid !== null && pid > 0 && existsSync2(this.socketPath)) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+      }
+    } else if (pid !== null) {
+      log2(`recycle: socket gone, skipping SIGTERM on possibly-stale pid ${pid}`);
+    }
+    try {
+      unlinkSync2(this.socketPath);
+    } catch {
+    }
+    try {
+      unlinkSync2(this.pidPath);
+    } catch {
+    }
+  }
+  /**
+   * Wait up to spawnWaitMs for the daemon to accept connections, spawning if
+   * necessary. Meant for SessionStart / long-running batches — not the hot path.
+   */
+  async warmup() {
+    try {
+      const s = await this.connectOnce();
+      s.end();
+      return true;
+    } catch {
+      if (!this.autoSpawn)
+        return false;
+      this.trySpawnDaemon();
+      try {
+        const s = await this.waitForSocket();
+        s.end();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+  connectOnce() {
+    return new Promise((resolve, reject) => {
+      const sock = connect(this.socketPath);
+      const to = setTimeout(() => {
+        sock.destroy();
+        reject(new Error("connect timeout"));
+      }, this.timeoutMs);
+      sock.once("connect", () => {
+        clearTimeout(to);
+        resolve(sock);
+      });
+      sock.once("error", (e) => {
+        clearTimeout(to);
+        reject(e);
+      });
+    });
+  }
+  trySpawnDaemon() {
+    let fd;
+    try {
+      fd = openSync2(this.pidPath, "wx", 384);
+      writeSync2(fd, String(process.pid));
+    } catch (e) {
+      if (this.isPidFileStale()) {
+        try {
+          unlinkSync2(this.pidPath);
+        } catch {
+        }
+        try {
+          fd = openSync2(this.pidPath, "wx", 384);
+          writeSync2(fd, String(process.pid));
+        } catch {
+          return;
+        }
+      } else {
+        return;
+      }
+    }
+    if (!this.daemonEntry || !existsSync2(this.daemonEntry)) {
+      log2(`daemonEntry not configured or missing: ${this.daemonEntry}`);
+      try {
+        closeSync2(fd);
+        unlinkSync2(this.pidPath);
+      } catch {
+      }
+      return;
+    }
+    try {
+      const child = spawn(process.execPath, [this.daemonEntry], {
+        detached: true,
+        stdio: "ignore",
+        env: process.env
+      });
+      child.unref();
+      log2(`spawned daemon pid=${child.pid}`);
+    } finally {
+      closeSync2(fd);
+    }
+  }
+  isPidFileStale() {
+    try {
+      const raw = readFileSync2(this.pidPath, "utf-8").trim();
+      const pid = Number(raw);
+      if (!pid || Number.isNaN(pid))
+        return true;
+      try {
+        process.kill(pid, 0);
+        return false;
+      } catch {
+        return true;
+      }
+    } catch {
+      return true;
+    }
+  }
+  async waitForSocket() {
+    const deadline = Date.now() + this.spawnWaitMs;
+    let delay = 30;
+    while (Date.now() < deadline) {
+      await sleep(delay);
+      delay = Math.min(delay * 1.5, 300);
+      if (!existsSync2(this.socketPath))
+        continue;
+      try {
+        return await this.connectOnce();
+      } catch {
+      }
+    }
+    throw new Error("daemon did not become ready within spawnWaitMs");
+  }
+  sendAndWait(sock, req) {
+    return new Promise((resolve, reject) => {
+      let buf = "";
+      const to = setTimeout(() => {
+        sock.destroy();
+        reject(new Error("request timeout"));
+      }, this.timeoutMs);
+      sock.setEncoding("utf-8");
+      sock.on("data", (chunk) => {
+        buf += chunk;
+        const nl = buf.indexOf("\n");
+        if (nl === -1)
+          return;
+        const line = buf.slice(0, nl);
+        clearTimeout(to);
+        try {
+          resolve(JSON.parse(line));
+        } catch (e) {
+          reject(e);
+        }
+      });
+      sock.on("error", (e) => {
+        clearTimeout(to);
+        reject(e);
+      });
+      sock.on("end", () => {
+        clearTimeout(to);
+        reject(new Error("connection closed without response"));
+      });
+      sock.write(JSON.stringify(req) + "\n");
+    });
+  }
+};
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+function isTransformersMissingError(err) {
+  if (/hivemind embeddings install/i.test(err))
+    return true;
+  return /@huggingface\/transformers/i.test(err);
+}
+
+// dist/src/embeddings/disable.js
+import { createRequire } from "node:module";
+import { homedir as homedir5 } from "node:os";
+import { join as join5 } from "node:path";
+import { pathToFileURL } from "node:url";
+
+// dist/src/user-config.js
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync3, renameSync as renameSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { homedir as homedir4 } from "node:os";
+import { dirname, join as join4 } from "node:path";
+var _configPath = () => process.env.HIVEMIND_CONFIG_PATH ?? join4(homedir4(), ".deeplake", "config.json");
+var _cache = null;
+var _migrated = false;
+function readUserConfig() {
+  if (_cache !== null)
+    return _cache;
+  const path = _configPath();
+  if (!existsSync3(path)) {
+    _cache = {};
+    return _cache;
+  }
+  try {
+    const raw = readFileSync3(path, "utf-8");
+    const parsed = JSON.parse(raw);
+    _cache = isPlainObject(parsed) ? parsed : {};
+  } catch {
+    _cache = {};
+  }
+  return _cache;
+}
+function writeUserConfig(patch) {
+  const current = readUserConfig();
+  const merged = deepMerge(current, patch);
+  const path = _configPath();
+  const dir = dirname(path);
+  if (!existsSync3(dir))
+    mkdirSync2(dir, { recursive: true });
+  const tmp = `${path}.tmp.${process.pid}`;
+  writeFileSync2(tmp, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+  renameSync2(tmp, path);
+  _cache = merged;
+  return merged;
+}
+function getEmbeddingsEnabled() {
+  const cfg2 = readUserConfig();
+  if (cfg2.embeddings && typeof cfg2.embeddings.enabled === "boolean") {
+    return cfg2.embeddings.enabled;
+  }
+  if (_migrated) {
+    return migrationValueFromEnv();
+  }
+  _migrated = true;
+  const enabled = migrationValueFromEnv();
+  try {
+    writeUserConfig({ embeddings: { enabled } });
+  } catch {
+    _cache = { ...cfg2 ?? {}, embeddings: { ...cfg2?.embeddings ?? {}, enabled } };
+  }
+  return enabled;
+}
+function migrationValueFromEnv() {
+  const raw = process.env.HIVEMIND_EMBEDDINGS;
+  if (raw === void 0)
+    return false;
+  if (raw === "false")
+    return false;
+  return true;
+}
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function deepMerge(base, patch) {
+  const out = { ...base };
+  for (const key of Object.keys(patch)) {
+    const patchVal = patch[key];
+    const baseVal = base[key];
+    if (isPlainObject(patchVal) && isPlainObject(baseVal)) {
+      out[key] = { ...baseVal, ...patchVal };
+    } else if (patchVal !== void 0) {
+      out[key] = patchVal;
+    }
+  }
+  return out;
+}
+
+// dist/src/embeddings/disable.js
+var cachedStatus = null;
+function defaultResolveTransformers() {
+  const sharedDir = join5(homedir5(), ".hivemind", "embed-deps");
+  try {
+    createRequire(pathToFileURL(`${sharedDir}/`).href).resolve("@huggingface/transformers");
+    return;
+  } catch {
+  }
+  createRequire(import.meta.url).resolve("@huggingface/transformers");
+}
+var _resolve = defaultResolveTransformers;
+var _readEnabled = getEmbeddingsEnabled;
+function detectStatus() {
+  if (!_readEnabled())
+    return "user-disabled";
+  try {
+    _resolve();
+    return "enabled";
+  } catch {
+    return "no-transformers";
+  }
+}
+function embeddingsStatus() {
+  if (cachedStatus !== null)
+    return cachedStatus;
+  cachedStatus = detectStatus();
+  return cachedStatus;
+}
+function embeddingsDisabled() {
+  return embeddingsStatus() !== "enabled";
+}
+
+// dist/src/utils/client-header.js
+var DEEPLAKE_CLIENT_HEADER = "X-Deeplake-Client";
+function deeplakeClientValue() {
+  return "hivemind";
+}
+function deeplakeClientHeader() {
+  return { [DEEPLAKE_CLIENT_HEADER]: deeplakeClientValue() };
+}
+
+// dist/src/hooks/codex/wiki-worker.js
+var dlog2 = (msg) => log("codex-wiki-worker", msg);
+var cfg = JSON.parse(readFileSync4(process.argv[2], "utf-8"));
+var tmpDir = cfg.tmpDir;
+var tmpJsonl = join6(tmpDir, "session.jsonl");
+var tmpSummary = join6(tmpDir, "summary.md");
+function wlog(msg) {
+  try {
+    mkdirSync3(cfg.hooksDir, { recursive: true });
+    appendFileSync2(cfg.wikiLog, `[${(/* @__PURE__ */ new Date()).toISOString().replace("T", " ").slice(0, 19)}] wiki-worker(${cfg.sessionId}): ${msg}
+`);
+  } catch {
+  }
+}
+function esc2(s) {
+  return s.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+async function query(sql, retries = 4) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const r = await fetch(`${cfg.apiUrl}/workspaces/${cfg.workspaceId}/tables/query`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cfg.token}`,
+        "Content-Type": "application/json",
+        "X-Activeloop-Org-Id": cfg.orgId,
+        ...deeplakeClientHeader()
+      },
+      body: JSON.stringify({ query: sql })
+    });
+    if (r.ok) {
+      const j = await r.json();
+      if (!j.columns || !j.rows)
+        return [];
+      return j.rows.map((row) => Object.fromEntries(j.columns.map((col, i) => [col, row[i]])));
+    }
+    const retryable = r.status === 401 || r.status === 403 || r.status === 429 || r.status === 500 || r.status === 502 || r.status === 503;
+    if (attempt < retries && retryable) {
+      const base = Math.min(3e4, 2e3 * Math.pow(2, attempt));
+      const delay = base + Math.floor(Math.random() * 1e3);
+      wlog(`API ${r.status}, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      continue;
+    }
+    throw new Error(`API ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  }
+  return [];
+}
+function cleanup() {
+  try {
+    rmSync(tmpDir, { recursive: true, force: true });
+  } catch (cleanupErr) {
+    dlog2(`cleanup failed to remove ${tmpDir}: ${cleanupErr.message}`);
+  }
+}
+async function main() {
+  try {
+    wlog("fetching session events");
+    const rows = await query(`SELECT message, creation_date FROM "${cfg.sessionsTable}" WHERE path LIKE E'${esc2(`/sessions/%${cfg.sessionId}%`)}' ORDER BY creation_date ASC`);
+    if (rows.length === 0) {
+      wlog("no session events found \u2014 exiting");
+      return;
+    }
+    const jsonlContent = rows.map((r) => typeof r.message === "string" ? r.message : JSON.stringify(r.message)).join("\n");
+    const jsonlLines = rows.length;
+    const pathRows = await query(`SELECT DISTINCT path FROM "${cfg.sessionsTable}" WHERE path LIKE '${esc2(`/sessions/%${cfg.sessionId}%`)}' LIMIT 1`);
+    const jsonlServerPath = pathRows.length > 0 ? pathRows[0].path : `/sessions/unknown/${cfg.sessionId}.jsonl`;
+    writeFileSync3(tmpJsonl, jsonlContent);
+    wlog(`found ${jsonlLines} events at ${jsonlServerPath}`);
+    let prevOffset = 0;
+    try {
+      const sumRows = await query(`SELECT summary FROM "${cfg.memoryTable}" WHERE path = '${esc2(`/summaries/${cfg.userName}/${cfg.sessionId}.md`)}' LIMIT 1`);
+      if (sumRows.length > 0 && sumRows[0]["summary"]) {
+        const existing = sumRows[0]["summary"];
+        const match = existing.match(/\*\*JSONL offset\*\*:\s*(\d+)/);
+        if (match)
+          prevOffset = parseInt(match[1], 10);
+        writeFileSync3(tmpSummary, existing);
+        wlog(`existing summary found, offset=${prevOffset}`);
+      }
+    } catch {
+    }
+    const prompt = cfg.promptTemplate.replace(/__JSONL__/g, tmpJsonl).replace(/__SUMMARY__/g, tmpSummary).replace(/__SESSION_ID__/g, cfg.sessionId).replace(/__PROJECT__/g, cfg.project).replace(/__PREV_OFFSET__/g, String(prevOffset)).replace(/__JSONL_LINES__/g, String(jsonlLines)).replace(/__JSONL_SERVER_PATH__/g, jsonlServerPath);
+    wlog("running codex exec");
+    try {
+      execFileSync(cfg.codexBin, [
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        prompt
+      ], {
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 12e4,
+        env: { ...process.env, HIVEMIND_WIKI_WORKER: "1", HIVEMIND_CAPTURE: "false" }
+      });
+      wlog("codex exec exited (code 0)");
+    } catch (e) {
+      wlog(`codex exec failed: ${e.status ?? e.message}`);
+    }
+    if (existsSync4(tmpSummary)) {
+      const text = readFileSync4(tmpSummary, "utf-8");
+      if (text.trim()) {
+        const fname = `${cfg.sessionId}.md`;
+        const vpath = `/summaries/${cfg.userName}/${fname}`;
+        let embedding = null;
+        if (!embeddingsDisabled()) {
+          try {
+            const daemonEntry = join6(dirname2(fileURLToPath(import.meta.url)), "embeddings", "embed-daemon.js");
+            embedding = await new EmbedClient({ daemonEntry }).embed(text, "document");
+          } catch (e) {
+            wlog(`summary embedding failed, writing NULL: ${e.message}`);
+          }
+        }
+        const result = await uploadSummary(query, {
+          tableName: cfg.memoryTable,
+          vpath,
+          fname,
+          userName: cfg.userName,
+          project: cfg.project,
+          agent: "codex",
+          sessionId: cfg.sessionId,
+          text,
+          embedding,
+          pluginVersion: cfg.pluginVersion ?? ""
+        });
+        wlog(`uploaded ${vpath} (summary=${result.summaryLength}, desc=${result.descLength})`);
+        try {
+          finalizeSummary(cfg.sessionId, jsonlLines);
+          wlog(`sidecar updated: lastSummaryCount=${jsonlLines}`);
+        } catch (e) {
+          wlog(`sidecar update failed: ${e.message}`);
+        }
+      }
+    } else {
+      wlog("no summary file generated");
+    }
+    wlog("done");
+  } catch (e) {
+    wlog(`fatal: ${e.message}`);
+  } finally {
+    cleanup();
+    try {
+      releaseLock(cfg.sessionId);
+    } catch (releaseErr) {
+      dlog2(`releaseLock failed in finally for ${cfg.sessionId}: ${releaseErr.message}`);
+    }
+  }
+}
+main();
