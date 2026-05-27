@@ -316,12 +316,7 @@ jobs:
         # to sign the artifact via Sigstore. Even if NPM_TOKEN later leaks,
         # consumers can verify the package was built by THIS workflow on
         # THIS commit, and npmjs.com displays a Provenance badge.
-        # Node 22 ships with npm 10.x; OIDC tokenless publishing requires
-        # npm 11+. Upgrade in-place before publish; the rest of the job
-        # (build, test) keeps the Node 22 tree-sitter ABI.
-        run: |
-          npm install -g npm@11
-          npm publish --provenance --access public
+        run: npm publish --provenance --access public
 
       - name: Install ClawHub CLI
         run: npm install -g clawhub
