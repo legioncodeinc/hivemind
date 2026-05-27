@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,9 +31,6 @@ export { isSafe, touchesMemory, rewritePaths };
 const log = (msg: string) => _log("pre", msg);
 
 const __bundleDir = dirname(fileURLToPath(import.meta.url));
-const SHELL_BUNDLE = existsSync(join(__bundleDir, "shell", "deeplake-shell.js"))
-  ? join(__bundleDir, "shell", "deeplake-shell.js")
-  : join(__bundleDir, "..", "shell", "deeplake-shell.js");
 
 export interface PreToolUseInput {
   session_id: string;
@@ -131,7 +128,11 @@ export function getShellCommand(toolName: string, toolInput: Record<string, unkn
         const flags: string[] = ["-r"];
         if (toolInput["-i"]) flags.push("-i");
         if (toolInput["-n"]) flags.push("-n");
-        return `grep ${flags.join(" ")} '${pattern}' /`;
+        // Single-quote the pattern safely: escape any embedded single quotes
+        // so the string can never break out of the shell quoting context if
+        // this command string is ever forwarded to a shell executor.
+        const escaped = pattern.replace(/'/g, "'\\''");
+        return `grep ${flags.join(" ")} '${escaped}' /`;
       }
       break;
     }
@@ -189,13 +190,6 @@ export function extractGrepParams(
   return null;
 }
 
-function buildFallbackDecision(shellCmd: string, shellBundle = SHELL_BUNDLE): ClaudePreToolDecision {
-  return buildAllowDecision(
-    `node "${shellBundle}" -c "${shellCmd.replace(/"/g, '\\"')}"`,
-    `[DeepLake shell] ${shellCmd}`,
-  );
-}
-
 interface ClaudePreToolDeps {
   config?: ReturnType<typeof loadConfig>;
   createApi?: (table: string, config: NonNullable<ReturnType<typeof loadConfig>>) => DeeplakeApi;
@@ -209,7 +203,6 @@ interface ClaudePreToolDeps {
   readCachedIndexContentFn?: typeof readCachedIndexContent;
   writeCachedIndexContentFn?: typeof writeCachedIndexContent;
   writeReadCacheFileFn?: typeof writeReadCacheFile;
-  shellBundle?: string;
   logFn?: (msg: string) => void;
 }
 
@@ -233,7 +226,6 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
     readCachedIndexContentFn = readCachedIndexContent,
     writeCachedIndexContentFn = writeCachedIndexContent,
     writeReadCacheFileFn = writeReadCacheFile,
-    shellBundle = SHELL_BUNDLE,
     logFn = log,
   } = deps;
 
@@ -290,7 +282,7 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
   }
 
   if (!shellCmd) return null;
-  if (!config) return buildFallbackDecision(shellCmd, shellBundle);
+  if (!config) return null;
 
   const table = process.env["HIVEMIND_TABLE"] ?? "memory";
   const sessionsTable = process.env["HIVEMIND_SESSIONS_TABLE"] ?? "sessions";
@@ -514,10 +506,16 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
       }
     }
   } catch (e: any) {
-    logFn(`direct query failed, falling back to shell: ${e.message}`);
+    logFn(`direct query failed: ${e.message}`);
   }
 
-  return buildFallbackDecision(shellCmd, shellBundle);
+  // No compiled handler matched (or a direct query failed). Do NOT fall
+  // through to the shell executor: the shell bundle runs commands via
+  // just-bash which may invoke real host binaries, creating a code-execution
+  // surface for injected patterns in unhandled commands (e.g. `sort`, `cut`).
+  // Return null so the original tool runs unmodified; it will fail harmlessly
+  // because the virtual paths do not exist on the real filesystem.
+  return null;
 }
 
 /* c8 ignore start */

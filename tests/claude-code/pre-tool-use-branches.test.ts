@@ -193,13 +193,12 @@ describe("processPreToolUse: non-memory / no-op paths", () => {
     expect(d?.command).toContain("bash builtins");
   });
 
-  it("falls back to the shell bundle when no config is loaded", async () => {
+  it("returns null (no intercept) when no config is loaded", async () => {
     const d = await processPreToolUse(
       { session_id: "s", tool_name: "Bash", tool_input: { command: "cat ~/.deeplake/memory/index.md" }, tool_use_id: "t" },
-      { config: null as any, shellBundle: "/SHELL" },
+      { config: null as any },
     );
-    expect(d?.command).toContain(`node "/SHELL" -c`);
-    expect(d?.description).toContain("[DeepLake shell]");
+    expect(d).toBeNull();
   });
 
   it("rewrites python3 on a tilde memory path to cat", async () => {
@@ -525,7 +524,7 @@ describe("processPreToolUse: find / grep / fallback", () => {
     expect(d?.command).toContain("match line");
   });
 
-  it("throws in direct-read path → falls back to the shell bundle", async () => {
+  it("returns null (no intercept) when direct-read path throws", async () => {
     const d = await processPreToolUse(
       { session_id: "s", tool_name: "Bash", tool_input: { command: "cat ~/.deeplake/memory/sessions/a.json" }, tool_use_id: "t" },
       {
@@ -533,11 +532,10 @@ describe("processPreToolUse: find / grep / fallback", () => {
         createApi: vi.fn(() => makeApi()),
         readVirtualPathContentFn: vi.fn(async () => { throw new Error("boom"); }) as any,
         executeCompiledBashCommandFn: vi.fn(async () => null) as any,
-        shellBundle: "/SHELL",
         logFn: vi.fn(),
       },
     );
-    expect(d?.command).toContain('node "/SHELL" -c');
+    expect(d).toBeNull();
   });
 });
 
