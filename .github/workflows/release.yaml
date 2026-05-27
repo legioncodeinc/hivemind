@@ -83,10 +83,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           npm version patch --no-git-tag-version
+          # --ignore-scripts prevents npm ci from firing the `prepare` hook
+          # (husky && npm run build), which would double-build and fail if
+          # tree-sitter bindings aren't ready yet. postinstall (the
+          # tree-sitter heal) is run explicitly below instead.
+          npm ci --ignore-scripts
+          node scripts/ensure-tree-sitter.mjs
           # `npm run build` runs `prebuild` (scripts/sync-versions.mjs) → tsc →
           # esbuild. sync-versions propagates the new version into the 6
           # tracked manifests; esbuild bakes it into bundles via `define`.
-          npm install
           npm run build
 
       - name: Commit 1 — release commit with bundles force-tracked
