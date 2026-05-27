@@ -1,0 +1,3388 @@
+#!/usr/bin/env node
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// dist/src/index-marker-store.js
+var index_marker_store_exports = {};
+__export(index_marker_store_exports, {
+  buildIndexMarkerPath: () => buildIndexMarkerPath,
+  getIndexMarkerDir: () => getIndexMarkerDir,
+  hasFreshIndexMarker: () => hasFreshIndexMarker,
+  writeIndexMarker: () => writeIndexMarker
+});
+import { existsSync as existsSync2, mkdirSync as mkdirSync3, readFileSync as readFileSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join5 } from "node:path";
+import { tmpdir } from "node:os";
+function getIndexMarkerDir() {
+  return process.env.HIVEMIND_INDEX_MARKER_DIR ?? join5(tmpdir(), "hivemind-deeplake-indexes");
+}
+function buildIndexMarkerPath(workspaceId, orgId, table, suffix) {
+  const markerKey = [workspaceId, orgId, table, suffix].join("__").replace(/[^a-zA-Z0-9_.-]/g, "_");
+  return join5(getIndexMarkerDir(), `${markerKey}.json`);
+}
+function hasFreshIndexMarker(markerPath) {
+  if (!existsSync2(markerPath))
+    return false;
+  try {
+    const raw = JSON.parse(readFileSync4(markerPath, "utf-8"));
+    const updatedAt = raw.updatedAt ? new Date(raw.updatedAt).getTime() : NaN;
+    if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > INDEX_MARKER_TTL_MS)
+      return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+function writeIndexMarker(markerPath) {
+  mkdirSync3(getIndexMarkerDir(), { recursive: true });
+  writeFileSync3(markerPath, JSON.stringify({ updatedAt: (/* @__PURE__ */ new Date()).toISOString() }), "utf-8");
+}
+var INDEX_MARKER_TTL_MS;
+var init_index_marker_store = __esm({
+  "dist/src/index-marker-store.js"() {
+    "use strict";
+    INDEX_MARKER_TTL_MS = Number(process.env.HIVEMIND_INDEX_MARKER_TTL_MS ?? 6 * 60 * 6e4);
+  }
+});
+
+// dist/src/hooks/codex/pre-tool-use.js
+import { execFileSync } from "node:child_process";
+import { existsSync as existsSync5 } from "node:fs";
+import { join as join12, dirname as dirname3 } from "node:path";
+import { fileURLToPath as fileURLToPath3 } from "node:url";
+
+// dist/src/utils/stdin.js
+function readStdin() {
+  return new Promise((resolve3, reject) => {
+    let data = "";
+    process.stdin.setEncoding("utf-8");
+    process.stdin.on("data", (chunk) => data += chunk);
+    process.stdin.on("end", () => {
+      try {
+        resolve3(JSON.parse(data));
+      } catch (err) {
+        reject(new Error(`Failed to parse hook input: ${err}`));
+      }
+    });
+    process.stdin.on("error", reject);
+  });
+}
+
+// dist/src/config.js
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir, userInfo } from "node:os";
+function loadConfig() {
+  const home = homedir();
+  const credPath = join(home, ".deeplake", "credentials.json");
+  let creds = null;
+  if (existsSync(credPath)) {
+    try {
+      creds = JSON.parse(readFileSync(credPath, "utf-8"));
+    } catch {
+      return null;
+    }
+  }
+  const token = process.env.HIVEMIND_TOKEN ?? creds?.token;
+  const orgId = process.env.HIVEMIND_ORG_ID ?? creds?.orgId;
+  if (!token || !orgId)
+    return null;
+  return {
+    token,
+    orgId,
+    orgName: creds?.orgName ?? orgId,
+    userName: creds?.userName || userInfo().username || "unknown",
+    workspaceId: process.env.HIVEMIND_WORKSPACE_ID ?? creds?.workspaceId ?? "default",
+    apiUrl: process.env.HIVEMIND_API_URL ?? creds?.apiUrl ?? "https://api.deeplake.ai",
+    tableName: process.env.HIVEMIND_TABLE ?? "memory",
+    sessionsTableName: process.env.HIVEMIND_SESSIONS_TABLE ?? "sessions",
+    skillsTableName: process.env.HIVEMIND_SKILLS_TABLE ?? "skills",
+    // Defaults match the table name written into the SQL — keep aligned
+    // with RULES_COLUMNS in deeplake-schema.ts and with the e2e test-org
+    // override convention (memory_test / sessions_test → goals_test, etc.)
+    // documented in CLAUDE.md.
+    rulesTableName: process.env.HIVEMIND_RULES_TABLE ?? "hivemind_rules",
+    // Goals + KPIs (refined design — VFS path classifier maps
+    //   memory/goal/<user>/<status>/<uuid>.md → hivemind_goals row
+    //   memory/kpi/<uuid>/<kpi_id>.md → hivemind_kpis row
+    // See src/shell/deeplake-fs.ts for the translation logic and
+    // GOALS_COLUMNS / KPIS_COLUMNS in deeplake-schema.ts for the
+    // table shape.
+    goalsTableName: process.env.HIVEMIND_GOALS_TABLE ?? "hivemind_goals",
+    kpisTableName: process.env.HIVEMIND_KPIS_TABLE ?? "hivemind_kpis",
+    codebaseTableName: process.env.HIVEMIND_CODEBASE_TABLE ?? "codebase",
+    memoryPath: process.env.HIVEMIND_MEMORY_PATH ?? join(home, ".deeplake", "memory")
+  };
+}
+
+// dist/src/deeplake-api.js
+import { randomUUID } from "node:crypto";
+
+// dist/src/utils/debug.js
+import { appendFileSync } from "node:fs";
+import { join as join2 } from "node:path";
+import { homedir as homedir2 } from "node:os";
+var LOG = join2(homedir2(), ".deeplake", "hook-debug.log");
+function isDebug() {
+  return process.env.HIVEMIND_DEBUG === "1";
+}
+function log(tag, msg) {
+  if (!isDebug())
+    return;
+  appendFileSync(LOG, `${(/* @__PURE__ */ new Date()).toISOString()} [${tag}] ${msg}
+`);
+}
+
+// dist/src/utils/sql.js
+function sqlStr(value) {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "''").replace(/\0/g, "").replace(/[\x01-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+function sqlLike(value) {
+  return sqlStr(value).replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+function sqlIdent(name) {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+    throw new Error(`Invalid SQL identifier: ${JSON.stringify(name)}`);
+  }
+  return name;
+}
+
+// dist/src/embeddings/columns.js
+var SUMMARY_EMBEDDING_COL = "summary_embedding";
+
+// dist/src/utils/client-header.js
+var DEEPLAKE_CLIENT_HEADER = "X-Deeplake-Client";
+function deeplakeClientValue() {
+  return "hivemind";
+}
+function deeplakeClientHeader() {
+  return { [DEEPLAKE_CLIENT_HEADER]: deeplakeClientValue() };
+}
+
+// dist/src/deeplake-schema.js
+var MEMORY_COLUMNS = Object.freeze([
+  { name: "id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "path", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "filename", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "summary", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "summary_embedding", sql: "FLOAT4[]" },
+  { name: "author", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "mime_type", sql: "TEXT NOT NULL DEFAULT 'text/plain'" },
+  { name: "size_bytes", sql: "BIGINT NOT NULL DEFAULT 0" },
+  { name: "project", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "description", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "agent", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "plugin_version", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "creation_date", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "last_update_date", sql: "TEXT NOT NULL DEFAULT ''" }
+]);
+var SESSIONS_COLUMNS = Object.freeze([
+  { name: "id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "path", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "filename", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "message", sql: "JSONB" },
+  { name: "message_embedding", sql: "FLOAT4[]" },
+  { name: "author", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "mime_type", sql: "TEXT NOT NULL DEFAULT 'application/json'" },
+  { name: "size_bytes", sql: "BIGINT NOT NULL DEFAULT 0" },
+  { name: "project", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "description", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "agent", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "plugin_version", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "creation_date", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "last_update_date", sql: "TEXT NOT NULL DEFAULT ''" }
+]);
+var SKILLS_COLUMNS = Object.freeze([
+  { name: "id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "name", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "project", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "project_key", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "local_path", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "install", sql: "TEXT NOT NULL DEFAULT 'project'" },
+  { name: "source_sessions", sql: "TEXT NOT NULL DEFAULT '[]'" },
+  { name: "source_agent", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "scope", sql: "TEXT NOT NULL DEFAULT 'me'" },
+  { name: "author", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "contributors", sql: "TEXT NOT NULL DEFAULT '[]'" },
+  { name: "description", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "trigger_text", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "body", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "version", sql: "BIGINT NOT NULL DEFAULT 1" },
+  { name: "created_at", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "updated_at", sql: "TEXT NOT NULL DEFAULT ''" }
+]);
+var RULES_COLUMNS = Object.freeze([
+  { name: "id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "rule_id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "text", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "scope", sql: "TEXT NOT NULL DEFAULT 'team'" },
+  { name: "status", sql: "TEXT NOT NULL DEFAULT 'active'" },
+  { name: "assigned_by", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "version", sql: "BIGINT NOT NULL DEFAULT 1" },
+  { name: "created_at", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "agent", sql: "TEXT NOT NULL DEFAULT 'manual'" },
+  { name: "plugin_version", sql: "TEXT NOT NULL DEFAULT ''" }
+]);
+var GOALS_COLUMNS = Object.freeze([
+  { name: "id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "goal_id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "owner", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "status", sql: "TEXT NOT NULL DEFAULT 'opened'" },
+  { name: "content", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "version", sql: "BIGINT NOT NULL DEFAULT 1" },
+  { name: "created_at", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "agent", sql: "TEXT NOT NULL DEFAULT 'manual'" },
+  { name: "plugin_version", sql: "TEXT NOT NULL DEFAULT ''" }
+]);
+var KPIS_COLUMNS = Object.freeze([
+  { name: "id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "goal_id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "kpi_id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "content", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "version", sql: "BIGINT NOT NULL DEFAULT 1" },
+  { name: "created_at", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "agent", sql: "TEXT NOT NULL DEFAULT 'manual'" },
+  { name: "plugin_version", sql: "TEXT NOT NULL DEFAULT ''" }
+]);
+function validateSchema(label, cols) {
+  const seen = /* @__PURE__ */ new Set();
+  for (const col of cols) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(col.name)) {
+      throw new Error(`${label}: column name "${col.name}" is not a valid SQL identifier`);
+    }
+    if (seen.has(col.name)) {
+      throw new Error(`${label}: duplicate column "${col.name}"`);
+    }
+    seen.add(col.name);
+    const notNull = /\bNOT\s+NULL\b/i.test(col.sql);
+    const hasDefault = /\bDEFAULT\b/i.test(col.sql);
+    if (notNull && !hasDefault) {
+      throw new Error(`${label}: column "${col.name}" is NOT NULL but has no DEFAULT \u2014 ALTER TABLE ADD COLUMN on a populated table would fail.`);
+    }
+  }
+}
+var CODEBASE_COLUMNS = Object.freeze([
+  // Identity key (matches the PK below)
+  { name: "org_id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "workspace_id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "repo_slug", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "user_id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "worktree_id", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "commit_sha", sql: "TEXT NOT NULL DEFAULT ''" },
+  // Observation metadata
+  { name: "parent_sha", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "branch", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "ts", sql: "TIMESTAMP" },
+  { name: "pushed_by", sql: "TEXT NOT NULL DEFAULT ''" },
+  // Snapshot payload
+  { name: "snapshot_sha256", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "snapshot_jsonb", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "node_count", sql: "BIGINT NOT NULL DEFAULT 0" },
+  { name: "edge_count", sql: "BIGINT NOT NULL DEFAULT 0" },
+  // Generator metadata (for drift diagnostics — what hivemind version produced this?)
+  { name: "generator", sql: "TEXT NOT NULL DEFAULT 'hivemind-graph'" },
+  { name: "generator_version", sql: "TEXT NOT NULL DEFAULT ''" },
+  { name: "schema_version", sql: "BIGINT NOT NULL DEFAULT 1" }
+]);
+validateSchema("MEMORY_COLUMNS", MEMORY_COLUMNS);
+validateSchema("SESSIONS_COLUMNS", SESSIONS_COLUMNS);
+validateSchema("SKILLS_COLUMNS", SKILLS_COLUMNS);
+validateSchema("RULES_COLUMNS", RULES_COLUMNS);
+validateSchema("GOALS_COLUMNS", GOALS_COLUMNS);
+validateSchema("KPIS_COLUMNS", KPIS_COLUMNS);
+validateSchema("CODEBASE_COLUMNS", CODEBASE_COLUMNS);
+function buildCreateTableSql(tableName, cols) {
+  const safe = sqlIdent(tableName);
+  const colSql = cols.map((c) => `${c.name} ${c.sql}`).join(", ");
+  return `CREATE TABLE IF NOT EXISTS "${safe}" (${colSql}) USING deeplake`;
+}
+function buildIntrospectionSql(tableName, workspaceId) {
+  return `SELECT column_name FROM information_schema.columns WHERE table_name = '${sqlStr(tableName)}' AND table_schema = '${sqlStr(workspaceId)}'`;
+}
+async function healMissingColumns(args) {
+  const safeTable = sqlIdent(args.tableName);
+  const introspectSql = buildIntrospectionSql(args.tableName, args.workspaceId);
+  const rows = await args.query(introspectSql);
+  const existing = /* @__PURE__ */ new Set();
+  for (const row of rows) {
+    const v = row?.column_name;
+    if (typeof v === "string")
+      existing.add(v.toLowerCase());
+  }
+  const missingCols = args.columns.filter((c) => !existing.has(c.name.toLowerCase()));
+  const missing = missingCols.map((c) => c.name);
+  if (missingCols.length === 0)
+    return { missing, altered: [] };
+  const altered = [];
+  for (const col of missingCols) {
+    try {
+      await args.query(`ALTER TABLE "${safeTable}" ADD COLUMN ${col.name} ${col.sql}`);
+      altered.push(col.name);
+      args.log?.(`schema-heal: added "${args.tableName}"."${col.name}"`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/already exists/i.test(msg))
+        throw e;
+      const recheck = await args.query(introspectSql);
+      const present = recheck.some((r) => {
+        const v = r?.column_name;
+        return typeof v === "string" && v.toLowerCase() === col.name.toLowerCase();
+      });
+      if (!present)
+        throw e;
+      args.log?.(`schema-heal: "${args.tableName}"."${col.name}" appeared via race, treating as success`);
+    }
+  }
+  return { missing, altered };
+}
+
+// dist/src/notifications/queue.js
+import { readFileSync as readFileSync2, writeFileSync, renameSync, mkdirSync, openSync, closeSync, unlinkSync, statSync } from "node:fs";
+import { join as join3, resolve } from "node:path";
+import { homedir as homedir3 } from "node:os";
+import { setTimeout as sleep } from "node:timers/promises";
+var log2 = (msg) => log("notifications-queue", msg);
+var LOCK_RETRY_MAX = 50;
+var LOCK_RETRY_BASE_MS = 5;
+var LOCK_STALE_MS = 5e3;
+function queuePath() {
+  return join3(homedir3(), ".deeplake", "notifications-queue.json");
+}
+function lockPath() {
+  return `${queuePath()}.lock`;
+}
+function readQueue() {
+  try {
+    const raw = readFileSync2(queuePath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.queue)) {
+      log2(`queue malformed \u2192 treating as empty`);
+      return { queue: [] };
+    }
+    return { queue: parsed.queue };
+  } catch {
+    return { queue: [] };
+  }
+}
+function _isQueuePathInsideHome(path, home) {
+  const r = resolve(path);
+  const h = resolve(home);
+  return r.startsWith(h + "/") || r === h;
+}
+function writeQueue(q) {
+  const path = queuePath();
+  const home = resolve(homedir3());
+  if (!_isQueuePathInsideHome(path, home)) {
+    throw new Error(`notifications-queue write blocked: ${path} is outside ${home}`);
+  }
+  mkdirSync(join3(home, ".deeplake"), { recursive: true, mode: 448 });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(q, null, 2), { mode: 384 });
+  renameSync(tmp, path);
+}
+async function withQueueLock(fn) {
+  const path = lockPath();
+  mkdirSync(join3(homedir3(), ".deeplake"), { recursive: true, mode: 448 });
+  let fd = null;
+  for (let attempt = 0; attempt < LOCK_RETRY_MAX; attempt++) {
+    try {
+      fd = openSync(path, "wx", 384);
+      break;
+    } catch (e) {
+      const code = e.code;
+      if (code !== "EEXIST")
+        throw e;
+      try {
+        const age = Date.now() - statSync(path).mtimeMs;
+        if (age > LOCK_STALE_MS) {
+          unlinkSync(path);
+          continue;
+        }
+      } catch {
+      }
+      const delay = LOCK_RETRY_BASE_MS * (attempt + 1);
+      await sleep(delay);
+    }
+  }
+  if (fd === null) {
+    log2(`lock acquisition gave up after ${LOCK_RETRY_MAX} attempts \u2014 proceeding unlocked (last-writer-wins)`);
+    return fn();
+  }
+  try {
+    return fn();
+  } finally {
+    try {
+      closeSync(fd);
+    } catch {
+    }
+    try {
+      unlinkSync(path);
+    } catch {
+    }
+  }
+}
+function sameDedupKey(a, b) {
+  if (a.id !== b.id)
+    return false;
+  return JSON.stringify(a.dedupKey) === JSON.stringify(b.dedupKey);
+}
+async function enqueueNotification(n) {
+  await withQueueLock(() => {
+    const q = readQueue();
+    if (q.queue.some((existing) => sameDedupKey(existing, n))) {
+      return;
+    }
+    q.queue.push(n);
+    writeQueue(q);
+  });
+}
+
+// dist/src/commands/auth-creds.js
+import { readFileSync as readFileSync3, writeFileSync as writeFileSync2, mkdirSync as mkdirSync2, unlinkSync as unlinkSync2 } from "node:fs";
+import { join as join4 } from "node:path";
+import { homedir as homedir4 } from "node:os";
+function configDir() {
+  return join4(homedir4(), ".deeplake");
+}
+function credsPath() {
+  return join4(configDir(), "credentials.json");
+}
+function loadCredentials() {
+  try {
+    return JSON.parse(readFileSync3(credsPath(), "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+// dist/src/deeplake-api.js
+var indexMarkerStorePromise = null;
+function getIndexMarkerStore() {
+  if (!indexMarkerStorePromise)
+    indexMarkerStorePromise = Promise.resolve().then(() => (init_index_marker_store(), index_marker_store_exports));
+  return indexMarkerStorePromise;
+}
+var log3 = (msg) => log("sdk", msg);
+function summarizeSql(sql, maxLen = 220) {
+  const compact = sql.replace(/\s+/g, " ").trim();
+  return compact.length > maxLen ? `${compact.slice(0, maxLen)}...` : compact;
+}
+function traceSql(msg) {
+  const traceEnabled = process.env.HIVEMIND_TRACE_SQL === "1" || process.env.HIVEMIND_DEBUG === "1";
+  if (!traceEnabled)
+    return;
+  process.stderr.write(`[deeplake-sql] ${msg}
+`);
+  if (process.env.HIVEMIND_DEBUG === "1")
+    log3(msg);
+}
+var _signalledBalanceExhausted = false;
+function maybeSignalBalanceExhausted(status, bodyText) {
+  if (status !== 402)
+    return;
+  if (!bodyText.includes("balance_cents"))
+    return;
+  if (_signalledBalanceExhausted)
+    return;
+  _signalledBalanceExhausted = true;
+  log3(`balance exhausted \u2014 enqueuing session-start banner (body=${bodyText.slice(0, 120)})`);
+  enqueueNotification({
+    id: "balance-exhausted",
+    severity: "warn",
+    transient: true,
+    title: "Hivemind credits exhausted \u2014 top up to keep capturing",
+    body: `Sessions are not being saved and memory recall is returning empty. Top up at ${billingUrl()} to restore capture and recall.`,
+    dedupKey: { reason: "balance-zero" }
+  }).catch((e) => {
+    log3(`enqueue balance-exhausted failed: ${e instanceof Error ? e.message : String(e)}`);
+  });
+}
+function billingUrl() {
+  try {
+    const c = loadCredentials();
+    if (c?.orgName && c?.workspaceId) {
+      return `https://deeplake.ai/${encodeURIComponent(c.orgName)}/workspace/${encodeURIComponent(c.workspaceId)}/billing`;
+    }
+  } catch {
+  }
+  return "https://deeplake.ai";
+}
+var RETRYABLE_CODES = /* @__PURE__ */ new Set([429, 500, 502, 503, 504]);
+var MAX_RETRIES = 3;
+var BASE_DELAY_MS = 500;
+var MAX_CONCURRENCY = 5;
+function getQueryTimeoutMs() {
+  return Number(process.env.HIVEMIND_QUERY_TIMEOUT_MS ?? 1e4);
+}
+function sleep2(ms) {
+  return new Promise((resolve3) => setTimeout(resolve3, ms));
+}
+function isTimeoutError(error) {
+  const name = error instanceof Error ? error.name.toLowerCase() : "";
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return name.includes("timeout") || name === "aborterror" || message.includes("timeout") || message.includes("timed out");
+}
+function isDuplicateIndexError(error) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes("duplicate key value violates unique constraint") || message.includes("pg_class_relname_nsp_index") || message.includes("already exists");
+}
+function isSessionInsertQuery(sql) {
+  return /^\s*insert\s+into\s+"[^"]+"\s*\(\s*id\s*,\s*path\s*,\s*filename\s*,\s*message\s*,/i.test(sql);
+}
+function isTransientHtml403(text) {
+  const body = text.toLowerCase();
+  return body.includes("<html") || body.includes("403 forbidden") || body.includes("cloudflare") || body.includes("nginx");
+}
+var Semaphore = class {
+  max;
+  waiting = [];
+  active = 0;
+  constructor(max) {
+    this.max = max;
+  }
+  async acquire() {
+    if (this.active < this.max) {
+      this.active++;
+      return;
+    }
+    await new Promise((resolve3) => this.waiting.push(resolve3));
+  }
+  release() {
+    this.active--;
+    const next = this.waiting.shift();
+    if (next) {
+      this.active++;
+      next();
+    }
+  }
+};
+var DeeplakeApi = class {
+  token;
+  apiUrl;
+  orgId;
+  workspaceId;
+  tableName;
+  _pendingRows = [];
+  _sem = new Semaphore(MAX_CONCURRENCY);
+  _tablesCache = null;
+  constructor(token, apiUrl, orgId, workspaceId, tableName) {
+    this.token = token;
+    this.apiUrl = apiUrl;
+    this.orgId = orgId;
+    this.workspaceId = workspaceId;
+    this.tableName = tableName;
+  }
+  /** Execute SQL with retry on transient errors and bounded concurrency. */
+  async query(sql) {
+    const startedAt = Date.now();
+    const summary = summarizeSql(sql);
+    traceSql(`query start: ${summary}`);
+    await this._sem.acquire();
+    try {
+      const rows = await this._queryWithRetry(sql);
+      traceSql(`query ok (${Date.now() - startedAt}ms, rows=${rows.length}): ${summary}`);
+      return rows;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      traceSql(`query fail (${Date.now() - startedAt}ms): ${summary} :: ${message}`);
+      throw e;
+    } finally {
+      this._sem.release();
+    }
+  }
+  async _queryWithRetry(sql) {
+    let lastError;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      let resp;
+      const timeoutMs = getQueryTimeoutMs();
+      try {
+        const signal = AbortSignal.timeout(timeoutMs);
+        resp = await fetch(`${this.apiUrl}/workspaces/${this.workspaceId}/tables/query`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            "Content-Type": "application/json",
+            "X-Activeloop-Org-Id": this.orgId,
+            ...deeplakeClientHeader()
+          },
+          signal,
+          body: JSON.stringify({ query: sql })
+        });
+      } catch (e) {
+        if (isTimeoutError(e)) {
+          lastError = new Error(`Query timeout after ${timeoutMs}ms`);
+          throw lastError;
+        }
+        lastError = e instanceof Error ? e : new Error(String(e));
+        if (attempt < MAX_RETRIES) {
+          const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 200;
+          log3(`query retry ${attempt + 1}/${MAX_RETRIES} (fetch error: ${lastError.message}) in ${delay.toFixed(0)}ms`);
+          await sleep2(delay);
+          continue;
+        }
+        throw lastError;
+      }
+      if (resp.ok) {
+        const raw = await resp.json();
+        if (!raw?.rows || !raw?.columns)
+          return [];
+        return raw.rows.map((row) => Object.fromEntries(raw.columns.map((col, i) => [col, row[i]])));
+      }
+      const text = await resp.text().catch(() => "");
+      const retryable403 = isSessionInsertQuery(sql) && (resp.status === 401 || resp.status === 403 && (text.length === 0 || isTransientHtml403(text)));
+      const alreadyExists = resp.status === 500 && isDuplicateIndexError(text);
+      if (!alreadyExists && attempt < MAX_RETRIES && (RETRYABLE_CODES.has(resp.status) || retryable403)) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 200;
+        log3(`query retry ${attempt + 1}/${MAX_RETRIES} (${resp.status}) in ${delay.toFixed(0)}ms`);
+        await sleep2(delay);
+        continue;
+      }
+      maybeSignalBalanceExhausted(resp.status, text);
+      throw new Error(`Query failed: ${resp.status}: ${text.slice(0, 200)}`);
+    }
+    throw lastError ?? new Error("Query failed: max retries exceeded");
+  }
+  // ── Writes ──────────────────────────────────────────────────────────────────
+  /** Queue rows for writing. Call commit() to flush. */
+  appendRows(rows) {
+    this._pendingRows.push(...rows);
+  }
+  /** Flush pending rows via SQL. */
+  async commit() {
+    if (this._pendingRows.length === 0)
+      return;
+    const rows = this._pendingRows;
+    this._pendingRows = [];
+    const CONCURRENCY = 10;
+    for (let i = 0; i < rows.length; i += CONCURRENCY) {
+      const chunk = rows.slice(i, i + CONCURRENCY);
+      await Promise.allSettled(chunk.map((r) => this.upsertRowSql(r)));
+    }
+    log3(`commit: ${rows.length} rows`);
+  }
+  async upsertRowSql(row) {
+    const ts = (/* @__PURE__ */ new Date()).toISOString();
+    const cd = row.creationDate ?? ts;
+    const lud = row.lastUpdateDate ?? ts;
+    const exists = await this.query(`SELECT path FROM "${this.tableName}" WHERE path = '${sqlStr(row.path)}' LIMIT 1`);
+    if (exists.length > 0) {
+      let setClauses = `summary = E'${sqlStr(row.contentText)}', ${SUMMARY_EMBEDDING_COL} = NULL, mime_type = '${sqlStr(row.mimeType)}', size_bytes = ${row.sizeBytes}, last_update_date = '${lud}'`;
+      if (row.project !== void 0)
+        setClauses += `, project = '${sqlStr(row.project)}'`;
+      if (row.description !== void 0)
+        setClauses += `, description = '${sqlStr(row.description)}'`;
+      await this.query(`UPDATE "${this.tableName}" SET ${setClauses} WHERE path = '${sqlStr(row.path)}'`);
+    } else {
+      const id = randomUUID();
+      let cols = `id, path, filename, summary, ${SUMMARY_EMBEDDING_COL}, mime_type, size_bytes, creation_date, last_update_date`;
+      let vals = `'${id}', '${sqlStr(row.path)}', '${sqlStr(row.filename)}', E'${sqlStr(row.contentText)}', NULL, '${sqlStr(row.mimeType)}', ${row.sizeBytes}, '${cd}', '${lud}'`;
+      if (row.project !== void 0) {
+        cols += ", project";
+        vals += `, '${sqlStr(row.project)}'`;
+      }
+      if (row.description !== void 0) {
+        cols += ", description";
+        vals += `, '${sqlStr(row.description)}'`;
+      }
+      await this.query(`INSERT INTO "${this.tableName}" (${cols}) VALUES (${vals})`);
+    }
+  }
+  /** Update specific columns on a row by path. */
+  async updateColumns(path, columns) {
+    const setClauses = Object.entries(columns).map(([col, val]) => typeof val === "number" ? `${col} = ${val}` : `${col} = '${sqlStr(String(val))}'`).join(", ");
+    await this.query(`UPDATE "${this.tableName}" SET ${setClauses} WHERE path = '${sqlStr(path)}'`);
+  }
+  // ── Convenience ─────────────────────────────────────────────────────────────
+  /** Create a BM25 search index on a column. */
+  async createIndex(column) {
+    await this.query(`CREATE INDEX IF NOT EXISTS idx_${sqlStr(column)}_bm25 ON "${this.tableName}" USING deeplake_index ("${column}")`);
+  }
+  buildLookupIndexName(table, suffix) {
+    return `idx_${table}_${suffix}`.replace(/[^a-zA-Z0-9_]/g, "_");
+  }
+  async ensureLookupIndex(table, suffix, columnsSql) {
+    const markers = await getIndexMarkerStore();
+    const markerPath = markers.buildIndexMarkerPath(this.workspaceId, this.orgId, table, suffix);
+    if (markers.hasFreshIndexMarker(markerPath))
+      return;
+    const indexName = this.buildLookupIndexName(table, suffix);
+    try {
+      await this.query(`CREATE INDEX IF NOT EXISTS "${indexName}" ON "${table}" ${columnsSql}`);
+      markers.writeIndexMarker(markerPath);
+    } catch (e) {
+      if (isDuplicateIndexError(e)) {
+        markers.writeIndexMarker(markerPath);
+        return;
+      }
+      log3(`index "${indexName}" skipped: ${e.message}`);
+    }
+  }
+  /**
+   * Heal any missing columns on a table so it matches one of the schema
+   * definitions in `deeplake-schema.ts`. One SELECT against
+   * `information_schema.columns` per call, then `ALTER TABLE ADD COLUMN`
+   * only the genuinely missing ones — never blanket, never `IF NOT
+   * EXISTS`.
+   *
+   * History: an earlier path used a local marker file (`col_<name>` under
+   * the index-marker dir) to skip even the SELECT after the first
+   * confirmation, plus per-column ALTERs for `summary_embedding`,
+   * `message_embedding`, `agent`, `plugin_version`. The marker existed
+   * because Deeplake used to expose a ~30s post-ALTER bug where
+   * subsequent INSERTs failed, so we wanted to keep ALTER traffic to a
+   * minimum. The bug was re-verified on 2026-05-18 against
+   * `api.deeplake.ai` (`test_plugin` org) and no longer reproduces
+   * (71/71 INSERTs OK, first success 2ms after ALTER). The single SELECT
+   * + targeted ALTER pattern survives the marker removal because: each
+   * ALTER still costs ~800ms (so blanket sweeps are wasteful) and the
+   * diff produces clearer logs than "ALTER all with IF NOT EXISTS".
+   */
+  async healSchema(table, columns) {
+    await healMissingColumns({
+      query: (sql) => this.query(sql),
+      tableName: table,
+      workspaceId: this.workspaceId,
+      columns,
+      log: log3
+    });
+  }
+  /** List all tables in the workspace (with retry). */
+  async listTables(forceRefresh = false) {
+    if (!forceRefresh && this._tablesCache)
+      return [...this._tablesCache];
+    const { tables, cacheable } = await this._fetchTables();
+    if (cacheable)
+      this._tablesCache = [...tables];
+    return tables;
+  }
+  /**
+   * Like listTables() but returns null when the list could NOT be trusted
+   * (the fetch failed / was non-cacheable). Callers gating a read on table
+   * existence use this to tell a genuinely-empty workspace ([]) apart from a
+   * failed lookup (null): on [] they can safely skip the read (no table → no
+   * 42P01), on null they must fall back to SELECT-then-catch so a transient
+   * lookup blip doesn't drop a read of a table that really exists.
+   */
+  async knownTablesOrNull() {
+    if (this._tablesCache)
+      return [...this._tablesCache];
+    const { tables, cacheable } = await this._fetchTables();
+    if (!cacheable)
+      return null;
+    this._tablesCache = [...tables];
+    return [...tables];
+  }
+  async _fetchTables() {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const resp = await fetch(`${this.apiUrl}/workspaces/${this.workspaceId}/tables`, {
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            "X-Activeloop-Org-Id": this.orgId,
+            ...deeplakeClientHeader()
+          }
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          return {
+            tables: (data.tables ?? []).map((t) => t.table_name),
+            cacheable: true
+          };
+        }
+        if (attempt < MAX_RETRIES && RETRYABLE_CODES.has(resp.status)) {
+          await sleep2(BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 200);
+          continue;
+        }
+        return { tables: [], cacheable: false };
+      } catch {
+        if (attempt < MAX_RETRIES) {
+          await sleep2(BASE_DELAY_MS * Math.pow(2, attempt));
+          continue;
+        }
+        return { tables: [], cacheable: false };
+      }
+    }
+    return { tables: [], cacheable: false };
+  }
+  /**
+   * Run a `CREATE TABLE` with an extra outer retry budget. The base
+   * `query()` already retries 3 times on fetch errors (~3.5s total), but a
+   * failed CREATE is permanent corruption — every subsequent SELECT against
+   * the missing table fails. Wrapping in an outer loop with longer backoff
+   * (2s, 5s, then 10s) gives us ~17s of reach across transient network
+   * blips before giving up. Failures still propagate; getApi() resets its
+   * cache on init failure (openclaw plugin) so the next call retries the
+   * whole init flow.
+   */
+  async createTableWithRetry(sql, label) {
+    const OUTER_BACKOFFS_MS = [2e3, 5e3, 1e4];
+    let lastErr = null;
+    for (let attempt = 0; attempt <= OUTER_BACKOFFS_MS.length; attempt++) {
+      try {
+        await this.query(sql);
+        return;
+      } catch (err) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        log3(`CREATE TABLE "${label}" attempt ${attempt + 1}/${OUTER_BACKOFFS_MS.length + 1} failed: ${msg}`);
+        if (attempt < OUTER_BACKOFFS_MS.length) {
+          await sleep2(OUTER_BACKOFFS_MS[attempt]);
+        }
+      }
+    }
+    throw lastErr;
+  }
+  /** Create the memory table if it doesn't already exist. Heal missing columns on existing tables. */
+  async ensureTable(name) {
+    if (!MEMORY_COLUMNS.some((c) => c.name === SUMMARY_EMBEDDING_COL)) {
+      throw new Error(`MEMORY_COLUMNS missing "${SUMMARY_EMBEDDING_COL}" (embeddings/columns.ts drift)`);
+    }
+    const tbl = sqlIdent(name ?? this.tableName);
+    const tables = await this.listTables();
+    if (!tables.includes(tbl)) {
+      log3(`table "${tbl}" not found, creating`);
+      await this.createTableWithRetry(buildCreateTableSql(tbl, MEMORY_COLUMNS), tbl);
+      log3(`table "${tbl}" created`);
+      if (!tables.includes(tbl))
+        this._tablesCache = [...tables, tbl];
+    }
+    await this.healSchema(tbl, MEMORY_COLUMNS);
+  }
+  /** Create the sessions table (uses JSONB for message since every row is a JSON event). */
+  async ensureSessionsTable(name) {
+    const safe = sqlIdent(name);
+    const tables = await this.listTables();
+    if (!tables.includes(safe)) {
+      log3(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(buildCreateTableSql(safe, SESSIONS_COLUMNS), safe);
+      log3(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
+    }
+    await this.healSchema(safe, SESSIONS_COLUMNS);
+    await this.ensureLookupIndex(safe, "path_creation_date", `("path", "creation_date")`);
+  }
+  /**
+   * Create the skills table.
+   *
+   * One row per skill version. Workers INSERT a fresh row on every KEEP /
+   * MERGE rather than UPDATE-ing in place, so the full version history is
+   * recoverable. Uniqueness in the *current* state is by (project_key, name)
+   * — newer rows shadow older ones at read time (ORDER BY version DESC).
+   * This sidesteps the Deeplake UPDATE-coalescing quirk that bit the wiki
+   * worker.
+   */
+  /**
+   * Create the codebase table. One row per (org, workspace, repo, user,
+   * worktree, commit) — see CODEBASE_COLUMNS for the schema. Healing
+   * + index follow the same pattern as ensureSessionsTable.
+   */
+  async ensureCodebaseTable(name) {
+    const safe = sqlIdent(name);
+    const tables = await this.listTables();
+    if (!tables.includes(safe)) {
+      log3(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(buildCreateTableSql(safe, CODEBASE_COLUMNS), safe);
+      log3(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
+    }
+    await this.healSchema(safe, CODEBASE_COLUMNS);
+    await this.ensureLookupIndex(safe, "codebase_identity", `("org_id", "workspace_id", "repo_slug", "user_id", "worktree_id", "commit_sha")`);
+  }
+  async ensureSkillsTable(name) {
+    const safe = sqlIdent(name);
+    const tables = await this.listTables();
+    if (!tables.includes(safe)) {
+      log3(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(buildCreateTableSql(safe, SKILLS_COLUMNS), safe);
+      log3(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
+    }
+    await this.healSchema(safe, SKILLS_COLUMNS);
+    await this.ensureLookupIndex(safe, "project_key_name", `("project_key", "name")`);
+  }
+  /**
+   * Create the rules table.
+   *
+   * One row per rule version (same write pattern as skills): edits INSERT
+   * a fresh row with version+1, reads pick latest per rule_id via
+   * `ORDER BY version DESC LIMIT 1`. Sidesteps the Deeplake
+   * UPDATE-coalescing quirk by never UPDATEing.
+   */
+  async ensureRulesTable(name) {
+    const safe = sqlIdent(name);
+    const tables = await this.listTables();
+    if (!tables.includes(safe)) {
+      log3(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(buildCreateTableSql(safe, RULES_COLUMNS), safe);
+      log3(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
+    }
+    await this.healSchema(safe, RULES_COLUMNS);
+    await this.ensureLookupIndex(safe, "rule_id_version", `("rule_id", "version")`);
+  }
+  /**
+   * Create the goals table.
+   *
+   * Backed by the VFS path convention memory/goal/<owner>/<status>/<goal_id>.md.
+   * INSERT-only version-bumped: rm and mv operations translate to fresh
+   * v=N+1 rows (status flips for mv → closed; rm is the same soft-close).
+   * The (goal_id, version) index lets the VFS dispatch a cheap latest-row
+   * read on cat / Read of a single goal.
+   */
+  async ensureGoalsTable(name) {
+    const safe = sqlIdent(name);
+    const tables = await this.listTables();
+    if (!tables.includes(safe)) {
+      log3(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(buildCreateTableSql(safe, GOALS_COLUMNS), safe);
+      log3(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
+    }
+    await this.healSchema(safe, GOALS_COLUMNS);
+    await this.ensureLookupIndex(safe, "goal_id_version", `("goal_id", "version")`);
+    await this.ensureLookupIndex(safe, "owner_status", `("owner", "status")`);
+  }
+  /**
+   * Create the kpis table.
+   *
+   * Backed by memory/kpi/<goal_id>/<kpi_id>.md. KPI rows do NOT carry
+   * owner — ownership derives from the parent goal via logical join on
+   * goal_id. INSERT-only version-bumped. (goal_id, kpi_id) index is the
+   * canonical lookup the VFS uses on Read and Write.
+   */
+  async ensureKpisTable(name) {
+    const safe = sqlIdent(name);
+    const tables = await this.listTables();
+    if (!tables.includes(safe)) {
+      log3(`table "${safe}" not found, creating`);
+      await this.createTableWithRetry(buildCreateTableSql(safe, KPIS_COLUMNS), safe);
+      log3(`table "${safe}" created`);
+      if (!tables.includes(safe))
+        this._tablesCache = [...tables, safe];
+    }
+    await this.healSchema(safe, KPIS_COLUMNS);
+    await this.ensureLookupIndex(safe, "goal_id_kpi_id", `("goal_id", "kpi_id")`);
+  }
+};
+
+// dist/src/shell/grep-core.js
+var TOOL_INPUT_FIELDS = [
+  "command",
+  "file_path",
+  "path",
+  "pattern",
+  "prompt",
+  "subagent_type",
+  "query",
+  "url",
+  "notebook_path",
+  "old_string",
+  "new_string",
+  "content",
+  "skill",
+  "args",
+  "taskId",
+  "status",
+  "subject",
+  "description",
+  "to",
+  "message",
+  "summary",
+  "max_results"
+];
+var TOOL_RESPONSE_DROP = /* @__PURE__ */ new Set([
+  // Note: `stderr` is intentionally NOT in this set. The `stdout` high-signal
+  // branch below already de-dupes it for the common case (appends as suffix
+  // when non-empty). If a tool response has ONLY `stderr` and no `stdout`
+  // (hard-failure on some tools), the generic cleanup preserves it so the
+  // error message reaches Claude instead of collapsing to `[ok]`.
+  "interrupted",
+  "isImage",
+  "noOutputExpected",
+  "type",
+  "structuredPatch",
+  "userModified",
+  "originalFile",
+  "replaceAll",
+  "totalDurationMs",
+  "totalTokens",
+  "totalToolUseCount",
+  "usage",
+  "toolStats",
+  "durationMs",
+  "durationSeconds",
+  "bytes",
+  "code",
+  "codeText",
+  "agentId",
+  "agentType",
+  "verificationNudgeNeeded",
+  "numLines",
+  "numFiles",
+  "truncated",
+  "statusChange",
+  "updatedFields",
+  "isAgent",
+  "success"
+]);
+function maybeParseJson(v) {
+  if (typeof v !== "string")
+    return v;
+  const s = v.trim();
+  if (s[0] !== "{" && s[0] !== "[")
+    return v;
+  try {
+    return JSON.parse(s);
+  } catch {
+    return v;
+  }
+}
+function snakeCase(k) {
+  return k.replace(/([A-Z])/g, "_$1").toLowerCase();
+}
+function camelCase(k) {
+  return k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+function formatToolInput(raw) {
+  const p = maybeParseJson(raw);
+  if (typeof p !== "object" || p === null)
+    return String(p ?? "");
+  const parts = [];
+  for (const k of TOOL_INPUT_FIELDS) {
+    if (p[k] === void 0)
+      continue;
+    const v = p[k];
+    parts.push(`${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`);
+  }
+  for (const k of ["glob", "output_mode", "limit", "offset"]) {
+    if (p[k] !== void 0)
+      parts.push(`${k}: ${p[k]}`);
+  }
+  return parts.length ? parts.join("\n") : JSON.stringify(p);
+}
+function formatToolResponse(raw, inp, toolName) {
+  const r = maybeParseJson(raw);
+  if (typeof r !== "object" || r === null)
+    return String(r ?? "");
+  if (toolName === "Edit" || toolName === "Write" || toolName === "MultiEdit") {
+    return r.filePath ? `[wrote ${r.filePath}]` : "[ok]";
+  }
+  if (typeof r.stdout === "string") {
+    const stderr = r.stderr;
+    return r.stdout + (stderr ? `
+stderr: ${stderr}` : "");
+  }
+  if (typeof r.content === "string")
+    return r.content;
+  if (r.file && typeof r.file === "object") {
+    const f = r.file;
+    if (typeof f.content === "string")
+      return `[${f.filePath ?? ""}]
+${f.content}`;
+    if (typeof f.base64 === "string")
+      return `[binary ${f.filePath ?? ""}: ${f.base64.length} base64 chars]`;
+  }
+  if (Array.isArray(r.filenames))
+    return r.filenames.join("\n");
+  if (Array.isArray(r.matches)) {
+    return r.matches.map((m) => typeof m === "string" ? m : JSON.stringify(m)).join("\n");
+  }
+  if (Array.isArray(r.results)) {
+    return r.results.map((x) => typeof x === "string" ? x : x?.title ?? x?.url ?? JSON.stringify(x)).join("\n");
+  }
+  const inpObj = maybeParseJson(inp);
+  const kept = {};
+  for (const [k, v] of Object.entries(r)) {
+    if (TOOL_RESPONSE_DROP.has(k))
+      continue;
+    if (v === "" || v === false || v == null)
+      continue;
+    if (typeof inpObj === "object" && inpObj) {
+      const inObj = inpObj;
+      if (k in inObj && JSON.stringify(inObj[k]) === JSON.stringify(v))
+        continue;
+      const snake = snakeCase(k);
+      if (snake in inObj && JSON.stringify(inObj[snake]) === JSON.stringify(v))
+        continue;
+      const camel = camelCase(k);
+      if (camel in inObj && JSON.stringify(inObj[camel]) === JSON.stringify(v))
+        continue;
+    }
+    kept[k] = v;
+  }
+  return Object.keys(kept).length ? JSON.stringify(kept) : "[ok]";
+}
+function formatToolCall(obj) {
+  return `[tool:${obj?.tool_name ?? "?"}]
+input: ${formatToolInput(obj?.tool_input)}
+response: ${formatToolResponse(obj?.tool_response, obj?.tool_input, obj?.tool_name)}`;
+}
+function normalizeContent(path, raw) {
+  if (!path.includes("/sessions/"))
+    return raw;
+  if (!raw || raw[0] !== "{")
+    return raw;
+  let obj;
+  try {
+    obj = JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+  if (Array.isArray(obj.turns)) {
+    const dateHeader = obj.date_time ? `(${String(obj.date_time)}) ` : "";
+    const lines = obj.turns.map((t) => {
+      const sp = String(t?.speaker ?? t?.name ?? "?").trim();
+      const tx = String(t?.text ?? t?.content ?? "").replace(/\s+/g, " ").trim();
+      const tag = t?.dia_id ? `[${t.dia_id}] ` : "";
+      return `${dateHeader}${tag}${sp}: ${tx}`;
+    });
+    const out2 = lines.join("\n");
+    return out2.trim() ? out2 : raw;
+  }
+  if (obj.turn && typeof obj.turn === "object" && !Array.isArray(obj.turn)) {
+    const t = obj.turn;
+    const sp = String(t.speaker ?? t.name ?? "?").trim();
+    const tx = String(t.text ?? t.content ?? "").replace(/\s+/g, " ").trim();
+    const tag = t.dia_id ? `[${String(t.dia_id)}] ` : "";
+    const dateHeader = obj.date_time ? `(${String(obj.date_time)}) ` : "";
+    const line = `${dateHeader}${tag}${sp}: ${tx}`;
+    return line.trim() ? line : raw;
+  }
+  const stripRecalled = (t) => {
+    const i = t.indexOf("<recalled-memories>");
+    if (i === -1)
+      return t;
+    const j = t.lastIndexOf("</recalled-memories>");
+    if (j === -1 || j < i)
+      return t;
+    const head = t.slice(0, i);
+    const tail = t.slice(j + "</recalled-memories>".length);
+    return (head + tail).replace(/^\s+/, "").replace(/\n{3,}/g, "\n\n");
+  };
+  let out = null;
+  if (obj.type === "user_message") {
+    out = `[user] ${stripRecalled(String(obj.content ?? ""))}`;
+  } else if (obj.type === "assistant_message") {
+    const agent = obj.agent_type ? ` (agent=${obj.agent_type})` : "";
+    out = `[assistant${agent}] ${stripRecalled(String(obj.content ?? ""))}`;
+  } else if (obj.type === "tool_call") {
+    out = formatToolCall(obj);
+  }
+  if (out === null)
+    return raw;
+  const trimmed = out.trim();
+  if (!trimmed || trimmed === "[user]" || trimmed === "[assistant]" || /^\[tool:[^\]]*\]\s+input:\s+\{\}\s+response:\s+\{\}$/.test(trimmed))
+    return raw;
+  return out;
+}
+function buildPathCondition(targetPath) {
+  if (!targetPath || targetPath === "/")
+    return "";
+  const clean = targetPath.replace(/\/+$/, "");
+  if (/[*?]/.test(clean)) {
+    const likePattern = sqlLike(clean).replace(/\*/g, "%").replace(/\?/g, "_");
+    return `path LIKE '${likePattern}' ESCAPE '\\'`;
+  }
+  const base = clean.split("/").pop() ?? "";
+  if (base.includes(".")) {
+    return `path = '${sqlStr(clean)}'`;
+  }
+  return `(path = '${sqlStr(clean)}' OR path LIKE '${sqlLike(clean)}/%' ESCAPE '\\')`;
+}
+async function searchDeeplakeTables(api, memoryTable, sessionsTable, opts) {
+  const { pathFilter, contentScanOnly, likeOp, escapedPattern, prefilterPattern, prefilterPatterns, queryEmbedding, multiWordPatterns } = opts;
+  const limit = opts.limit ?? 100;
+  if (queryEmbedding && queryEmbedding.length > 0) {
+    const vecLit = serializeFloat4Array(queryEmbedding);
+    const semanticLimit = Math.min(limit, Number(process.env.HIVEMIND_SEMANTIC_LIMIT ?? "20"));
+    const lexicalLimit = Math.min(limit, Number(process.env.HIVEMIND_HYBRID_LEXICAL_LIMIT ?? "20"));
+    const filterPatternsForLex = contentScanOnly ? prefilterPatterns && prefilterPatterns.length > 0 ? prefilterPatterns : prefilterPattern ? [prefilterPattern] : [] : [escapedPattern];
+    const memLexFilter = buildContentFilter("summary::text", likeOp, filterPatternsForLex);
+    const sessLexFilter = buildContentFilter("message::text", likeOp, filterPatternsForLex);
+    const memLexQuery = memLexFilter ? `SELECT path, summary::text AS content, 0 AS source_order, '' AS creation_date, 1.0 AS score FROM "${memoryTable}" WHERE 1=1${pathFilter}${memLexFilter} LIMIT ${lexicalLimit}` : null;
+    const sessLexQuery = sessLexFilter ? `SELECT path, message::text AS content, 1 AS source_order, COALESCE(creation_date::text, '') AS creation_date, 1.0 AS score FROM "${sessionsTable}" WHERE 1=1${pathFilter}${sessLexFilter} LIMIT ${lexicalLimit}` : null;
+    const memSemQuery = `SELECT path, summary::text AS content, 0 AS source_order, '' AS creation_date, (summary_embedding <#> ${vecLit}) AS score FROM "${memoryTable}" WHERE ARRAY_LENGTH(summary_embedding, 1) > 0${pathFilter} ORDER BY score DESC LIMIT ${semanticLimit}`;
+    const sessSemQuery = `SELECT path, message::text AS content, 1 AS source_order, COALESCE(creation_date::text, '') AS creation_date, (message_embedding <#> ${vecLit}) AS score FROM "${sessionsTable}" WHERE ARRAY_LENGTH(message_embedding, 1) > 0${pathFilter} ORDER BY score DESC LIMIT ${semanticLimit}`;
+    const parts = [memSemQuery, sessSemQuery];
+    if (memLexQuery)
+      parts.push(memLexQuery);
+    if (sessLexQuery)
+      parts.push(sessLexQuery);
+    const unionSql = parts.map((q) => `(${q})`).join(" UNION ALL ");
+    const outerLimit = semanticLimit + lexicalLimit;
+    const rows2 = await api.query(`SELECT path, content, source_order, creation_date, score FROM (` + unionSql + `) AS combined ORDER BY score DESC LIMIT ${outerLimit}`);
+    const seen = /* @__PURE__ */ new Set();
+    const unique = [];
+    for (const row of rows2) {
+      const p = String(row["path"]);
+      if (seen.has(p))
+        continue;
+      seen.add(p);
+      unique.push({ path: p, content: String(row["content"] ?? "") });
+    }
+    return unique;
+  }
+  const filterPatterns = contentScanOnly ? prefilterPatterns && prefilterPatterns.length > 0 ? prefilterPatterns : prefilterPattern ? [prefilterPattern] : [] : multiWordPatterns && multiWordPatterns.length > 1 ? multiWordPatterns : [escapedPattern];
+  const memFilter = buildContentFilter("summary::text", likeOp, filterPatterns);
+  const sessFilter = buildContentFilter("message::text", likeOp, filterPatterns);
+  const memQuery = `SELECT path, summary::text AS content, 0 AS source_order, '' AS creation_date FROM "${memoryTable}" WHERE 1=1${pathFilter}${memFilter} LIMIT ${limit}`;
+  const sessQuery = `SELECT path, message::text AS content, 1 AS source_order, COALESCE(creation_date::text, '') AS creation_date FROM "${sessionsTable}" WHERE 1=1${pathFilter}${sessFilter} LIMIT ${limit}`;
+  const rows = await api.query(`SELECT path, content, source_order, creation_date FROM ((${memQuery}) UNION ALL (${sessQuery})) AS combined ORDER BY path, source_order, creation_date`);
+  return rows.map((row) => ({
+    path: String(row["path"]),
+    content: String(row["content"] ?? "")
+  }));
+}
+function serializeFloat4Array(vec) {
+  const parts = [];
+  for (const v of vec) {
+    if (!Number.isFinite(v))
+      return "NULL";
+    parts.push(String(v));
+  }
+  return `ARRAY[${parts.join(",")}]::float4[]`;
+}
+function buildPathFilter(targetPath) {
+  const condition = buildPathCondition(targetPath);
+  return condition ? ` AND ${condition}` : "";
+}
+function extractRegexLiteralPrefilter(pattern) {
+  if (!pattern)
+    return null;
+  const parts = [];
+  let current = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === "\\") {
+      const next = pattern[i + 1];
+      if (!next)
+        return null;
+      if (/[dDsSwWbBAZzGkKpP]/.test(next))
+        return null;
+      current += next;
+      i++;
+      continue;
+    }
+    if (ch === ".") {
+      if (pattern[i + 1] === "*") {
+        if (current)
+          parts.push(current);
+        current = "";
+        i++;
+        continue;
+      }
+      return null;
+    }
+    if ("|()[]{}+?^$".includes(ch) || ch === "*")
+      return null;
+    current += ch;
+  }
+  if (current)
+    parts.push(current);
+  const literal = parts.reduce((best, part) => part.length > best.length ? part : best, "");
+  return literal.length >= 2 ? literal : null;
+}
+function extractRegexAlternationPrefilters(pattern) {
+  if (!pattern.includes("|"))
+    return null;
+  const parts = [];
+  let current = "";
+  let escaped = false;
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (escaped) {
+      current += `\\${ch}`;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === "|") {
+      if (!current)
+        return null;
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    if ("()[]{}^$".includes(ch))
+      return null;
+    current += ch;
+  }
+  if (escaped || !current)
+    return null;
+  parts.push(current);
+  const literals = [...new Set(parts.map((part) => extractRegexLiteralPrefilter(part)).filter((part) => typeof part === "string" && part.length >= 2))];
+  return literals.length > 0 ? literals : null;
+}
+function buildGrepSearchOptions(params, targetPath) {
+  const hasRegexMeta = !params.fixedString && /[.*+?^${}()|[\]\\]/.test(params.pattern);
+  const literalPrefilter = hasRegexMeta ? extractRegexLiteralPrefilter(params.pattern) : null;
+  const alternationPrefilters = hasRegexMeta ? extractRegexAlternationPrefilters(params.pattern) : null;
+  const multiWordPatterns = !hasRegexMeta ? params.pattern.split(/\s+/).filter((w) => w.length > 2).slice(0, 4) : [];
+  return {
+    pathFilter: buildPathFilter(targetPath),
+    contentScanOnly: hasRegexMeta,
+    likeOp: process.env.HIVEMIND_GREP_LIKE === "case-sensitive" ? "LIKE" : "ILIKE",
+    escapedPattern: sqlLike(params.pattern),
+    prefilterPattern: literalPrefilter ? sqlLike(literalPrefilter) : void 0,
+    prefilterPatterns: alternationPrefilters?.map((literal) => sqlLike(literal)),
+    multiWordPatterns: multiWordPatterns.length > 1 ? multiWordPatterns.map((w) => sqlLike(w)) : void 0
+  };
+}
+function buildContentFilter(column, likeOp, patterns) {
+  if (patterns.length === 0)
+    return "";
+  if (patterns.length === 1)
+    return ` AND ${column} ${likeOp} '%${patterns[0]}%'`;
+  return ` AND (${patterns.map((pattern) => `${column} ${likeOp} '%${pattern}%'`).join(" OR ")})`;
+}
+function compileGrepRegex(params) {
+  let reStr = params.fixedString ? params.pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : params.pattern;
+  if (params.wordMatch)
+    reStr = `\\b${reStr}\\b`;
+  try {
+    return new RegExp(reStr, params.ignoreCase ? "i" : "");
+  } catch {
+    return new RegExp(params.pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), params.ignoreCase ? "i" : "");
+  }
+}
+function refineGrepMatches(rows, params, forceMultiFilePrefix) {
+  const re = compileGrepRegex(params);
+  const multi = forceMultiFilePrefix ?? rows.length > 1;
+  const output = [];
+  for (const row of rows) {
+    if (!row.content)
+      continue;
+    const lines = row.content.split("\n");
+    const matched = [];
+    for (let i = 0; i < lines.length; i++) {
+      const hit = re.test(lines[i]);
+      if (hit !== !!params.invertMatch) {
+        if (params.filesOnly) {
+          output.push(row.path);
+          break;
+        }
+        const prefix = multi ? `${row.path}:` : "";
+        const ln = params.lineNumber ? `${i + 1}:` : "";
+        matched.push(`${prefix}${ln}${lines[i]}`);
+      }
+    }
+    if (!params.filesOnly) {
+      if (params.countOnly) {
+        output.push(`${multi ? `${row.path}:` : ""}${matched.length}`);
+      } else {
+        output.push(...matched);
+      }
+    }
+  }
+  return output;
+}
+async function grepBothTables(api, memoryTable, sessionsTable, params, targetPath, queryEmbedding) {
+  const rows = await searchDeeplakeTables(api, memoryTable, sessionsTable, {
+    ...buildGrepSearchOptions(params, targetPath),
+    queryEmbedding
+  });
+  const seen = /* @__PURE__ */ new Set();
+  const unique = rows.filter((r) => seen.has(r.path) ? false : (seen.add(r.path), true));
+  const normalized = unique.map((r) => ({ path: r.path, content: normalizeContent(r.path, r.content) }));
+  if (queryEmbedding && queryEmbedding.length > 0) {
+    const emitAllLines = process.env.HIVEMIND_SEMANTIC_EMIT_ALL !== "false";
+    if (emitAllLines) {
+      const lines = [];
+      for (const r of normalized) {
+        for (const line of r.content.split("\n")) {
+          const trimmed = line.trim();
+          if (trimmed)
+            lines.push(`${r.path}:${line}`);
+        }
+      }
+      return lines;
+    }
+  }
+  return refineGrepMatches(normalized, params);
+}
+
+// dist/src/utils/output-cap.js
+var CLAUDE_OUTPUT_CAP_BYTES = 8 * 1024;
+function byteLen(str) {
+  return Buffer.byteLength(str, "utf8");
+}
+function capOutputForClaude(output, options = {}) {
+  const maxBytes = options.maxBytes ?? CLAUDE_OUTPUT_CAP_BYTES;
+  if (byteLen(output) <= maxBytes)
+    return output;
+  const kind = options.kind ?? "output";
+  const footerReserve = 220;
+  const budget = Math.max(1, maxBytes - footerReserve);
+  let running = 0;
+  const lines = output.split("\n");
+  const keptLines = [];
+  for (const line of lines) {
+    const lineBytes = byteLen(line) + 1;
+    if (running + lineBytes > budget)
+      break;
+    keptLines.push(line);
+    running += lineBytes;
+  }
+  if (keptLines.length === 0) {
+    const buf = Buffer.from(output, "utf8");
+    let cutByte = Math.min(budget, buf.length);
+    while (cutByte > 0 && (buf[cutByte] & 192) === 128)
+      cutByte--;
+    const slice = buf.subarray(0, cutByte).toString("utf8");
+    const footer2 = `
+... [${kind} truncated: ${(byteLen(output) / 1024).toFixed(1)} KB total; refine with '| head -N' or a tighter pattern]`;
+    return slice + footer2;
+  }
+  const totalLines = lines.length - (lines[lines.length - 1] === "" ? 1 : 0);
+  const elidedLines = Math.max(0, totalLines - keptLines.length);
+  const elidedBytes = byteLen(output) - byteLen(keptLines.join("\n"));
+  const footer = `
+... [${kind} truncated: ${elidedLines} more lines (${(elidedBytes / 1024).toFixed(1)} KB) elided \u2014 refine with '| head -N' or a tighter pattern]`;
+  return keptLines.join("\n") + footer;
+}
+
+// dist/src/embeddings/client.js
+import { connect } from "node:net";
+import { spawn } from "node:child_process";
+import { openSync as openSync2, closeSync as closeSync2, writeSync, unlinkSync as unlinkSync3, existsSync as existsSync3, readFileSync as readFileSync5 } from "node:fs";
+import { homedir as homedir5 } from "node:os";
+import { join as join6 } from "node:path";
+
+// dist/src/embeddings/protocol.js
+var DEFAULT_SOCKET_DIR = "/tmp";
+var DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1e3;
+var DEFAULT_CLIENT_TIMEOUT_MS = 2e3;
+function socketPathFor(uid, dir = DEFAULT_SOCKET_DIR) {
+  return `${dir}/hivemind-embed-${uid}.sock`;
+}
+function pidPathFor(uid, dir = DEFAULT_SOCKET_DIR) {
+  return `${dir}/hivemind-embed-${uid}.pid`;
+}
+
+// dist/src/embeddings/client.js
+var SHARED_DAEMON_PATH = join6(homedir5(), ".hivemind", "embed-deps", "embed-daemon.js");
+var log4 = (m) => log("embed-client", m);
+function getUid() {
+  const uid = typeof process.getuid === "function" ? process.getuid() : void 0;
+  return uid !== void 0 ? String(uid) : process.env.USER ?? "default";
+}
+var _recycledStuckDaemon = false;
+var EmbedClient = class {
+  socketPath;
+  pidPath;
+  timeoutMs;
+  daemonEntry;
+  autoSpawn;
+  spawnWaitMs;
+  nextId = 0;
+  helloVerified = false;
+  constructor(opts = {}) {
+    const uid = getUid();
+    const dir = opts.socketDir ?? "/tmp";
+    this.socketPath = socketPathFor(uid, dir);
+    this.pidPath = pidPathFor(uid, dir);
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_CLIENT_TIMEOUT_MS;
+    this.daemonEntry = opts.daemonEntry ?? process.env.HIVEMIND_EMBED_DAEMON ?? (existsSync3(SHARED_DAEMON_PATH) ? SHARED_DAEMON_PATH : void 0);
+    this.autoSpawn = opts.autoSpawn ?? true;
+    this.spawnWaitMs = opts.spawnWaitMs ?? 5e3;
+  }
+  /**
+   * Returns an embedding vector, or null on timeout/failure. Hooks MUST treat
+   * null as "skip embedding column" — never block the write path on us.
+   *
+   * Fire-and-forget spawn on miss: if the daemon isn't up, this call returns
+   * null AND kicks off a background spawn. The next call finds a ready daemon.
+   *
+   * Stuck-daemon recycle: if the daemon returns a transformers-missing
+   * error (typical after a marketplace upgrade left an older daemon process
+   * alive but with no node_modules accessible from its bundle path), we
+   * SIGTERM it and clear its sock/pid so the very next call spawns a fresh
+   * daemon from the current bundle. Without this, the stuck daemon would
+   * keep poisoning every session until its 10-minute idle-out fires.
+   */
+  async embed(text, kind = "document") {
+    const v = await this.embedAttempt(text, kind);
+    if (v !== "recycled")
+      return v;
+    if (!this.autoSpawn)
+      return null;
+    this.trySpawnDaemon();
+    await this.waitForDaemonReady();
+    const retry = await this.embedAttempt(text, kind);
+    return retry === "recycled" ? null : retry;
+  }
+  /**
+   * One round-trip: connect → verify → embed. Returns:
+   *  - number[]  : embedding vector (happy path)
+   *  - null      : timeout / daemon error / transformers-missing
+   *  - "recycled": verifyDaemonOnce killed the daemon mid-call;
+   *                caller should respawn and retry once.
+   */
+  async embedAttempt(text, kind) {
+    let sock;
+    try {
+      sock = await this.connectOnce();
+    } catch {
+      if (this.autoSpawn)
+        this.trySpawnDaemon();
+      return null;
+    }
+    try {
+      const recycled = await this.verifyDaemonOnce(sock);
+      if (recycled) {
+        return "recycled";
+      }
+      const id = String(++this.nextId);
+      const req = { op: "embed", id, kind, text };
+      const resp = await this.sendAndWait(sock, req);
+      if (resp.error || !("embedding" in resp) || !resp.embedding) {
+        const err = resp.error ?? "no embedding";
+        log4(`embed err: ${err}`);
+        if (isTransformersMissingError(err)) {
+          this.handleTransformersMissing(err);
+        }
+        return null;
+      }
+      return resp.embedding;
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      log4(`embed failed: ${err}`);
+      return null;
+    } finally {
+      try {
+        sock.end();
+      } catch {
+      }
+    }
+  }
+  /**
+   * Poll for the sock file to come back after `trySpawnDaemon` — used by
+   * the recycle retry path. Best-effort: caps at `spawnWaitMs` and
+   * returns regardless so the retry attempt can run.
+   */
+  async waitForDaemonReady() {
+    const deadline = Date.now() + this.spawnWaitMs;
+    while (Date.now() < deadline) {
+      if (existsSync3(this.socketPath))
+        return;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
+  /**
+   * Send a `hello` on first successful connect per EmbedClient instance.
+   * If the daemon answers with a path that doesn't match our configured
+   * daemonEntry — typical after a marketplace upgrade replaced the bundle
+   * — SIGTERM the daemon + clear sock/pid so the next call spawns from the
+   * current bundle.
+   *
+   * `helloVerified` is set ONLY after we've seen a compatible response,
+   * so a transient probe failure or a recycle-triggering mismatch leaves
+   * the flag false; the next reconnect re-runs verification against
+   * whatever daemon is then live (typically the fresh spawn).
+   */
+  async verifyDaemonOnce(sock) {
+    if (this.helloVerified)
+      return false;
+    if (!this.daemonEntry) {
+      this.helloVerified = true;
+      return false;
+    }
+    const id = String(++this.nextId);
+    const req = { op: "hello", id };
+    let resp;
+    try {
+      resp = await this.sendAndWait(sock, req);
+    } catch (e) {
+      log4(`hello probe failed (inconclusive, will retry next connect): ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
+    const hello = resp;
+    if (_recycledStuckDaemon) {
+      return false;
+    }
+    if (!hello.daemonPath) {
+      _recycledStuckDaemon = true;
+      log4(`daemon does not implement hello (older protocol); recycling`);
+      this.recycleDaemon(hello.pid);
+      return true;
+    }
+    if (hello.daemonPath !== this.daemonEntry && !existsSync3(hello.daemonPath)) {
+      _recycledStuckDaemon = true;
+      log4(`daemon path no longer on disk \u2014 running=${hello.daemonPath} (gone) expected=${this.daemonEntry}; recycling`);
+      this.recycleDaemon(hello.pid);
+      return true;
+    }
+    this.helloVerified = true;
+    return false;
+  }
+  /**
+   * On a transformers-missing error from the daemon, SIGTERM the stuck
+   * daemon (the bundle daemon that can't find its deps) and clear
+   * sock/pid so the next call spawns fresh.
+   *
+   * Previously this also enqueued a user-visible "Hivemind embeddings
+   * disabled — deps missing" notification telling the user to run
+   * `hivemind embeddings install`. The notification was removed because
+   * (a) the recycle alone often fixes the issue silently, and (b) the
+   * warning kept stacking on top of the primary session-start banner
+   * which clashed with the single-slot priority model. The `detail`
+   * argument is retained for future telemetry / debug logging.
+   */
+  handleTransformersMissing(_detail) {
+    if (!_recycledStuckDaemon) {
+      _recycledStuckDaemon = true;
+      this.recycleDaemon(null);
+    }
+  }
+  /**
+   * Best-effort SIGTERM + sock/pid cleanup. Tolerant of every missing-file
+   * combination and dead-PID cases.
+   *
+   * Identity check: gate the SIGTERM on the daemon's socket file still
+   * existing. We know the daemon was alive moments ago (we either just
+   * got a hello response or the caller saw a transformers-missing error
+   * the daemon emitted), but if the socket file is gone by the time we
+   * try to kill, the daemon process is also gone and the PID we
+   * captured may already have been recycled by the OS to an unrelated
+   * user process. Mirrors the gate added to `killEmbedDaemon` in the
+   * CLI — same failure mode, rarer trigger.
+   */
+  recycleDaemon(reportedPid) {
+    let pid = reportedPid;
+    if (pid === null) {
+      try {
+        pid = Number.parseInt(readFileSync5(this.pidPath, "utf-8").trim(), 10);
+      } catch {
+      }
+    }
+    if (Number.isFinite(pid) && pid !== null && pid > 0 && existsSync3(this.socketPath)) {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+      }
+    } else if (pid !== null) {
+      log4(`recycle: socket gone, skipping SIGTERM on possibly-stale pid ${pid}`);
+    }
+    try {
+      unlinkSync3(this.socketPath);
+    } catch {
+    }
+    try {
+      unlinkSync3(this.pidPath);
+    } catch {
+    }
+  }
+  /**
+   * Wait up to spawnWaitMs for the daemon to accept connections, spawning if
+   * necessary. Meant for SessionStart / long-running batches — not the hot path.
+   */
+  async warmup() {
+    try {
+      const s = await this.connectOnce();
+      s.end();
+      return true;
+    } catch {
+      if (!this.autoSpawn)
+        return false;
+      this.trySpawnDaemon();
+      try {
+        const s = await this.waitForSocket();
+        s.end();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+  connectOnce() {
+    return new Promise((resolve3, reject) => {
+      const sock = connect(this.socketPath);
+      const to = setTimeout(() => {
+        sock.destroy();
+        reject(new Error("connect timeout"));
+      }, this.timeoutMs);
+      sock.once("connect", () => {
+        clearTimeout(to);
+        resolve3(sock);
+      });
+      sock.once("error", (e) => {
+        clearTimeout(to);
+        reject(e);
+      });
+    });
+  }
+  trySpawnDaemon() {
+    let fd;
+    try {
+      fd = openSync2(this.pidPath, "wx", 384);
+      writeSync(fd, String(process.pid));
+    } catch (e) {
+      if (this.isPidFileStale()) {
+        try {
+          unlinkSync3(this.pidPath);
+        } catch {
+        }
+        try {
+          fd = openSync2(this.pidPath, "wx", 384);
+          writeSync(fd, String(process.pid));
+        } catch {
+          return;
+        }
+      } else {
+        return;
+      }
+    }
+    if (!this.daemonEntry || !existsSync3(this.daemonEntry)) {
+      log4(`daemonEntry not configured or missing: ${this.daemonEntry}`);
+      try {
+        closeSync2(fd);
+        unlinkSync3(this.pidPath);
+      } catch {
+      }
+      return;
+    }
+    try {
+      const child = spawn(process.execPath, [this.daemonEntry], {
+        detached: true,
+        stdio: "ignore",
+        env: process.env
+      });
+      child.unref();
+      log4(`spawned daemon pid=${child.pid}`);
+    } finally {
+      closeSync2(fd);
+    }
+  }
+  isPidFileStale() {
+    try {
+      const raw = readFileSync5(this.pidPath, "utf-8").trim();
+      const pid = Number(raw);
+      if (!pid || Number.isNaN(pid))
+        return true;
+      try {
+        process.kill(pid, 0);
+        return false;
+      } catch {
+        return true;
+      }
+    } catch {
+      return true;
+    }
+  }
+  async waitForSocket() {
+    const deadline = Date.now() + this.spawnWaitMs;
+    let delay = 30;
+    while (Date.now() < deadline) {
+      await sleep3(delay);
+      delay = Math.min(delay * 1.5, 300);
+      if (!existsSync3(this.socketPath))
+        continue;
+      try {
+        return await this.connectOnce();
+      } catch {
+      }
+    }
+    throw new Error("daemon did not become ready within spawnWaitMs");
+  }
+  sendAndWait(sock, req) {
+    return new Promise((resolve3, reject) => {
+      let buf = "";
+      const to = setTimeout(() => {
+        sock.destroy();
+        reject(new Error("request timeout"));
+      }, this.timeoutMs);
+      sock.setEncoding("utf-8");
+      sock.on("data", (chunk) => {
+        buf += chunk;
+        const nl = buf.indexOf("\n");
+        if (nl === -1)
+          return;
+        const line = buf.slice(0, nl);
+        clearTimeout(to);
+        try {
+          resolve3(JSON.parse(line));
+        } catch (e) {
+          reject(e);
+        }
+      });
+      sock.on("error", (e) => {
+        clearTimeout(to);
+        reject(e);
+      });
+      sock.on("end", () => {
+        clearTimeout(to);
+        reject(new Error("connection closed without response"));
+      });
+      sock.write(JSON.stringify(req) + "\n");
+    });
+  }
+};
+function sleep3(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+function isTransformersMissingError(err) {
+  if (/hivemind embeddings install/i.test(err))
+    return true;
+  return /@huggingface\/transformers/i.test(err);
+}
+
+// dist/src/embeddings/disable.js
+import { createRequire } from "node:module";
+import { homedir as homedir7 } from "node:os";
+import { join as join8 } from "node:path";
+import { pathToFileURL } from "node:url";
+
+// dist/src/user-config.js
+import { existsSync as existsSync4, mkdirSync as mkdirSync4, readFileSync as readFileSync6, renameSync as renameSync2, writeFileSync as writeFileSync4 } from "node:fs";
+import { homedir as homedir6 } from "node:os";
+import { dirname, join as join7 } from "node:path";
+var _configPath = () => process.env.HIVEMIND_CONFIG_PATH ?? join7(homedir6(), ".deeplake", "config.json");
+var _cache = null;
+var _migrated = false;
+function readUserConfig() {
+  if (_cache !== null)
+    return _cache;
+  const path = _configPath();
+  if (!existsSync4(path)) {
+    _cache = {};
+    return _cache;
+  }
+  try {
+    const raw = readFileSync6(path, "utf-8");
+    const parsed = JSON.parse(raw);
+    _cache = isPlainObject(parsed) ? parsed : {};
+  } catch {
+    _cache = {};
+  }
+  return _cache;
+}
+function writeUserConfig(patch) {
+  const current = readUserConfig();
+  const merged = deepMerge(current, patch);
+  const path = _configPath();
+  const dir = dirname(path);
+  if (!existsSync4(dir))
+    mkdirSync4(dir, { recursive: true });
+  const tmp = `${path}.tmp.${process.pid}`;
+  writeFileSync4(tmp, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+  renameSync2(tmp, path);
+  _cache = merged;
+  return merged;
+}
+function getEmbeddingsEnabled() {
+  const cfg = readUserConfig();
+  if (cfg.embeddings && typeof cfg.embeddings.enabled === "boolean") {
+    return cfg.embeddings.enabled;
+  }
+  if (_migrated) {
+    return migrationValueFromEnv();
+  }
+  _migrated = true;
+  const enabled = migrationValueFromEnv();
+  try {
+    writeUserConfig({ embeddings: { enabled } });
+  } catch {
+    _cache = { ...cfg ?? {}, embeddings: { ...cfg?.embeddings ?? {}, enabled } };
+  }
+  return enabled;
+}
+function migrationValueFromEnv() {
+  const raw = process.env.HIVEMIND_EMBEDDINGS;
+  if (raw === void 0)
+    return false;
+  if (raw === "false")
+    return false;
+  return true;
+}
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function deepMerge(base, patch) {
+  const out = { ...base };
+  for (const key of Object.keys(patch)) {
+    const patchVal = patch[key];
+    const baseVal = base[key];
+    if (isPlainObject(patchVal) && isPlainObject(baseVal)) {
+      out[key] = { ...baseVal, ...patchVal };
+    } else if (patchVal !== void 0) {
+      out[key] = patchVal;
+    }
+  }
+  return out;
+}
+
+// dist/src/embeddings/disable.js
+var cachedStatus = null;
+function defaultResolveTransformers() {
+  const sharedDir = join8(homedir7(), ".hivemind", "embed-deps");
+  try {
+    createRequire(pathToFileURL(`${sharedDir}/`).href).resolve("@huggingface/transformers");
+    return;
+  } catch {
+  }
+  createRequire(import.meta.url).resolve("@huggingface/transformers");
+}
+var _resolve = defaultResolveTransformers;
+var _readEnabled = getEmbeddingsEnabled;
+function detectStatus() {
+  if (!_readEnabled())
+    return "user-disabled";
+  try {
+    _resolve();
+    return "enabled";
+  } catch {
+    return "no-transformers";
+  }
+}
+function embeddingsStatus() {
+  if (cachedStatus !== null)
+    return cachedStatus;
+  cachedStatus = detectStatus();
+  return cachedStatus;
+}
+function embeddingsDisabled() {
+  return embeddingsStatus() !== "enabled";
+}
+
+// dist/src/hooks/grep-direct.js
+import { fileURLToPath } from "node:url";
+import { dirname as dirname2, join as join9 } from "node:path";
+var SEMANTIC_ENABLED = process.env.HIVEMIND_SEMANTIC_SEARCH !== "false" && !embeddingsDisabled();
+var SEMANTIC_TIMEOUT_MS = Number(process.env.HIVEMIND_SEMANTIC_EMBED_TIMEOUT_MS ?? "500");
+function resolveDaemonPath() {
+  return join9(dirname2(fileURLToPath(import.meta.url)), "..", "embeddings", "embed-daemon.js");
+}
+var sharedEmbedClient = null;
+function getEmbedClient() {
+  if (!sharedEmbedClient) {
+    sharedEmbedClient = new EmbedClient({
+      daemonEntry: resolveDaemonPath(),
+      timeoutMs: SEMANTIC_TIMEOUT_MS
+    });
+  }
+  return sharedEmbedClient;
+}
+function patternIsSemanticFriendly(pattern, fixedString) {
+  if (!pattern || pattern.length < 2)
+    return false;
+  if (fixedString)
+    return true;
+  const meta = pattern.match(/[|()\[\]{}+?^$\\]/g);
+  if (!meta)
+    return true;
+  return meta.length <= 1;
+}
+function splitFirstPipelineStage(cmd) {
+  const input = cmd.trim();
+  let quote = null;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+        continue;
+      }
+      if (ch === "\\" && quote === '"') {
+        escaped = true;
+      }
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+    if (ch === "|")
+      return input.slice(0, i).trim();
+  }
+  return quote ? null : input;
+}
+function tokenizeGrepStage(input) {
+  const tokens = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+      } else if (ch === "\\" && quote === '"' && i + 1 < input.length) {
+        current += input[++i];
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+    if (ch === "\\" && i + 1 < input.length) {
+      current += input[++i];
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += ch;
+  }
+  if (quote)
+    return null;
+  if (current)
+    tokens.push(current);
+  return tokens;
+}
+function parseBashGrep(cmd) {
+  const first = splitFirstPipelineStage(cmd);
+  if (!first)
+    return null;
+  const matchTool = first.match(/^(grep|egrep|fgrep|rg)\b/);
+  if (!matchTool)
+    return null;
+  const tool = matchTool[1];
+  const isFixed = tool === "fgrep";
+  const isRg = tool === "rg";
+  const tokens = tokenizeGrepStage(first);
+  if (!tokens || tokens.length === 0)
+    return null;
+  let ignoreCase = false, wordMatch = false, filesOnly = false, countOnly = false, lineNumber = isRg, invertMatch = false, fixedString = isFixed;
+  const explicitPatterns = [];
+  let ti = 1;
+  while (ti < tokens.length) {
+    const token = tokens[ti];
+    if (token === "--") {
+      ti++;
+      break;
+    }
+    if (!token.startsWith("-") || token === "-")
+      break;
+    if (token.startsWith("--")) {
+      const [flag, inlineValue] = token.split("=", 2);
+      const rgValueLongs = /* @__PURE__ */ new Set([
+        "--type",
+        "--type-not",
+        "--type-add",
+        "--type-clear",
+        "--glob",
+        "--iglob",
+        "--threads",
+        "--max-columns",
+        "--max-depth",
+        "--max-filesize",
+        "--pre",
+        "--pre-glob",
+        "--replace",
+        "--encoding",
+        "--color",
+        "--colors",
+        "--sort",
+        "--sortr",
+        "--context-separator",
+        "--field-context-separator",
+        "--field-match-separator",
+        "--path-separator",
+        "--hostname-bin"
+      ]);
+      const handlers = {
+        "--ignore-case": () => {
+          ignoreCase = true;
+          return false;
+        },
+        "--word-regexp": () => {
+          wordMatch = true;
+          return false;
+        },
+        "--files-with-matches": () => {
+          filesOnly = true;
+          return false;
+        },
+        // rg uses `--files` to list files (without searching). For our purposes
+        // it's similar enough to `-l` that we treat it as filesOnly.
+        "--files": () => {
+          filesOnly = true;
+          return false;
+        },
+        "--count": () => {
+          countOnly = true;
+          return false;
+        },
+        "--count-matches": () => {
+          countOnly = true;
+          return false;
+        },
+        "--line-number": () => {
+          lineNumber = true;
+          return false;
+        },
+        "--no-line-number": () => {
+          lineNumber = false;
+          return false;
+        },
+        "--invert-match": () => {
+          invertMatch = true;
+          return false;
+        },
+        "--fixed-strings": () => {
+          fixedString = true;
+          return false;
+        },
+        "--after-context": () => inlineValue === void 0,
+        "--before-context": () => inlineValue === void 0,
+        "--context": () => inlineValue === void 0,
+        "--max-count": () => inlineValue === void 0,
+        "--regexp": () => {
+          if (inlineValue !== void 0) {
+            explicitPatterns.push(inlineValue);
+            return false;
+          }
+          return true;
+        }
+      };
+      let consumeNext = handlers[flag]?.() ?? false;
+      if (!consumeNext && isRg && rgValueLongs.has(flag) && inlineValue === void 0) {
+        consumeNext = true;
+      }
+      if (consumeNext) {
+        ti++;
+        if (ti >= tokens.length)
+          return null;
+        if (flag === "--regexp")
+          explicitPatterns.push(tokens[ti]);
+      }
+      ti++;
+      continue;
+    }
+    const rgValueShorts = new Set(isRg ? ["t", "T", "g", "j", "M", "r", "E"] : []);
+    const shortFlags = token.slice(1);
+    let consumedValueFlag = false;
+    for (let i = 0; i < shortFlags.length; i++) {
+      const flag = shortFlags[i];
+      switch (flag) {
+        case "i":
+          ignoreCase = true;
+          break;
+        case "w":
+          wordMatch = true;
+          break;
+        case "l":
+          filesOnly = true;
+          break;
+        case "c":
+          countOnly = true;
+          break;
+        case "n":
+          lineNumber = true;
+          break;
+        case "N":
+          lineNumber = false;
+          break;
+        // rg --no-line-number short form
+        case "v":
+          invertMatch = true;
+          break;
+        case "F":
+          fixedString = true;
+          break;
+        case "r":
+          if (isRg) {
+            if (i === shortFlags.length - 1) {
+              ti++;
+              if (ti >= tokens.length)
+                return null;
+            }
+            consumedValueFlag = true;
+            i = shortFlags.length;
+          }
+          break;
+        case "R":
+        case "E":
+          if (isRg && flag === "E") {
+            if (i === shortFlags.length - 1) {
+              ti++;
+              if (ti >= tokens.length)
+                return null;
+            }
+            consumedValueFlag = true;
+            i = shortFlags.length;
+          }
+          break;
+        case "A":
+        case "B":
+        case "C":
+        case "m":
+          if (i === shortFlags.length - 1) {
+            ti++;
+            if (ti >= tokens.length)
+              return null;
+          }
+          i = shortFlags.length;
+          break;
+        case "e": {
+          const inlineValue = shortFlags.slice(i + 1);
+          if (inlineValue) {
+            explicitPatterns.push(inlineValue);
+          } else {
+            ti++;
+            if (ti >= tokens.length)
+              return null;
+            explicitPatterns.push(tokens[ti]);
+          }
+          i = shortFlags.length;
+          break;
+        }
+        default:
+          if (rgValueShorts.has(flag)) {
+            if (i === shortFlags.length - 1) {
+              ti++;
+              if (ti >= tokens.length)
+                return null;
+            }
+            consumedValueFlag = true;
+            i = shortFlags.length;
+          }
+          break;
+      }
+    }
+    void consumedValueFlag;
+    ti++;
+  }
+  const pattern = explicitPatterns.length > 0 ? explicitPatterns[0] : tokens[ti];
+  if (!pattern)
+    return null;
+  let target = explicitPatterns.length > 0 ? tokens[ti] ?? "/" : tokens[ti + 1] ?? "/";
+  if (target === "." || target === "./")
+    target = "/";
+  return {
+    pattern,
+    targetPath: target,
+    ignoreCase,
+    wordMatch,
+    filesOnly,
+    countOnly,
+    lineNumber,
+    invertMatch,
+    fixedString
+  };
+}
+async function handleGrepDirect(api, table, sessionsTable, params) {
+  if (!params.pattern)
+    return null;
+  const matchParams = {
+    pattern: params.pattern,
+    ignoreCase: params.ignoreCase,
+    wordMatch: params.wordMatch,
+    filesOnly: params.filesOnly,
+    countOnly: params.countOnly,
+    lineNumber: params.lineNumber,
+    invertMatch: params.invertMatch,
+    fixedString: params.fixedString
+  };
+  let queryEmbedding = null;
+  if (SEMANTIC_ENABLED && patternIsSemanticFriendly(params.pattern, params.fixedString)) {
+    try {
+      queryEmbedding = await getEmbedClient().embed(params.pattern, "query");
+    } catch {
+      queryEmbedding = null;
+    }
+  }
+  const output = await grepBothTables(api, table, sessionsTable, matchParams, params.targetPath, queryEmbedding);
+  const joined = output.join("\n") || "(no matches)";
+  return capOutputForClaude(joined, { kind: "grep" });
+}
+
+// dist/src/hooks/virtual-table-query.js
+function normalizeSessionPart(path, content) {
+  return normalizeContent(path, content);
+}
+var INDEX_LIMIT_PER_SECTION = 50;
+function buildVirtualIndexContent(summaryRows, sessionRows = [], opts = {}) {
+  const lines = [
+    "# Session Index",
+    "",
+    "Two sources are available. Consult the section relevant to the question.",
+    ""
+  ];
+  lines.push("## memory", "");
+  if (summaryRows.length === 0) {
+    lines.push("_(empty \u2014 no summaries ingested yet)_");
+  } else {
+    lines.push("AI-generated summaries per session. Read these first for topic-level overviews.");
+    lines.push("");
+    if (opts.summaryTruncated) {
+      lines.push(`_Showing ${INDEX_LIMIT_PER_SECTION} most-recent of many \u2014 older summaries reachable via \`Grep pattern="..." path="~/.deeplake/memory"\`._`);
+      lines.push("");
+    }
+    lines.push("| Session | Created | Last Updated | Project | Description |");
+    lines.push("|---------|---------|--------------|---------|-------------|");
+    for (const row of summaryRows) {
+      const p = row["path"] || "";
+      const match = p.match(/\/summaries\/([^/]+)\/([^/]+)\.md$/);
+      if (!match)
+        continue;
+      const summaryUser = match[1];
+      const sessionId = match[2];
+      const relPath = `summaries/${summaryUser}/${sessionId}.md`;
+      const project = row["project"] || "";
+      const description = row["description"] || "";
+      const creationDate = row["creation_date"] || "";
+      const lastUpdateDate = row["last_update_date"] || "";
+      lines.push(`| [${sessionId}](${relPath}) | ${creationDate} | ${lastUpdateDate} | ${project} | ${description} |`);
+    }
+  }
+  lines.push("");
+  lines.push("## sessions", "");
+  if (sessionRows.length === 0) {
+    lines.push("_(empty \u2014 no session records ingested yet)_");
+  } else {
+    lines.push("Raw session records (dialogue, tool calls). Read for exact detail / quotes.");
+    lines.push("");
+    if (opts.sessionTruncated) {
+      lines.push(`_Showing ${INDEX_LIMIT_PER_SECTION} most-recent of many \u2014 older sessions reachable via \`Grep pattern="..." path="~/.deeplake/memory"\`._`);
+      lines.push("");
+    }
+    lines.push("| Session | Created | Last Updated | Description |");
+    lines.push("|---------|---------|--------------|-------------|");
+    for (const row of sessionRows) {
+      const p = row["path"] || "";
+      const rel = p.startsWith("/") ? p.slice(1) : p;
+      const filename = p.split("/").pop() ?? p;
+      const description = row["description"] || "";
+      const creationDate = row["creation_date"] || "";
+      const lastUpdateDate = row["last_update_date"] || "";
+      lines.push(`| [${filename}](${rel}) | ${creationDate} | ${lastUpdateDate} | ${description} |`);
+    }
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+function buildUnionQuery(memoryQuery, sessionsQuery) {
+  return `SELECT path, content, size_bytes, creation_date, source_order FROM ((${memoryQuery}) UNION ALL (${sessionsQuery})) AS combined ORDER BY path, source_order, creation_date`;
+}
+function buildInList(paths) {
+  return paths.map((path) => `'${sqlStr(path)}'`).join(", ");
+}
+function buildDirFilter(dirs) {
+  const cleaned = [...new Set(dirs.map((dir) => dir.replace(/\/+$/, "") || "/"))];
+  if (cleaned.length === 0 || cleaned.includes("/"))
+    return "";
+  const clauses = cleaned.map((dir) => `path LIKE '${sqlLike(dir)}/%' ESCAPE '\\'`);
+  return ` WHERE ${clauses.join(" OR ")}`;
+}
+async function queryUnionRows(api, memoryQuery, sessionsQuery) {
+  const unionQuery = buildUnionQuery(memoryQuery, sessionsQuery);
+  try {
+    return await api.query(unionQuery);
+  } catch {
+    const [memoryRows, sessionRows] = await Promise.all([
+      api.query(memoryQuery).catch(() => []),
+      api.query(sessionsQuery).catch(() => [])
+    ]);
+    return [...memoryRows, ...sessionRows];
+  }
+}
+async function readVirtualPathContents(api, memoryTable, sessionsTable, virtualPaths) {
+  const uniquePaths = [...new Set(virtualPaths)];
+  const result = new Map(uniquePaths.map((path) => [path, null]));
+  if (uniquePaths.length === 0)
+    return result;
+  const inList = buildInList(uniquePaths);
+  const rows = await queryUnionRows(api, `SELECT path, summary::text AS content, NULL::bigint AS size_bytes, '' AS creation_date, 0 AS source_order FROM "${memoryTable}" WHERE path IN (${inList})`, `SELECT path, message::text AS content, NULL::bigint AS size_bytes, COALESCE(creation_date::text, '') AS creation_date, 1 AS source_order FROM "${sessionsTable}" WHERE path IN (${inList})`);
+  const memoryHits = /* @__PURE__ */ new Map();
+  const sessionHits = /* @__PURE__ */ new Map();
+  for (const row of rows) {
+    const path = row["path"];
+    const content = row["content"];
+    const sourceOrder = Number(row["source_order"] ?? 0);
+    if (typeof path !== "string" || typeof content !== "string")
+      continue;
+    if (sourceOrder === 0) {
+      memoryHits.set(path, content);
+    } else {
+      const current = sessionHits.get(path) ?? [];
+      current.push(normalizeSessionPart(path, content));
+      sessionHits.set(path, current);
+    }
+  }
+  for (const path of uniquePaths) {
+    if (memoryHits.has(path)) {
+      result.set(path, memoryHits.get(path) ?? null);
+      continue;
+    }
+    const sessionParts = sessionHits.get(path) ?? [];
+    if (sessionParts.length > 0) {
+      result.set(path, sessionParts.join("\n"));
+    }
+  }
+  if (result.get("/index.md") === null && uniquePaths.includes("/index.md")) {
+    const fetchLimit = INDEX_LIMIT_PER_SECTION + 1;
+    const [summaryRows, sessionRows] = await Promise.all([
+      api.query(`SELECT path, project, description, creation_date, last_update_date FROM "${memoryTable}" WHERE path LIKE '/summaries/%' ORDER BY last_update_date DESC LIMIT ${fetchLimit}`).catch(() => []),
+      api.query(`SELECT path, MAX(description) AS description, MIN(creation_date) AS creation_date, MAX(last_update_date) AS last_update_date FROM "${sessionsTable}" WHERE path LIKE '/sessions/%' GROUP BY path ORDER BY MAX(last_update_date) DESC LIMIT ${fetchLimit}`).catch(() => [])
+    ]);
+    const summaryTruncated = summaryRows.length > INDEX_LIMIT_PER_SECTION;
+    const sessionTruncated = sessionRows.length > INDEX_LIMIT_PER_SECTION;
+    result.set("/index.md", buildVirtualIndexContent(summaryRows.slice(0, INDEX_LIMIT_PER_SECTION), sessionRows.slice(0, INDEX_LIMIT_PER_SECTION), { summaryTruncated, sessionTruncated }));
+  }
+  return result;
+}
+async function listVirtualPathRowsForDirs(api, memoryTable, sessionsTable, dirs) {
+  const uniqueDirs = [...new Set(dirs.map((dir) => dir.replace(/\/+$/, "") || "/"))];
+  const filter = buildDirFilter(uniqueDirs);
+  const rows = await queryUnionRows(api, `SELECT path, NULL::text AS content, size_bytes, '' AS creation_date, 0 AS source_order FROM "${memoryTable}"${filter}`, `SELECT path, NULL::text AS content, size_bytes, '' AS creation_date, 1 AS source_order FROM "${sessionsTable}"${filter}`);
+  const deduped = dedupeRowsByPath(rows.map((row) => ({
+    path: row["path"],
+    size_bytes: row["size_bytes"]
+  })));
+  const byDir = /* @__PURE__ */ new Map();
+  for (const dir of uniqueDirs)
+    byDir.set(dir, []);
+  for (const row of deduped) {
+    const path = row["path"];
+    if (typeof path !== "string")
+      continue;
+    for (const dir of uniqueDirs) {
+      const prefix = dir === "/" ? "/" : `${dir}/`;
+      if (dir === "/" || path.startsWith(prefix)) {
+        byDir.get(dir)?.push(row);
+      }
+    }
+  }
+  return byDir;
+}
+async function readVirtualPathContent(api, memoryTable, sessionsTable, virtualPath) {
+  return (await readVirtualPathContents(api, memoryTable, sessionsTable, [virtualPath])).get(virtualPath) ?? null;
+}
+async function listVirtualPathRows(api, memoryTable, sessionsTable, dir) {
+  return (await listVirtualPathRowsForDirs(api, memoryTable, sessionsTable, [dir])).get(dir.replace(/\/+$/, "") || "/") ?? [];
+}
+async function findVirtualPaths(api, memoryTable, sessionsTable, dir, filenamePattern) {
+  const normalizedDir = dir.replace(/\/+$/, "") || "/";
+  const likePath = `${sqlLike(normalizedDir === "/" ? "" : normalizedDir)}/%`;
+  const rows = await queryUnionRows(api, `SELECT path, NULL::text AS content, NULL::bigint AS size_bytes, '' AS creation_date, 0 AS source_order FROM "${memoryTable}" WHERE path LIKE '${likePath}' ESCAPE '\\' AND filename LIKE '${filenamePattern}' ESCAPE '\\'`, `SELECT path, NULL::text AS content, NULL::bigint AS size_bytes, '' AS creation_date, 1 AS source_order FROM "${sessionsTable}" WHERE path LIKE '${likePath}' ESCAPE '\\' AND filename LIKE '${filenamePattern}' ESCAPE '\\'`);
+  return [...new Set(rows.map((row) => row["path"]).filter((value) => typeof value === "string" && value.length > 0))];
+}
+function dedupeRowsByPath(rows) {
+  const seen = /* @__PURE__ */ new Set();
+  const unique = [];
+  for (const row of rows) {
+    const path = typeof row["path"] === "string" ? row["path"] : "";
+    if (!path || seen.has(path))
+      continue;
+    seen.add(path);
+    unique.push(row);
+  }
+  return unique;
+}
+
+// dist/src/hooks/bash-command-compiler.js
+function isQuoted(ch) {
+  return ch === "'" || ch === '"';
+}
+function splitTopLevel(input, operators) {
+  const parts = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quote) {
+      if (ch === quote)
+        quote = null;
+      current += ch;
+      continue;
+    }
+    if (isQuoted(ch)) {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    const matched = operators.find((op) => input.startsWith(op, i));
+    if (matched) {
+      const trimmed2 = current.trim();
+      if (trimmed2)
+        parts.push(trimmed2);
+      current = "";
+      i += matched.length - 1;
+      continue;
+    }
+    current += ch;
+  }
+  if (quote)
+    return null;
+  const trimmed = current.trim();
+  if (trimmed)
+    parts.push(trimmed);
+  return parts;
+}
+function tokenizeShellWords(input) {
+  const tokens = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+      } else if (ch === "\\" && quote === '"' && i + 1 < input.length) {
+        current += input[++i];
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (isQuoted(ch)) {
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += ch;
+  }
+  if (quote)
+    return null;
+  if (current)
+    tokens.push(current);
+  return tokens;
+}
+function expandBraceToken(token) {
+  const match = token.match(/\{([^{}]+)\}/);
+  if (!match)
+    return [token];
+  const [expr] = match;
+  const prefix = token.slice(0, match.index);
+  const suffix = token.slice((match.index ?? 0) + expr.length);
+  let variants = [];
+  const numericRange = match[1].match(/^(-?\d+)\.\.(-?\d+)$/);
+  if (numericRange) {
+    const start = Number(numericRange[1]);
+    const end = Number(numericRange[2]);
+    const step = start <= end ? 1 : -1;
+    for (let value = start; step > 0 ? value <= end : value >= end; value += step) {
+      variants.push(String(value));
+    }
+  } else {
+    variants = match[1].split(",");
+  }
+  return variants.flatMap((variant) => expandBraceToken(`${prefix}${variant}${suffix}`));
+}
+function stripAllowedModifiers(segment) {
+  const ignoreMissing = /\s2>\/dev\/null\s*$/.test(segment);
+  const clean = segment.replace(/\s2>\/dev\/null\s*$/g, "").replace(/\s2>&1\s*/g, " ").trim();
+  return { clean, ignoreMissing };
+}
+function hasUnsupportedRedirection(segment) {
+  let quote = null;
+  for (let i = 0; i < segment.length; i++) {
+    const ch = segment[i];
+    if (quote) {
+      if (ch === quote)
+        quote = null;
+      continue;
+    }
+    if (isQuoted(ch)) {
+      quote = ch;
+      continue;
+    }
+    if (ch === ">" || ch === "<")
+      return true;
+  }
+  return false;
+}
+function parseHeadTailStage(stage) {
+  const tokens = tokenizeShellWords(stage);
+  if (!tokens || tokens.length === 0)
+    return null;
+  const [cmd, ...rest] = tokens;
+  if (cmd !== "head" && cmd !== "tail")
+    return null;
+  if (rest.length === 0)
+    return { lineLimit: 10, fromEnd: cmd === "tail" };
+  if (rest.length === 1) {
+    const count = Number(rest[0]);
+    if (!Number.isFinite(count)) {
+      return { lineLimit: 10, fromEnd: cmd === "tail" };
+    }
+    return { lineLimit: Math.abs(count), fromEnd: cmd === "tail" };
+  }
+  if (rest.length === 2 && /^-\d+$/.test(rest[0])) {
+    const count = Number(rest[0]);
+    if (!Number.isFinite(count))
+      return null;
+    return { lineLimit: Math.abs(count), fromEnd: cmd === "tail" };
+  }
+  if (rest.length === 2 && rest[0] === "-n") {
+    const count = Number(rest[1]);
+    if (!Number.isFinite(count))
+      return null;
+    return { lineLimit: Math.abs(count), fromEnd: cmd === "tail" };
+  }
+  if (rest.length === 3 && rest[0] === "-n") {
+    const count = Number(rest[1]);
+    if (!Number.isFinite(count))
+      return null;
+    return { lineLimit: Math.abs(count), fromEnd: cmd === "tail" };
+  }
+  return null;
+}
+function isValidPipelineHeadTailStage(stage) {
+  const tokens = tokenizeShellWords(stage);
+  if (!tokens || tokens[0] !== "head" && tokens[0] !== "tail")
+    return false;
+  if (tokens.length === 1)
+    return true;
+  if (tokens.length === 2)
+    return /^-\d+$/.test(tokens[1]);
+  if (tokens.length === 3)
+    return tokens[1] === "-n" && /^-?\d+$/.test(tokens[2]);
+  return false;
+}
+function parseFindNamePatterns(tokens) {
+  const patterns = [];
+  for (let i = 2; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token === "-type") {
+      i += 1;
+      continue;
+    }
+    if (token === "-o")
+      continue;
+    if (token === "-name") {
+      const pattern = tokens[i + 1];
+      if (!pattern)
+        return null;
+      patterns.push(pattern);
+      i += 1;
+      continue;
+    }
+    return null;
+  }
+  return patterns.length > 0 ? patterns : null;
+}
+function parseCompiledSegment(segment) {
+  const { clean, ignoreMissing } = stripAllowedModifiers(segment);
+  if (hasUnsupportedRedirection(clean))
+    return null;
+  const pipeline = splitTopLevel(clean, ["|"]);
+  if (!pipeline || pipeline.length === 0)
+    return null;
+  const tokens = tokenizeShellWords(pipeline[0]);
+  if (!tokens || tokens.length === 0)
+    return null;
+  if (tokens[0] === "echo" && pipeline.length === 1) {
+    const text = tokens.slice(1).join(" ");
+    return { kind: "echo", text };
+  }
+  if (tokens[0] === "cat") {
+    const paths = tokens.slice(1).flatMap(expandBraceToken);
+    if (paths.length === 0)
+      return null;
+    let lineLimit = 0;
+    let fromEnd = false;
+    let countLines2 = false;
+    if (pipeline.length > 1) {
+      if (pipeline.length !== 2)
+        return null;
+      const pipeStage = pipeline[1].trim();
+      if (/^wc\s+-l\s*$/.test(pipeStage)) {
+        if (paths.length !== 1)
+          return null;
+        countLines2 = true;
+      } else {
+        if (!isValidPipelineHeadTailStage(pipeStage))
+          return null;
+        const headTail = parseHeadTailStage(pipeStage);
+        if (!headTail)
+          return null;
+        lineLimit = headTail.lineLimit;
+        fromEnd = headTail.fromEnd;
+      }
+    }
+    return { kind: "cat", paths, lineLimit, fromEnd, countLines: countLines2, ignoreMissing };
+  }
+  if (tokens[0] === "head" || tokens[0] === "tail") {
+    if (pipeline.length !== 1)
+      return null;
+    const parsed = parseHeadTailStage(clean);
+    if (!parsed)
+      return null;
+    const headTokens = tokenizeShellWords(clean);
+    if (!headTokens)
+      return null;
+    if (headTokens[1] === "-n" && headTokens.length < 4 || /^-\d+$/.test(headTokens[1] ?? "") && headTokens.length < 3 || headTokens.length === 2 && /^-?\d+$/.test(headTokens[1] ?? ""))
+      return null;
+    const path = headTokens[headTokens.length - 1];
+    if (path === "head" || path === "tail" || path === "-n")
+      return null;
+    return {
+      kind: "cat",
+      paths: expandBraceToken(path),
+      lineLimit: parsed.lineLimit,
+      fromEnd: parsed.fromEnd,
+      countLines: false,
+      ignoreMissing
+    };
+  }
+  if (tokens[0] === "wc" && tokens[1] === "-l" && pipeline.length === 1 && tokens[2]) {
+    return {
+      kind: "cat",
+      paths: expandBraceToken(tokens[2]),
+      lineLimit: 0,
+      fromEnd: false,
+      countLines: true,
+      ignoreMissing
+    };
+  }
+  if (tokens[0] === "ls" && pipeline.length === 1) {
+    const dirs = tokens.slice(1).filter((token) => !token.startsWith("-")).flatMap(expandBraceToken);
+    const longFormat = tokens.some((token) => token.startsWith("-") && token.includes("l"));
+    return { kind: "ls", dirs: dirs.length > 0 ? dirs : ["/"], longFormat };
+  }
+  if (tokens[0] === "find") {
+    if (pipeline.length > 3)
+      return null;
+    const dir = tokens[1];
+    if (!dir)
+      return null;
+    const patterns = parseFindNamePatterns(tokens);
+    if (!patterns)
+      return null;
+    const countOnly = pipeline.length === 2 && /^wc\s+-l\s*$/.test(pipeline[1].trim());
+    if (countOnly) {
+      if (patterns.length !== 1)
+        return null;
+      return { kind: "find", dir, pattern: patterns[0], countOnly };
+    }
+    if (pipeline.length >= 2) {
+      const xargsTokens = tokenizeShellWords(pipeline[1].trim());
+      if (!xargsTokens || xargsTokens[0] !== "xargs")
+        return null;
+      const xargsArgs = xargsTokens.slice(1);
+      while (xargsArgs[0] && xargsArgs[0].startsWith("-")) {
+        if (xargsArgs[0] === "-r") {
+          xargsArgs.shift();
+          continue;
+        }
+        return null;
+      }
+      const grepCmd = xargsArgs.join(" ");
+      const grepParams2 = parseBashGrep(grepCmd);
+      if (!grepParams2)
+        return null;
+      let lineLimit = 0;
+      if (pipeline.length === 3) {
+        const headStage = pipeline[2].trim();
+        if (!isValidPipelineHeadTailStage(headStage))
+          return null;
+        const headTail = parseHeadTailStage(headStage);
+        if (!headTail || headTail.fromEnd)
+          return null;
+        lineLimit = headTail.lineLimit;
+      }
+      return { kind: "find_grep", dir, patterns, params: grepParams2, lineLimit };
+    }
+    if (patterns.length !== 1)
+      return null;
+    return { kind: "find", dir, pattern: patterns[0], countOnly };
+  }
+  const grepParams = parseBashGrep(clean);
+  if (grepParams) {
+    let lineLimit = 0;
+    if (pipeline.length > 1) {
+      if (pipeline.length !== 2)
+        return null;
+      const headStage = pipeline[1].trim();
+      if (!isValidPipelineHeadTailStage(headStage))
+        return null;
+      const headTail = parseHeadTailStage(headStage);
+      if (!headTail || headTail.fromEnd)
+        return null;
+      lineLimit = headTail.lineLimit;
+    }
+    return { kind: "grep", params: grepParams, lineLimit };
+  }
+  return null;
+}
+function parseCompiledBashCommand(cmd) {
+  if (cmd.includes("||"))
+    return null;
+  const segments = splitTopLevel(cmd, ["&&", ";", "\n"]);
+  if (!segments || segments.length === 0)
+    return null;
+  const parsed = segments.map(parseCompiledSegment);
+  if (parsed.some((segment) => segment === null))
+    return null;
+  return parsed;
+}
+function applyLineWindow(content, lineLimit, fromEnd) {
+  if (lineLimit <= 0)
+    return content;
+  const lines = content.split("\n");
+  return (fromEnd ? lines.slice(-lineLimit) : lines.slice(0, lineLimit)).join("\n");
+}
+function countLines(content) {
+  return content === "" ? 0 : content.split("\n").length;
+}
+function renderDirectoryListing(dir, rows, longFormat) {
+  const entries = /* @__PURE__ */ new Map();
+  const prefix = dir === "/" ? "/" : `${dir}/`;
+  for (const row of rows) {
+    const path = row["path"];
+    if (!path.startsWith(prefix) && dir !== "/")
+      continue;
+    const rest = dir === "/" ? path.slice(1) : path.slice(prefix.length);
+    const slash = rest.indexOf("/");
+    const name = slash === -1 ? rest : rest.slice(0, slash);
+    if (!name)
+      continue;
+    const existing = entries.get(name);
+    if (slash !== -1) {
+      if (!existing)
+        entries.set(name, { isDir: true, size: 0 });
+    } else {
+      entries.set(name, { isDir: false, size: Number(row["size_bytes"] ?? 0) });
+    }
+  }
+  if (entries.size === 0)
+    return `ls: cannot access '${dir}': No such file or directory`;
+  const lines = [];
+  for (const [name, info] of [...entries].sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (longFormat) {
+      const type = info.isDir ? "drwxr-xr-x" : "-rw-r--r--";
+      const size = String(info.isDir ? 0 : info.size).padStart(6);
+      lines.push(`${type} 1 user user ${size} ${name}${info.isDir ? "/" : ""}`);
+    } else {
+      lines.push(name + (info.isDir ? "/" : ""));
+    }
+  }
+  return lines.join("\n");
+}
+async function executeCompiledBashCommand(api, memoryTable, sessionsTable, cmd, deps = {}) {
+  const { readVirtualPathContentsFn = readVirtualPathContents, listVirtualPathRowsForDirsFn = listVirtualPathRowsForDirs, findVirtualPathsFn = findVirtualPaths, handleGrepDirectFn = handleGrepDirect } = deps;
+  const plan = parseCompiledBashCommand(cmd);
+  if (!plan)
+    return null;
+  const readPaths = [...new Set(plan.flatMap((segment) => segment.kind === "cat" ? segment.paths : []))];
+  const listDirs = [...new Set(plan.flatMap((segment) => segment.kind === "ls" ? segment.dirs.map((dir) => dir.replace(/\/+$/, "") || "/") : []))];
+  const contentMap = readPaths.length > 0 ? await readVirtualPathContentsFn(api, memoryTable, sessionsTable, readPaths) : /* @__PURE__ */ new Map();
+  const dirRowsMap = listDirs.length > 0 ? await listVirtualPathRowsForDirsFn(api, memoryTable, sessionsTable, listDirs) : /* @__PURE__ */ new Map();
+  const outputs = [];
+  for (const segment of plan) {
+    if (segment.kind === "echo") {
+      outputs.push(segment.text);
+      continue;
+    }
+    if (segment.kind === "cat") {
+      const contents = [];
+      for (const path of segment.paths) {
+        const content = contentMap.get(path) ?? null;
+        if (content === null) {
+          if (segment.ignoreMissing)
+            continue;
+          return null;
+        }
+        contents.push(content);
+      }
+      const combined = contents.join("");
+      if (segment.countLines) {
+        outputs.push(`${countLines(combined)} ${segment.paths[0]}`);
+      } else {
+        outputs.push(applyLineWindow(combined, segment.lineLimit, segment.fromEnd));
+      }
+      continue;
+    }
+    if (segment.kind === "ls") {
+      for (const dir of segment.dirs) {
+        outputs.push(renderDirectoryListing(dir.replace(/\/+$/, "") || "/", dirRowsMap.get(dir.replace(/\/+$/, "") || "/") ?? [], segment.longFormat));
+      }
+      continue;
+    }
+    if (segment.kind === "find") {
+      const filenamePattern = sqlLike(segment.pattern).replace(/\*/g, "%").replace(/\?/g, "_");
+      const paths = await findVirtualPathsFn(api, memoryTable, sessionsTable, segment.dir.replace(/\/+$/, "") || "/", filenamePattern);
+      outputs.push(segment.countOnly ? String(paths.length) : paths.join("\n") || "(no matches)");
+      continue;
+    }
+    if (segment.kind === "find_grep") {
+      const dir = segment.dir.replace(/\/+$/, "") || "/";
+      const candidateBatches = await Promise.all(segment.patterns.map((pattern) => findVirtualPathsFn(api, memoryTable, sessionsTable, dir, sqlLike(pattern).replace(/\*/g, "%").replace(/\?/g, "_"))));
+      const candidatePaths = [...new Set(candidateBatches.flat())];
+      if (candidatePaths.length === 0) {
+        outputs.push("(no matches)");
+        continue;
+      }
+      const candidateContents = await readVirtualPathContentsFn(api, memoryTable, sessionsTable, candidatePaths);
+      const matched = refineGrepMatches(candidatePaths.flatMap((path) => {
+        const content = candidateContents.get(path);
+        if (content === null || content === void 0)
+          return [];
+        return [{ path, content: normalizeContent(path, content) }];
+      }), segment.params);
+      const limited = segment.lineLimit > 0 ? matched.slice(0, segment.lineLimit) : matched;
+      outputs.push(limited.join("\n") || "(no matches)");
+      continue;
+    }
+    if (segment.kind === "grep") {
+      const result = await handleGrepDirectFn(api, memoryTable, sessionsTable, segment.params);
+      if (result === null)
+        return null;
+      if (segment.lineLimit > 0) {
+        outputs.push(result.split("\n").slice(0, segment.lineLimit).join("\n"));
+      } else {
+        outputs.push(result);
+      }
+      continue;
+    }
+  }
+  return capOutputForClaude(outputs.join("\n"), { kind: "bash" });
+}
+
+// dist/src/hooks/query-cache.js
+import { mkdirSync as mkdirSync5, readFileSync as readFileSync7, rmSync, writeFileSync as writeFileSync5 } from "node:fs";
+import { join as join10 } from "node:path";
+import { homedir as homedir8 } from "node:os";
+var log5 = (msg) => log("query-cache", msg);
+var DEFAULT_CACHE_ROOT = join10(homedir8(), ".deeplake", "query-cache");
+var INDEX_CACHE_FILE = "index.md";
+function getSessionQueryCacheDir(sessionId, deps = {}) {
+  const { cacheRoot = DEFAULT_CACHE_ROOT } = deps;
+  return join10(cacheRoot, sessionId);
+}
+function readCachedIndexContent(sessionId, deps = {}) {
+  const { logFn = log5 } = deps;
+  try {
+    return readFileSync7(join10(getSessionQueryCacheDir(sessionId, deps), INDEX_CACHE_FILE), "utf-8");
+  } catch (e) {
+    if (e?.code === "ENOENT")
+      return null;
+    logFn(`read failed for session=${sessionId}: ${e.message}`);
+    return null;
+  }
+}
+function writeCachedIndexContent(sessionId, content, deps = {}) {
+  const { logFn = log5 } = deps;
+  try {
+    const dir = getSessionQueryCacheDir(sessionId, deps);
+    mkdirSync5(dir, { recursive: true });
+    writeFileSync5(join10(dir, INDEX_CACHE_FILE), content, "utf-8");
+  } catch (e) {
+    logFn(`write failed for session=${sessionId}: ${e.message}`);
+  }
+}
+
+// dist/src/utils/direct-run.js
+import { resolve as resolve2 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+function isDirectRun(metaUrl) {
+  const entry = process.argv[1];
+  if (!entry)
+    return false;
+  try {
+    return resolve2(fileURLToPath2(metaUrl)) === resolve2(entry);
+  } catch {
+    return false;
+  }
+}
+
+// dist/src/hooks/memory-path-utils.js
+import { homedir as homedir9 } from "node:os";
+import { join as join11 } from "node:path";
+var MEMORY_PATH = join11(homedir9(), ".deeplake", "memory");
+var TILDE_PATH = "~/.deeplake/memory";
+var HOME_VAR_PATH = "$HOME/.deeplake/memory";
+var SAFE_BUILTINS = /* @__PURE__ */ new Set([
+  "cat",
+  "ls",
+  "cp",
+  "mv",
+  "rm",
+  "rmdir",
+  "mkdir",
+  "touch",
+  "ln",
+  "chmod",
+  "stat",
+  "readlink",
+  "du",
+  "tree",
+  "file",
+  "grep",
+  "egrep",
+  "fgrep",
+  "rg",
+  "sed",
+  "awk",
+  "cut",
+  "tr",
+  "sort",
+  "uniq",
+  "wc",
+  "head",
+  "tail",
+  "tac",
+  "rev",
+  "nl",
+  "fold",
+  "expand",
+  "unexpand",
+  "paste",
+  "join",
+  "comm",
+  "column",
+  "diff",
+  "strings",
+  "split",
+  "find",
+  "xargs",
+  "which",
+  "jq",
+  "yq",
+  "xan",
+  "base64",
+  "od",
+  "tar",
+  "gzip",
+  "gunzip",
+  "zcat",
+  "md5sum",
+  "sha1sum",
+  "sha256sum",
+  "echo",
+  "printf",
+  "tee",
+  "pwd",
+  "cd",
+  "basename",
+  "dirname",
+  "env",
+  "printenv",
+  "hostname",
+  "whoami",
+  "date",
+  "seq",
+  "expr",
+  "sleep",
+  "timeout",
+  "time",
+  "true",
+  "false",
+  "test",
+  "alias",
+  "unalias",
+  "history",
+  "help",
+  "clear",
+  "for",
+  "while",
+  "do",
+  "done",
+  "if",
+  "then",
+  "else",
+  "fi",
+  "case",
+  "esac"
+]);
+function isSafe(cmd) {
+  if (/\$\(|`|<\(/.test(cmd))
+    return false;
+  const stripped = cmd.replace(/'[^']*'/g, "''").replace(/"[^"]*"/g, '""');
+  const stages = stripped.split(/\||;|&&|\|\||\n/);
+  for (const stage of stages) {
+    const firstToken = stage.trim().split(/\s+/)[0] ?? "";
+    if (firstToken && !SAFE_BUILTINS.has(firstToken))
+      return false;
+  }
+  return true;
+}
+function touchesMemory(p) {
+  return p.includes(MEMORY_PATH) || p.includes(TILDE_PATH) || p.includes(HOME_VAR_PATH);
+}
+function rewritePaths(cmd) {
+  return cmd.replace(new RegExp(MEMORY_PATH.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "/?", "g"), "/").replace(/~\/.deeplake\/memory\/?/g, "/").replace(/\$HOME\/.deeplake\/memory\/?/g, "/").replace(/"\$HOME\/.deeplake\/memory\/?"/g, '"/"');
+}
+
+// dist/src/hooks/codex/pre-tool-use.js
+var log6 = (msg) => log("codex-pre", msg);
+var __bundleDir = dirname3(fileURLToPath3(import.meta.url));
+var SHELL_BUNDLE = existsSync5(join12(__bundleDir, "shell", "deeplake-shell.js")) ? join12(__bundleDir, "shell", "deeplake-shell.js") : join12(__bundleDir, "..", "shell", "deeplake-shell.js");
+function buildUnsupportedGuidance() {
+  return "This command is not supported for ~/.deeplake/memory/ operations. Only bash builtins are available: cat, ls, grep, echo, jq, head, tail, sed, awk, wc, sort, find, etc. Do NOT use python, python3, node, curl, or other interpreters. Rewrite your command using only bash tools and retry.";
+}
+function runVirtualShell(cmd, shellBundle = SHELL_BUNDLE, logFn = log6) {
+  try {
+    return execFileSync("node", [shellBundle, "-c", cmd], {
+      encoding: "utf-8",
+      timeout: 1e4,
+      env: { ...process.env },
+      stdio: ["pipe", "pipe", "pipe"]
+    }).trim();
+  } catch (e) {
+    logFn(`virtual shell failed: ${e.message}`);
+    return "";
+  }
+}
+function buildIndexContent(rows) {
+  const lines = ["# Memory Index", "", `${rows.length} sessions:`, ""];
+  for (const row of rows) {
+    const path = row["path"];
+    const project = row["project"] || "";
+    const description = (row["description"] || "").slice(0, 120);
+    const date = (row["creation_date"] || "").slice(0, 10);
+    lines.push(`- [${path}](${path}) ${date} ${project ? `[${project}]` : ""} ${description}`);
+  }
+  return lines.join("\n");
+}
+async function processCodexPreToolUse(input, deps = {}) {
+  const { config = loadConfig(), createApi = (table, activeConfig) => new DeeplakeApi(activeConfig.token, activeConfig.apiUrl, activeConfig.orgId, activeConfig.workspaceId, table), executeCompiledBashCommandFn = executeCompiledBashCommand, readVirtualPathContentsFn = readVirtualPathContents, readVirtualPathContentFn = readVirtualPathContent, listVirtualPathRowsFn = listVirtualPathRows, findVirtualPathsFn = findVirtualPaths, handleGrepDirectFn = handleGrepDirect, readCachedIndexContentFn = readCachedIndexContent, writeCachedIndexContentFn = writeCachedIndexContent, runVirtualShellFn = runVirtualShell, shellBundle = SHELL_BUNDLE, logFn = log6 } = deps;
+  const cmd = input.tool_input?.command ?? "";
+  logFn(`hook fired: cmd=${cmd}`);
+  if (!touchesMemory(cmd))
+    return { action: "pass" };
+  const rewritten = rewritePaths(cmd);
+  if (!isSafe(rewritten)) {
+    const guidance = buildUnsupportedGuidance();
+    logFn(`unsupported command, returning guidance: ${rewritten}`);
+    return {
+      action: "guide",
+      output: guidance,
+      rewrittenCommand: rewritten
+    };
+  }
+  if (config) {
+    const table = process.env["HIVEMIND_TABLE"] ?? "memory";
+    const sessionsTable = process.env["HIVEMIND_SESSIONS_TABLE"] ?? "sessions";
+    const api = createApi(table, config);
+    const readVirtualPathContentsWithCache = async (cachePaths) => {
+      const uniquePaths = [...new Set(cachePaths)];
+      const result2 = new Map(uniquePaths.map((path) => [path, null]));
+      const cachedIndex = uniquePaths.includes("/index.md") ? readCachedIndexContentFn(input.session_id) : null;
+      const remainingPaths = cachedIndex === null ? uniquePaths : uniquePaths.filter((path) => path !== "/index.md");
+      if (cachedIndex !== null) {
+        result2.set("/index.md", cachedIndex);
+      }
+      if (remainingPaths.length > 0) {
+        const fetched = await readVirtualPathContentsFn(api, table, sessionsTable, remainingPaths);
+        for (const [path, content] of fetched)
+          result2.set(path, content);
+      }
+      const fetchedIndex = result2.get("/index.md");
+      if (typeof fetchedIndex === "string") {
+        writeCachedIndexContentFn(input.session_id, fetchedIndex);
+      }
+      return result2;
+    };
+    try {
+      const compiled = await executeCompiledBashCommandFn(api, table, sessionsTable, rewritten, {
+        readVirtualPathContentsFn: async (_api, _memoryTable, _sessionsTable, cachePaths) => readVirtualPathContentsWithCache(cachePaths)
+      });
+      if (compiled !== null) {
+        return { action: "block", output: compiled, rewrittenCommand: rewritten };
+      }
+      let virtualPath = null;
+      let lineLimit = 0;
+      let fromEnd = false;
+      const catCmd = rewritten.replace(/\s+2>\S+/g, "").trim();
+      const catPipeHead = catCmd.match(/^cat\s+(\S+?)\s*(?:\|[^|]*)*\|\s*head\s+(?:-n?\s*)?(-?\d+)\s*$/);
+      if (catPipeHead) {
+        virtualPath = catPipeHead[1];
+        lineLimit = Math.abs(parseInt(catPipeHead[2], 10));
+      }
+      if (!virtualPath) {
+        const catMatch = catCmd.match(/^cat\s+(\S+)\s*$/);
+        if (catMatch)
+          virtualPath = catMatch[1];
+      }
+      if (!virtualPath) {
+        const headMatch = rewritten.match(/^head\s+(?:-n\s*)?(-?\d+)\s+(\S+)\s*$/) ?? rewritten.match(/^head\s+(\S+)\s*$/);
+        if (headMatch) {
+          if (headMatch[2]) {
+            virtualPath = headMatch[2];
+            lineLimit = Math.abs(parseInt(headMatch[1], 10));
+          } else {
+            virtualPath = headMatch[1];
+            lineLimit = 10;
+          }
+        }
+      }
+      if (!virtualPath) {
+        const tailMatch = rewritten.match(/^tail\s+(?:-n\s*)?(-?\d+)\s+(\S+)\s*$/) ?? rewritten.match(/^tail\s+(\S+)\s*$/);
+        if (tailMatch) {
+          fromEnd = true;
+          if (tailMatch[2]) {
+            virtualPath = tailMatch[2];
+            lineLimit = Math.abs(parseInt(tailMatch[1], 10));
+          } else {
+            virtualPath = tailMatch[1];
+            lineLimit = 10;
+          }
+        }
+      }
+      if (!virtualPath) {
+        const wcMatch = rewritten.match(/^wc\s+-l\s+(\S+)\s*$/);
+        if (wcMatch) {
+          virtualPath = wcMatch[1];
+          lineLimit = -1;
+        }
+      }
+      if (virtualPath && !virtualPath.endsWith("/")) {
+        logFn(`direct read: ${virtualPath}`);
+        let content = virtualPath === "/index.md" ? readCachedIndexContentFn(input.session_id) : null;
+        if (content === null) {
+          content = await readVirtualPathContentFn(api, table, sessionsTable, virtualPath);
+        }
+        if (content === null && virtualPath === "/index.md") {
+          const idxRows = await api.query(`SELECT path, project, description, creation_date FROM "${table}" WHERE path LIKE '/summaries/%' ORDER BY creation_date DESC`);
+          content = buildIndexContent(idxRows);
+        }
+        if (content !== null) {
+          if (virtualPath === "/index.md") {
+            writeCachedIndexContentFn(input.session_id, content);
+          }
+          if (lineLimit === -1) {
+            return { action: "block", output: `${content.split("\n").length} ${virtualPath}`, rewrittenCommand: rewritten };
+          }
+          if (lineLimit > 0) {
+            const lines = content.split("\n");
+            content = fromEnd ? lines.slice(-lineLimit).join("\n") : lines.slice(0, lineLimit).join("\n");
+          }
+          return { action: "block", output: content, rewrittenCommand: rewritten };
+        }
+      }
+      const lsMatch = rewritten.match(/^ls\s+(?:-[a-zA-Z]+\s+)*(\S+)?\s*$/);
+      if (lsMatch) {
+        const dir = (lsMatch[1] ?? "/").replace(/\/+$/, "") || "/";
+        const isLong = /\s-[a-zA-Z]*l/.test(rewritten);
+        logFn(`direct ls: ${dir}`);
+        const rows = await listVirtualPathRowsFn(api, table, sessionsTable, dir);
+        const entries = /* @__PURE__ */ new Map();
+        const prefix = dir === "/" ? "/" : `${dir}/`;
+        for (const row of rows) {
+          const path = row["path"];
+          if (!path.startsWith(prefix) && dir !== "/")
+            continue;
+          const rest = dir === "/" ? path.slice(1) : path.slice(prefix.length);
+          const slash = rest.indexOf("/");
+          const name = slash === -1 ? rest : rest.slice(0, slash);
+          if (!name)
+            continue;
+          const existing = entries.get(name);
+          if (slash !== -1) {
+            if (!existing)
+              entries.set(name, { isDir: true, size: 0 });
+          } else {
+            entries.set(name, { isDir: false, size: row["size_bytes"] ?? 0 });
+          }
+        }
+        if (entries.size > 0) {
+          const lines = [];
+          for (const [name, info] of [...entries].sort((a, b) => a[0].localeCompare(b[0]))) {
+            if (isLong) {
+              const type = info.isDir ? "drwxr-xr-x" : "-rw-r--r--";
+              const size = info.isDir ? "0" : String(info.size).padStart(6);
+              lines.push(`${type} 1 user user ${size} ${name}${info.isDir ? "/" : ""}`);
+            } else {
+              lines.push(name + (info.isDir ? "/" : ""));
+            }
+          }
+          return { action: "block", output: lines.join("\n"), rewrittenCommand: rewritten };
+        }
+        return {
+          action: "block",
+          output: `ls: cannot access '${dir}': No such file or directory`,
+          rewrittenCommand: rewritten
+        };
+      }
+      const findMatch = rewritten.match(/^find\s+(\S+)\s+(?:-type\s+\S+\s+)?-name\s+'([^']+)'/);
+      if (findMatch) {
+        const dir = findMatch[1].replace(/\/+$/, "") || "/";
+        const namePattern = sqlLike(findMatch[2]).replace(/\*/g, "%").replace(/\?/g, "_");
+        logFn(`direct find: ${dir} -name '${findMatch[2]}'`);
+        const paths = await findVirtualPathsFn(api, table, sessionsTable, dir, namePattern);
+        let result2 = paths.join("\n") || "";
+        if (/\|\s*wc\s+-l\s*$/.test(rewritten))
+          result2 = String(paths.length);
+        return {
+          action: "block",
+          output: result2 || "(no matches)",
+          rewrittenCommand: rewritten
+        };
+      }
+      const grepParams = parseBashGrep(rewritten);
+      if (grepParams) {
+        logFn(`direct grep: pattern=${grepParams.pattern} path=${grepParams.targetPath}`);
+        const result2 = await handleGrepDirectFn(api, table, sessionsTable, grepParams);
+        if (result2 !== null) {
+          return { action: "block", output: result2, rewrittenCommand: rewritten };
+        }
+      }
+    } catch (e) {
+      logFn(`direct query failed, falling back to shell: ${e.message}`);
+    }
+  }
+  logFn(`intercepted \u2192 running via virtual shell: ${rewritten}`);
+  const result = runVirtualShellFn(rewritten, shellBundle, logFn);
+  return {
+    action: "block",
+    output: result || "[Deeplake Memory] Command returned empty or the file does not exist in cloud storage.",
+    rewrittenCommand: rewritten
+  };
+}
+async function main() {
+  const input = await readStdin();
+  const decision = await processCodexPreToolUse(input);
+  if (decision.action === "pass")
+    return;
+  if (decision.action === "guide") {
+    if (decision.output)
+      process.stdout.write(decision.output);
+    process.exit(0);
+  }
+  if (decision.output)
+    process.stderr.write(decision.output);
+  process.exit(2);
+}
+if (isDirectRun(import.meta.url)) {
+  main().catch((e) => {
+    log6(`fatal: ${e.message}`);
+    process.exit(0);
+  });
+}
+export {
+  buildUnsupportedGuidance,
+  isSafe,
+  processCodexPreToolUse,
+  rewritePaths,
+  runVirtualShell,
+  touchesMemory
+};
