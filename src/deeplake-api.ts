@@ -146,8 +146,8 @@ function signalLowBalanceFromHeader(resp: Response): void {
     id: "low-balance-warning",
     severity: "warn",
     transient: true,
-    title: "Hivemind balance is running low. Top up before it runs out",
-    body: `Only $${(balance / 100).toFixed(2)} of prepaid balance remains. Top up at ${billingUrl()} to avoid interruption when requests start failing.`,
+    title: "Your org's Hivemind balance is running low",
+    body: `Only $${(balance / 100).toFixed(2)} of prepaid balance remains. Admins can top up at ${billingUrl()}; otherwise ask an org admin to top up before requests start failing.`,
     dedupKey: { reason: "low-balance" },
   }).catch((e: unknown) => {
     // Reset the dedup flag so a transient queue-write failure doesn't
