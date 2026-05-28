@@ -145,6 +145,36 @@ describe("DeeplakeApi — X-Activeloop-Balance-Cents low-balance warning", () =>
     expect(enqueueNotificationMock).not.toHaveBeenCalled();
   });
 
+  it("rejects partially-numeric header values (strict parse, no spurious warning)", async () => {
+    // Number.parseInt("150abc") would yield 150 and fire a false warning;
+    // strict /^-?\d+$/ parsing must reject it.
+    const resp = new Response(JSON.stringify({ columns: ["x"], rows: [[1]] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json", "X-Activeloop-Balance-Cents": "150abc" },
+    });
+    fetchMock.mockResolvedValueOnce(resp);
+    const api = await makeApi();
+    await api.query("SELECT 1");
+    expect(enqueueNotificationMock).not.toHaveBeenCalled();
+  });
+
+  it("resets the dedup flag when enqueue fails, so a later request can retry the warning", async () => {
+    // First low-balance response: enqueue rejects. The flag must reset so a
+    // subsequent low-balance response re-attempts the enqueue rather than
+    // silently suppressing warnings for the rest of the process.
+    enqueueNotificationMock.mockRejectedValueOnce(new Error("queue write failed"));
+    enqueueNotificationMock.mockResolvedValueOnce(undefined);
+    fetchMock.mockImplementation(() => Promise.resolve(okResp(150)));
+    const api = await makeApi();
+
+    await api.query("SELECT 1");
+    // Let the rejected enqueue's .catch run (resets the flag).
+    await new Promise(resolve => setImmediate(resolve));
+    await api.query("SELECT 2");
+
+    expect(enqueueNotificationMock).toHaveBeenCalledTimes(2);
+  });
+
   it("swallows enqueueNotification rejection — successful query still returns rows", async () => {
     enqueueNotificationMock.mockRejectedValueOnce(new Error("queue write failed"));
     fetchMock.mockResolvedValueOnce(okResp(150));

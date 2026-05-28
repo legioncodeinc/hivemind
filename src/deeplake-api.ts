@@ -131,7 +131,10 @@ function maybeSignalLowBalance(resp: Response): void {
   // standard `headers` getter, so guard the access rather than assume it.
   const raw = resp.headers?.get?.(BALANCE_HEADER);
   if (!raw) return;
-  const balance = Number.parseInt(raw, 10);
+  // Strict integer parse — Number.parseInt would accept "150abc" as 150 and
+  // fire a spurious warning. Reject anything that isn't a clean integer.
+  if (!/^-?\d+$/.test(raw.trim())) return;
+  const balance = Number(raw.trim());
   if (!Number.isFinite(balance)) return;
   if (balance >= LOW_BALANCE_THRESHOLD_CENTS) return;
   // Suppress the soft warning when the user is already at hard zero — the
@@ -147,6 +150,9 @@ function maybeSignalLowBalance(resp: Response): void {
     body: `Only $${(balance / 100).toFixed(2)} of prepaid balance remains. Top up at ${billingUrl()} to avoid interruption when requests start failing.`,
     dedupKey: { reason: "low-balance" },
   }).catch((e: unknown) => {
+    // Reset the dedup flag so a transient queue-write failure doesn't
+    // permanently suppress low-balance warnings for the rest of the process.
+    _signalledLowBalance = false;
     log(`enqueue low-balance failed: ${e instanceof Error ? e.message : String(e)}`);
   });
 }
