@@ -299,7 +299,10 @@ export async function processCodexPreToolUse(
         };
       }
 
-      const findMatch = rewritten.match(/^find\s+(\S+)\s+(?:-type\s+\S+\s+)?-name\s+'([^']+)'/);
+      // Anchor to the exact shape the VFS serves (optionally piped to wc -l);
+      // a prefix match would accept `find … -name '*.md' -delete` and silently
+      // drop the suffix. Everything else falls through to block+guidance.
+      const findMatch = rewritten.match(/^find\s+(\S+)\s+(?:-type\s+\S+\s+)?-name\s+'([^']+)'\s*(?:\|\s*wc\s+-l)?\s*$/);
       if (findMatch) {
         const dir = findMatch[1].replace(/\/+$/, "") || "/";
         const namePattern = sqlLike(findMatch[2]).replace(/\*/g, "%").replace(/\?/g, "_");
