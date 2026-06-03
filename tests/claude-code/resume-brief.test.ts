@@ -252,6 +252,8 @@ describe("pickResumeBrief", () => {
     expect(sql).toContain("project = 'proj'");
     expect(sql).toContain("author = 'u'");
     expect(sql).toContain("ORDER BY last_update_date DESC");
+    // Placeholders are excluded in SQL (latency win) — see createPlaceholder.
+    expect(sql).toContain("description <> 'in progress'");
   });
 
   it("outcome 3 — no summaries at all → null (plain welcome)", async () => {
@@ -387,13 +389,13 @@ describe("pickResumeBrief", () => {
     expect(b?.brief).toContain("where you left off");
   });
 
-  it("still degrades to a plain welcome when the backend is truly unreachable (slower than the 3s cap)", async () => {
+  it("still degrades to a plain welcome when the backend is truly unreachable (slower than the 4s cap)", async () => {
     vi.useFakeTimers();
     queryMock.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve([{ summary: real("too late"), path: "/s/a.md" }]), 4_000)),
+      () => new Promise((resolve) => setTimeout(() => resolve([{ summary: real("too late"), path: "/s/a.md" }]), 6_000)),
     );
     const p = pickResumeBrief(CREDS);
-    await vi.advanceTimersByTimeAsync(3_100);
+    await vi.advanceTimersByTimeAsync(4_100);
     expect(await p).toBeNull();
   });
 

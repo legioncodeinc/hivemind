@@ -53,28 +53,28 @@ const LOOKBACK = 5;
  *  very latest. */
 const MAX_BRIEF_SESSIONS = 2;
 
-/** How many raw rows to pull before filtering. The memory table carries a
- *  SessionStart *placeholder* row per session (a skeleton with no `##`
- *  content section until the wiki worker fills it at SessionEnd) and can
- *  hold duplicate rows per session. Both would otherwise consume the
- *  LOOKBACK window and shadow the real summaries underneath, so we
- *  over-fetch, dedup by path, drop placeholders, then keep LOOKBACK reals. */
-const SCAN_LIMIT = 40;
+/** How many raw rows to pull before filtering. We over-fetch past LOOKBACK to
+ *  survive duplicate rows per session (deduped by path below). Placeholders are
+ *  now excluded in SQL (`description <> 'in progress'`), so we no longer need
+ *  the big 40-row cushion that existed only to skip them — 20 covers dedup with
+ *  margin while roughly halving the bytes transferred each SessionStart.
+ *  isPlaceholderSummary() still runs as the correctness guard for any
+ *  placeholder a different agent wrote with a non-standard description. */
+const SCAN_LIMIT = 20;
 
 /** Hard cap on the lookup. DeeplakeApi.query retries ~3.5s on an unreachable
  *  endpoint; the SessionStart hook budget is 5s and fetchOrgStats is served
  *  from cache before us. Race it so an *unreachable* backend degrades to a
  *  plain welcome instead of stalling the hook.
  *
- *  Sized to the real cold-backend latency, NOT an optimistic guess. Measured
- *  2026-06-02: the first session against a cold backend takes ~1.9s for this
- *  query (warm: ~0.3s). The earlier 1.5s cap sat *below* that cold latency, so
- *  every fresh-open silently lost the race — withTimeout does NOT cancel the
- *  in-flight query, it just discarded the rows we were ~0.4s from receiving,
- *  and pickResumeBrief reported "no prior summary" with the data sitting right
- *  there. We already pay the cold latency; 3s lets us keep the payoff instead
- *  of throwing it away. Still well inside the 5s hook budget. */
-const QUERY_TIMEOUT_MS = 3_000;
+ *  Sized to the real cold-backend latency, NOT an optimistic guess. The query
+ *  cost grows with a user's session history: measured ~1.9s (2026-06-02) then
+ *  ~2.6s once history grew — close enough to the old 3s cap that cold spikes
+ *  crossed it and the banner silently vanished. The placeholder-exclusion +
+ *  smaller SCAN_LIMIT above cut the typical latency back under ~1s, and 4s
+ *  gives headroom for a cold spike without losing the payoff. The
+ *  session-notifications hook timeout was raised to 8s to match. */
+const QUERY_TIMEOUT_MS = 4_000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   return new Promise<T>((resolve) => {
@@ -299,7 +299,12 @@ export async function pickResumeBrief(
       api.query(
         `SELECT summary, path, last_update_date FROM "${table}" ` +
           `WHERE project = '${sqlStr(project)}' AND author = '${sqlStr(creds.userName)}' ` +
-          `AND summary <> '' ORDER BY last_update_date DESC LIMIT ${SCAN_LIMIT}`,
+          // `description = 'in progress'` marks a SessionStart placeholder
+          // (see createPlaceholder). Excluding them here is the main latency
+          // win — most rows for an active project are placeholders, and we'd
+          // only drop them in code anyway. isPlaceholderSummary() still guards.
+          `AND summary <> '' AND description <> 'in progress' ` +
+          `ORDER BY last_update_date DESC LIMIT ${SCAN_LIMIT}`,
       ),
       QUERY_TIMEOUT_MS,
       null,
