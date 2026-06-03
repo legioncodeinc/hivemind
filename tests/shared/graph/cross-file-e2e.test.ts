@@ -185,6 +185,48 @@ describe("cross-file calls — extractor → snapshot", () => {
     expect(ext?.target).toContain("unresolved:");
   });
 
+  it("B4: nodes carry a signature, and fan_in/out + is_entrypoint are derived", () => {
+    const a = extractTypeScript(
+      `import { greet } from "./b";\nexport function run(x: number): string { return greet(); }\n`,
+      "src/a.ts",
+    );
+    const b = extractTypeScript(`export function greet() { return "hi"; }\n`, "src/b.ts");
+    const snap = buildSnapshot([a, b], meta(), obs());
+    const run = snap.nodes.find((n) => n.id === "src/a.ts:run:function")!;
+    const greet = snap.nodes.find((n) => n.id === "src/b.ts:greet:function")!;
+    // signature is the inner declaration (the `export` keyword is unwrapped).
+    expect(run.signature).toBe("function run(x: number): string");
+    // run is exported and nothing calls it -> entrypoint; greet is called by run.
+    expect(run.is_entrypoint).toBe(true);
+    expect(run.fan_out).toBeGreaterThanOrEqual(1); // calls greet
+    expect(greet.fan_in).toBeGreaterThanOrEqual(1); // called cross-file by run
+    expect(greet.is_entrypoint).toBe(false);
+  });
+
+  it("B4: const/type signatures keep their right-hand side (kind-aware brace cut)", () => {
+    const a = extractTypeScript(
+      `export type Pair = { a: string };\nexport const limit = 5;\n`,
+      "src/a.ts",
+    );
+    const snap = buildSnapshot([a], meta(), obs());
+    const pair = snap.nodes.find((n) => n.id === "src/a.ts:Pair:type_alias")!;
+    const limit = snap.nodes.find((n) => n.id === "src/a.ts:limit:const")!;
+    expect(pair.signature).toBe("type Pair = { a: string };");
+    expect(limit.signature).toBe("limit = 5"); // declarator node; the `;` belongs to the lexical_declaration
+  });
+
+  it("B4: a function with an object-literal RETURN TYPE keeps the full signature", () => {
+    // codex review: cutting at the first `{` would truncate `make(): { a: number }`
+    // to `make():`; cutting at the body node keeps the return type.
+    const a = extractTypeScript(
+      `export function make(): { a: number } { return { a: 1 }; }\n`,
+      "src/a.ts",
+    );
+    const snap = buildSnapshot([a], meta(), obs());
+    const make = snap.nodes.find((n) => n.id === "src/a.ts:make:function")!;
+    expect(make.signature).toBe("function make(): { a: number }");
+  });
+
   it("still emits intra-file calls (no regression)", () => {
     const a = extractTypeScript(
       `function helper() { return 1; }\nexport function run() { return helper(); }\n`,

@@ -36,6 +36,8 @@ import type {
 interface TSNode {
   type: string;
   text: string;
+  /** Absolute byte offset of this node's start in the source (tree-sitter). */
+  startIndex: number;
   startPosition: { row: number; column: number };
   endPosition: { row: number; column: number };
   isError: boolean;
@@ -612,7 +614,48 @@ function makeNode(
     source_location: locationStr(node),
     language: "typescript",
     exported,
+    signature: signatureOf(node, kind),
   };
+}
+
+/**
+ * One-line declaration signature for B4 node metadata. Collapses whitespace and
+ * truncates (code-point safe). AST-only, deterministic.
+ *
+ * For body-bearing declarations (function/class/method/interface/enum) we cut
+ * at the opening `{` so the body is dropped:
+ *   function foo(a: number): string { ... }  ->  "function foo(a: number): string"
+ *   class Sub extends Base { ... }            ->  "class Sub extends Base"
+ * For value/type declarations (const/type_alias) the `{` is part of the value
+ * (object literal / type literal), so we keep it and cut only at the first
+ * newline:
+ *   const f = (a: number) => {...}            ->  "f = (a: number) =>" (first line)
+ *   type T = { a: string }                    ->  "type T = { a: string }"
+ */
+function signatureOf(node: TSNode, kind: NodeKind): string {
+  const text = node.text;
+  let end = text.length;
+  const nl = text.indexOf("\n");
+  if (nl >= 0) end = Math.min(end, nl);
+  // Body-bearing kinds drop the body. Cut PRECISELY at the body node's start
+  // (via the `body` field) rather than the first `{` — so an object-literal
+  // RETURN TYPE like `foo(): { a: string } { ... }` isn't truncated to `foo():`.
+  // Fall back to the first `{` only when the body field is unavailable.
+  const cutsAtBody = kind === "function" || kind === "class" ||
+    kind === "method" || kind === "interface" || kind === "enum";
+  if (cutsAtBody) {
+    const body = node.childForFieldName("body");
+    if (body !== null) {
+      end = Math.min(end, body.startIndex - node.startIndex);
+    } else {
+      const brace = text.indexOf("{");
+      if (brace >= 0) end = Math.min(end, brace);
+    }
+  }
+  const sig = text.slice(0, end).replace(/\s+/g, " ").trim();
+  // Code-point-safe truncation (avoid splitting a surrogate pair).
+  const cps = [...sig];
+  return cps.length > 120 ? `${cps.slice(0, 117).join("")}...` : sig;
 }
 
 function makeNodeWithExplicitLabel(
@@ -631,6 +674,7 @@ function makeNodeWithExplicitLabel(
     source_location: locationStr(node),
     language: "typescript",
     exported,
+    signature: signatureOf(node, kind),
   };
 }
 

@@ -104,6 +104,25 @@ export interface GraphNode {
   language: NodeLanguage;
   /** Whether the symbol is `export`ed (relevant for cross-file resolution in Phase 1.5). */
   exported: boolean;
+  /**
+   * Phase 1.5 AST-only node metadata. All OPTIONAL and additive — older
+   * snapshots and hand-built fixtures omit them.
+   *
+   * `signature` / `doc` are intrinsic (captured by the extractor from the AST).
+   * `fan_in` / `fan_out` / `is_entrypoint` are DERIVED and computed in
+   * buildSnapshot AFTER cross-file edge resolution, so they reflect the full
+   * graph, not just intra-file edges.
+   */
+  /** One-line declaration signature (truncated), e.g. `function foo(a: number): string`. */
+  signature?: string;
+  /** Leading JSDoc/TSDoc or line-comment summary (first line, truncated). */
+  doc?: string;
+  /** Number of incoming edges (any relation) in the resolved graph. */
+  fan_in?: number;
+  /** Number of outgoing edges (any relation) in the resolved graph. */
+  fan_out?: number;
+  /** Heuristic: `exported && fan_in === 0` — a likely public/root symbol. */
+  is_entrypoint?: boolean;
 }
 
 export type NodeKind =

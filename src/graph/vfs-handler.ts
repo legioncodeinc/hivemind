@@ -383,13 +383,21 @@ function renderNodeDetail(snap: GraphSnapshot, node: GraphNode): string {
   lines.push(`  source: ${node.source_file}:${node.source_location}`);
   lines.push(`  kind:   ${node.kind}`);
   lines.push(`  label:  ${node.label}`);
-  lines.push(`  ${node.exported ? "exported" : "internal"}`);
+  if (node.signature) lines.push(`  sig:    ${node.signature}`);
+  if (node.doc) lines.push(`  doc:    ${node.doc}`);
+  // B4 metadata — printed only when present (older snapshots omit them).
+  const tags = [node.exported ? "exported" : "internal"];
+  if (node.is_entrypoint) tags.push("entrypoint");
+  if (node.fan_in !== undefined) tags.push(`fan_in=${node.fan_in}`);
+  if (node.fan_out !== undefined) tags.push(`fan_out=${node.fan_out}`);
+  lines.push(`  ${tags.join("  ")}`);
   lines.push("");
-  // Honest caveat: Phase 1 extractor resolves CALL edges intra-file only.
-  // A node with "Incoming (0)" may still be called from OTHER files. Don't
-  // let the agent infer "dead code" from this number alone.
+  // Honest caveat: cross-file `calls` are resolved for relative NAMED/namespace
+  // imports, but NOT for bare (npm) / aliased / barrel / dynamic imports. So
+  // "Incoming (0)" is not proof of dead code — a caller may reach this symbol
+  // through an unresolved import path.
   const inHint = incoming.length === 0
-    ? "  — no edges from THIS file (intra-file only; may still be called from other files)"
+    ? "  — no resolved callers (cross-file resolution is partial; not proof of dead code)"
     : ":";
   lines.push(`Incoming (${incoming.length})${inHint}`);
   for (const [rel, es] of [...inGrp.entries()].sort(([a], [b]) => a.localeCompare(b))) {

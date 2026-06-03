@@ -23,6 +23,7 @@ import { dirname, join } from "node:path";
 import { appendHistoryEntry, entryFromSnapshot, type SnapshotTrigger } from "./history.js";
 import { writeLastBuild } from "./last-build.js";
 import { repointImportEdges, resolveCrossFileCalls, resolveHeritageEdges } from "./resolve/cross-file.js";
+import { annotateNodeDegrees } from "./node-metadata.js";
 import type {
   FileExtraction,
   GraphEdge,
@@ -76,6 +77,10 @@ export function buildSnapshot(
   // (same-file or named-import cross-file). Unresolvable bases keep their
   // `unresolved:` placeholder.
   resolvedLinks = resolveHeritageEdges(resolvedLinks, extractions, nodes);
+
+  // B4: derive fan_in / fan_out / is_entrypoint from the FULLY resolved edge
+  // set (after the passes above), so degrees reflect cross-file relationships.
+  annotateNodeDegrees(nodes, resolvedLinks);
 
   nodes.sort(compareNodes);
   resolvedLinks.sort(compareEdges);

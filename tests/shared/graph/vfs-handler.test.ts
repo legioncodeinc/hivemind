@@ -249,17 +249,16 @@ describe("handleGraphVfs", () => {
     if (r.kind === "ok") expect(r.body).toContain("No node matches");
   });
 
-  it("node detail surfaces the intra-file caveat when incoming=0", () => {
-    // fooHelper has no incoming edges in our fixture (no caller in src/b.ts;
-    // even if src/a.ts:foo called it, Phase 1 doesn't resolve cross-file
-    // calls — that's exactly the caveat we want to surface to the agent).
+  it("node detail surfaces the not-proof-of-dead-code caveat when incoming=0", () => {
+    // fooHelper has no incoming edges in this fixture. Cross-file resolution is
+    // partial (bare/aliased/dynamic imports stay unresolved), so "Incoming (0)"
+    // is not proof of dead code — that's the caveat we surface to the agent.
     seed();
     const r = handleGraphVfs("show/fooHelper", cwd);
     expect(r.kind).toBe("ok");
     if (r.kind === "ok") {
       expect(r.body).toContain("Incoming (0)");
-      expect(r.body).toContain("intra-file only");
-      expect(r.body).toContain("may still be called from other files");
+      expect(r.body).toContain("not proof of dead code");
     }
   });
 
