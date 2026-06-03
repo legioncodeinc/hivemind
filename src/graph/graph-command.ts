@@ -104,7 +104,7 @@ export function tryGraphRead(rewrittenCommand: string, cwd: string): string | nu
   const ls = rewrittenCommand.replace(/\s+2>\S+/g, "").trim().match(/^ls\s+(?:-\S+\s+)*(\S+)\s*$/);
   if (ls) {
     const dir = stripQuotes(ls[1]!).replace(/\/+$/, "") || "/";
-    if (dir === GRAPH_ROOT) return "index.md\nfind/\nquery/\nshow/\nneighborhood/\nlayers\ntour\npath/\n";
+    if (dir === GRAPH_ROOT) return "index.md\nfind/\nquery/\nshow/\nimpact/\nneighborhood/\nlayers\ntour\npath/\n";
     return null;
   }
 
@@ -116,7 +116,7 @@ export function tryGraphRead(rewrittenCommand: string, cwd: string): string | nu
   if (hasTraversal(virtualPath)) return null;
 
   const normalized = virtualPath.replace(/\/+$/, "") || "/";
-  if (normalized === GRAPH_ROOT) return "index.md\nfind/\nquery/\nshow/\nneighborhood/\nlayers\ntour\npath/\n";
+  if (normalized === GRAPH_ROOT) return "index.md\nfind/\nquery/\nshow/\nimpact/\nneighborhood/\nlayers\ntour\npath/\n";
   if (!virtualPath.startsWith(GRAPH_PREFIX)) return null;
 
   const subpath = virtualPath.slice(GRAPH_PREFIX.length);

@@ -355,6 +355,31 @@ describe("handleGraphVfs", () => {
     if (r.kind === "ok") expect(r.body).toContain("No matches");
   });
 
+  // ── impact/ blast radius (B5) ─────────────────────────────────────────
+
+  it("impact/<pattern> lists dependents (foo calls bar → bar's impact includes foo)", () => {
+    seed();
+    const r = handleGraphVfs("impact/bar", cwd);
+    expect(r.kind).toBe("ok");
+    if (r.kind === "ok") {
+      expect(r.body).toContain("Impact of src/a.ts:bar:function");
+      expect(r.body).toContain("src/a.ts:foo:function"); // foo depends on bar
+    }
+  });
+
+  it("impact/ with no pattern → not-found", () => {
+    const r = handleGraphVfs("impact/", cwd);
+    expect(r.kind).toBe("not-found");
+  });
+
+  it("impact/ on a symbol nothing depends on reports zero dependents", () => {
+    seed();
+    // "a.ts:foo:" uniquely matches src/a.ts:foo:function (not fooHelper); nothing calls foo.
+    const r = handleGraphVfs("impact/a.ts:foo:", cwd);
+    expect(r.kind).toBe("ok");
+    if (r.kind === "ok") expect(r.body).toContain("No resolved dependents");
+  });
+
   // ── render endpoints (team graph-render) ──────────────────────────────
   // These prove the dispatcher routes the new subpaths to the render
   // modules; the modules' own logic is covered by their unit tests.

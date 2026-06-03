@@ -34,6 +34,7 @@ import { renderNeighborhood } from "./render/neighborhood.js";
 import { renderLayers } from "./render/layers.js";
 import { renderTour } from "./render/tour.js";
 import { renderPath } from "./render/path.js";
+import { renderImpact } from "./render/impact.js";
 
 function workTreeIdFor(cwd: string): string {
   return createHash("sha256").update(cwd).digest("hex").slice(0, 16);
@@ -107,6 +108,15 @@ export function handleGraphVfs(subpath: string, cwd: string): GraphVfsResult {
     }));
   }
 
+  // impact/<pattern> — transitive dependents (blast radius) of a symbol.
+  if (path.startsWith("impact/")) {
+    const pattern = path.slice("impact/".length);
+    if (pattern === "") {
+      return { kind: "not-found", message: "impact/ requires a pattern: cat memory/graph/impact/<symbol>" };
+    }
+    return loadSnapshotOrError(cwd, (snap) => ({ kind: "ok", body: renderImpact(snap, pattern) }));
+  }
+
   // neighborhood/<file> — symbols in a file + its cross-file neighbors.
   if (path.startsWith("neighborhood/")) {
     const file = path.slice("neighborhood/".length);
@@ -145,7 +155,7 @@ export function handleGraphVfs(subpath: string, cwd: string): GraphVfsResult {
 
   return {
     kind: "not-found",
-    message: `Unknown endpoint: graph/${path}\nAvailable: index.md, find/<pattern>, query/<pattern>, show/<handle-or-pattern>, neighborhood/<file>, layers, tour, path/<from>/<to>`,
+    message: `Unknown endpoint: graph/${path}\nAvailable: index.md, find/<pattern>, query/<pattern>, show/<handle-or-pattern>, impact/<pattern>, neighborhood/<file>, layers, tour, path/<from>/<to>`,
   };
 }
 
@@ -213,6 +223,7 @@ function dirListing(): string {
     "find/",
     "query/",
     "show/",
+    "impact/",
     "neighborhood/",
     "layers",
     "tour",

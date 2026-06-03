@@ -89,7 +89,7 @@ describe("tryGraphRead — routing", () => {
   });
 
   it("lists the graph root for `ls /graph` and bare reads of /graph", () => {
-    const listing = "index.md\nfind/\nquery/\nshow/\nneighborhood/\nlayers\ntour\npath/\n";
+    const listing = "index.md\nfind/\nquery/\nshow/\nimpact/\nneighborhood/\nlayers\ntour\npath/\n";
     expect(tryGraphRead("ls /graph", tmp)).toBe(listing);
     expect(tryGraphRead("ls -la /graph/", tmp)).toBe(listing);
     expect(tryGraphRead("cat /graph", tmp)).toBe(listing);
