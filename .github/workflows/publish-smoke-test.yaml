@@ -42,6 +42,9 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: 1
+          # Read-only canary; this workflow also unlocks production secrets, so
+          # don't leave GITHUB_TOKEN in .git/config for later steps to read.
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6.4.0
@@ -52,9 +55,12 @@ jobs:
           cache: "npm"
 
       - name: Load secrets from 1Password
+        id: op_secrets
         uses: 1Password/load-secrets-action@v4.0.0
         with:
-          export-env: true
+          # Scope CLAWHUB_TOKEN to the login step only (not exported to npm ci /
+          # build / publish steps), matching release.yaml.
+          export-env: false
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLAWHUB_TOKEN: "op://GitHub Actions/hivemind/CLAWHUB_TOKEN"
@@ -83,6 +89,8 @@ jobs:
         run: npm install -g clawhub@0.18.0
 
       - name: Authenticate ClawHub CLI
+        env:
+          CLAWHUB_TOKEN: ${{ steps.op_secrets.outputs.CLAWHUB_TOKEN }}
         run: clawhub login --token "$CLAWHUB_TOKEN" --no-browser
 
       - name: clawhub package publish --dry-run
