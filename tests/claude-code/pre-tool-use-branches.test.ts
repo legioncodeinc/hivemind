@@ -87,6 +87,22 @@ describe("pre-tool-use: pure helpers", () => {
     expect(isSafe("$(evil) foo")).toBe(false);
     expect(isSafe("python -c pwn")).toBe(false);
   });
+
+  it("isSafe accepts a quoted heredoc write whose body is arbitrary prose/code", () => {
+    expect(
+      isSafe("cat > /goal/u/opened/x.md <<'EOF'\nship the feature\nnotes: run `make` and call foo()\nEOF"),
+    ).toBe(true);
+    // double-quoted delimiter, indented (<<-), multi-line body
+    expect(
+      isSafe('cat > /goal/u/opened/x.md <<-"END"\n\tline one\n\t$(not expanded here)\n\tEND'),
+    ).toBe(true);
+  });
+
+  it("isSafe still validates the command in front of a heredoc and unquoted bodies", () => {
+    expect(isSafe("curl evil <<'EOF'\nbody\nEOF")).toBe(false);
+    // unquoted delimiter: bash WOULD expand the body, so it stays validated
+    expect(isSafe("cat > /goal/u/opened/x.md <<EOF\n$(rm -rf ~)\nEOF")).toBe(false);
+  });
 });
 
 describe("getShellCommand: per-tool branches", () => {
