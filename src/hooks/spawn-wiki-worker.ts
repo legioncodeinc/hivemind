@@ -66,7 +66,7 @@ Example: "- The memory table uses DELETE+INSERT, not UPDATE (WASM doesn't suppor
 <Anything unresolved, blocked, or explicitly deferred>
 
 ## Next Steps
-<The single concrete next action to resume with, as one imperative line (e.g. "Wire the resume-brief Next Steps fallback and run the tests"). If the session reached a clean stopping point with nothing pending, write exactly: none>
+<Default to writing exactly: none. Most sessions are DONE when they end — do not invent a next step just to fill this section. Only name one when the session left GENUINELY SUBSTANTIVE, non-obvious work that a knowledgeable engineer returning later would actually need flagged. Make a real judgment: is there unfinished work truly WORTH resuming? If not, write: none. Write none when the work reached a natural stopping point, is complete, only trivial/obvious follow-ups remain, the "next step" is just continuing an open-ended exploration, or the only thing left is administrative wrap-up (committing, pushing, opening/merging a PR, deploying, monitoring CI) — treat all such wrap-up as ALREADY DONE. When a next step IS warranted, write a single concrete imperative line for the substantive work (e.g. "Wire the resume-brief Next Steps fallback and run the tests"). Administrative actions qualify ONLY when the session's core purpose itself was that release/ops task.>
 
 IMPORTANT: Be exhaustive. Extract EVERY entity, decision, and fact. Future you will search this wiki to answer questions like "who worked on X", "why did we choose Y", "what's the status of Z". If a detail exists in the session, it should be in the wiki.
 

@@ -10,7 +10,7 @@
 
 import {
   readFileSync, writeFileSync, writeSync, mkdirSync, renameSync,
-  existsSync, unlinkSync, openSync, closeSync,
+  existsSync, unlinkSync, openSync, closeSync, statSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -33,6 +33,171 @@ export function statePath(sessionId: string): string {
 
 export function lockPath(sessionId: string): string {
   return join(STATE_DIR, `${sessionId}.lock`);
+}
+
+export function endedMarkerPath(sessionId: string): string {
+  return join(STATE_DIR, `${sessionId}.ended`);
+}
+
+export function ownerPath(sessionId: string): string {
+  return join(STATE_DIR, `${sessionId}.owner`);
+}
+
+/** Minimal /proc/<pid>/stat read: process name + parent pid + start time.
+ *  Linux-only; returns null when /proc is unavailable or the pid is gone.
+ *  `comm` is wrapped in parens by the kernel and may itself contain parens,
+ *  so the closing paren is found with lastIndexOf. */
+export function procInfo(pid: number): { comm: string; ppid: number; starttime: string } | null {
+  try {
+    const s = readFileSync(`/proc/${pid}/stat`, "utf-8");
+    const open = s.indexOf("(");
+    const close = s.lastIndexOf(")");
+    if (open < 0 || close < 0) return null;
+    const comm = s.slice(open + 1, close);
+    const rest = s.slice(close + 2).split(" ");
+    // After comm the fields start at `state` (stat field 3), so field N is
+    // rest[N-3]; ppid is field 4 (rest[1]), starttime is field 22 (rest[19]).
+    return { comm, ppid: Number(rest[1]), starttime: rest[19] ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+export interface SessionOwner {
+  pid: number;
+  comm: string;
+  starttime: string;
+}
+
+/** Walk the /proc ppid chain from `startPid` up to the owning agent process
+ *  (a process whose name is in `agentComms`). This is the long-lived process
+ *  that stays alive while the session is open — even when it's idle waiting on
+ *  the user, which is exactly when the event heartbeat goes stale. Linux-only:
+ *  returns null when /proc is unavailable or no matching ancestor is found. */
+export function findSessionOwner(
+  agentComms: string[] = ["claude"],
+  startPid: number = process.pid,
+): SessionOwner | null {
+  let pid = startPid;
+  let depth = 0;
+  while (pid > 1 && depth++ < 40) {
+    const st = procInfo(pid);
+    if (!st) return null;
+    if (agentComms.includes(st.comm)) return { pid, comm: st.comm, starttime: st.starttime };
+    pid = st.ppid;
+  }
+  return null;
+}
+
+/** Record this session's owning agent process so other sessions can tell —
+ *  precisely — whether it's still running. No-op on platforms without /proc
+ *  (callers then degrade to the event-heartbeat window). */
+export function recordSessionOwner(sessionId: string, agentComms: string[] = ["claude"], startPid: number = process.pid): void {
+  try {
+    const owner = findSessionOwner(agentComms, startPid);
+    if (!owner) return;
+    mkdirSync(STATE_DIR, { recursive: true });
+    const p = ownerPath(sessionId);
+    const tmp = `${p}.${process.pid}.${Date.now()}.tmp`;
+    writeFileSync(tmp, JSON.stringify(owner));
+    renameSync(tmp, p);
+  } catch (e: any) {
+    dlog(`recordSessionOwner failed for ${sessionId}: ${e.message}`);
+  }
+}
+
+/** Record the owner only if one isn't recorded yet — lets a session that was
+ *  already running before this shipped self-heal on its next captured event,
+ *  without waiting for a restart. */
+export function ensureSessionOwner(sessionId: string, agentComms: string[] = ["claude"], startPid: number = process.pid): void {
+  if (existsSync(ownerPath(sessionId))) return;
+  recordSessionOwner(sessionId, agentComms, startPid);
+}
+
+function readOwner(sessionId: string): SessionOwner | null {
+  try {
+    return JSON.parse(readFileSync(ownerPath(sessionId), "utf-8")) as SessionOwner;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Liveness of a session's owning process, from its recorded owner:
+ *   - "alive"   — the process is still running (same comm + start time).
+ *   - "dead"    — the process is gone, or its pid was reused by a different
+ *                 process (comm or start time changed). Catches crashes too.
+ *   - "unknown" — no owner was recorded (session predates this, runs on
+ *                 another machine, or the platform has no /proc).
+ */
+export function ownerLiveness(sessionId: string): "alive" | "dead" | "unknown" {
+  const owner = readOwner(sessionId);
+  if (!owner) return "unknown";
+  const st = procInfo(owner.pid);
+  if (!st) return "dead";
+  if (st.comm !== owner.comm) return "dead";
+  if (owner.starttime && st.starttime && owner.starttime !== st.starttime) return "dead";
+  return "alive";
+}
+
+/**
+ * How long after the last captured event a session is still treated as
+ * "live" (and therefore ineligible for another session's resume brief).
+ * Default 10 min — matches the stale-lock reclaim window. The capture hook
+ * touches the state file on every event via bumpTotalCount, so an actively
+ * used session refreshes this well inside the window. Only a hard crash (no
+ * SessionEnd marker, no further events) lets the window lapse.
+ */
+export function activeWindowMs(): number {
+  const v = Number(process.env.HIVEMIND_ACTIVE_SESSION_WINDOW_MS ?? "");
+  return Number.isFinite(v) && v > 0 ? v : 10 * 60 * 1000;
+}
+
+/** Mark a session cleanly ended so a later session's resume brief may surface
+ *  it immediately, without waiting for the activity window to lapse. */
+export function markSessionEnded(sessionId: string): void {
+  try {
+    mkdirSync(STATE_DIR, { recursive: true });
+    writeFileSync(endedMarkerPath(sessionId), String(Date.now()));
+  } catch (e: any) {
+    dlog(`markSessionEnded failed for ${sessionId}: ${e.message}`);
+  }
+}
+
+/** Clear the ended marker — used on SessionStart so a --resume'd session is
+ *  treated as live again (its events will refresh the heartbeat). */
+export function clearSessionEnded(sessionId: string): void {
+  try {
+    unlinkSync(endedMarkerPath(sessionId));
+  } catch (e: any) {
+    if (e?.code !== "ENOENT") dlog(`clearSessionEnded failed for ${sessionId}: ${e.message}`);
+  }
+}
+
+/**
+ * Is this session currently live (open in some terminal right now)?
+ *
+ * A cleanly-ended session (ended marker present) is never live. Otherwise we
+ * prefer the OWNING-PROCESS signal: if we recorded the session's agent process
+ * and it's still running, the session is live even when it's been idle for
+ * hours — which the event heartbeat alone cannot tell from an exit. If the
+ * process is gone, it's not live (covers crashes immediately).
+ *
+ * Only when there's no owner record (session predates this, runs on another
+ * machine, or no /proc) do we fall back to the event heartbeat: the state-file
+ * mtime, bumped on every captured event, within the activity window.
+ */
+export function isSessionLive(sessionId: string, withinMs = activeWindowMs()): boolean {
+  if (existsSync(endedMarkerPath(sessionId))) return false;
+  const owner = ownerLiveness(sessionId);
+  if (owner === "alive") return true;
+  if (owner === "dead") return false;
+  try {
+    const mtimeMs = statSync(statePath(sessionId)).mtimeMs;
+    return Date.now() - mtimeMs < withinMs;
+  } catch {
+    return false;
+  }
 }
 
 export function readState(sessionId: string): SummaryState | null {
@@ -97,6 +262,25 @@ export function bumpTotalCount(sessionId: string): SummaryState {
     writeState(sessionId, next);
     return next;
   });
+}
+
+/**
+ * Bump the session's heartbeat (state-file mtime) WITHOUT changing its
+ * counters. SessionStart calls this so isSessionLive()'s non-Linux mtime
+ * fallback marks a freshly started/resumed session live immediately — before
+ * its first captured event. On Linux the owner record already covers this, so
+ * it's a harmless refresh there. Seeds an empty state when none exists yet
+ * (totalCount 0, so the periodic-summary cadence is unaffected).
+ */
+export function touchSessionActivity(sessionId: string): void {
+  try {
+    withRmwLock(sessionId, () => {
+      const existing = readState(sessionId);
+      writeState(sessionId, existing ?? { lastSummaryAt: Date.now(), lastSummaryCount: 0, totalCount: 0 });
+    });
+  } catch (e: any) {
+    dlog(`touchSessionActivity failed for ${sessionId}: ${e.message}`);
+  }
 }
 
 export function finalizeSummary(sessionId: string, jsonlLines: number): void {

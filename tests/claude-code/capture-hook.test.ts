@@ -23,6 +23,7 @@ const releaseLockMock = vi.fn();
 const bumpTotalCountMock = vi.fn();
 const loadTriggerConfigMock = vi.fn();
 const shouldTriggerMock = vi.fn();
+const ensureSessionOwnerMock = vi.fn();
 const debugLogMock = vi.fn();
 const queryMock = vi.fn();
 const ensureSessionsTableMock = vi.fn();
@@ -40,6 +41,7 @@ vi.mock("../../src/hooks/summary-state.js", () => ({
   bumpTotalCount: (...a: any[]) => bumpTotalCountMock(...a),
   loadTriggerConfig: (...a: any[]) => loadTriggerConfigMock(...a),
   shouldTrigger: (...a: any[]) => shouldTriggerMock(...a),
+  ensureSessionOwner: (...a: any[]) => ensureSessionOwnerMock(...a),
 }));
 vi.mock("../../src/utils/debug.js", () => ({
   log: (_tag: string, msg: string) => debugLogMock(msg),

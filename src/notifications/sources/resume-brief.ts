@@ -13,17 +13,16 @@
  * recent unfinished work as a "pick up where you left off" pointer.
  *
  * Resolution (newest-first over the last LOOKBACK summaries):
- *   1. First session with real open work → "you left off here: <next step>"
- *      + a pick-it-up call to action.
- *   2. Summaries exist but every recent session wrapped clean → a brief with
- *      NO call to action ("wrapped up clean, nothing pending") — we don't
- *      invent an action that isn't there.
- *   3. No summaries for this project at all → null; the caller renders the
- *      plain welcome (no whiff).
+ *   1. Up to MAX_BRIEF_SESSIONS sessions with real open work → "where you left
+ *      off: <next step>" per session, each with its id + age, then one
+ *      pick-it-up call to action.
+ *   2. Otherwise (no open work anywhere, or no summaries at all) → null; the
+ *      caller renders the plain welcome. We stay silent rather than surface a
+ *      "nothing pending" line, and never reach back to an older stale TODO.
  *
  * "Open work" comes from the summary's `## Next Steps` section (preferred)
- * or the older `## Open Questions / TODO`. An empty / "none" section counts
- * as wrapped-clean.
+ * or the older `## Open Questions / TODO`. An empty / "none" / "none — <prose>"
+ * section counts as wrapped-clean and is skipped.
  *
  * userVisibleOnly: the caller renders this in the user's terminal only,
  * never the model's additionalContext.
@@ -36,6 +35,7 @@ import { DeeplakeApi } from "../../deeplake-api.js";
 import { loadConfig } from "../../config.js";
 import { sqlStr, sqlIdent } from "../../utils/sql.js";
 import { projectNameFromCwd } from "../../utils/project-name.js";
+import { isSessionLive } from "../../hooks/summary-state.js";
 import { log as _log } from "../../utils/debug.js";
 
 const log = (m: string) => _log("notifications-resume-brief", m);
@@ -48,28 +48,33 @@ const MAX_LINE_CHARS = 120;
  *  resuming on an older-but-real TODO is fine. */
 const LOOKBACK = 5;
 
-/** How many raw rows to pull before filtering. The memory table carries a
- *  SessionStart *placeholder* row per session (a skeleton with no `##`
- *  content section until the wiki worker fills it at SessionEnd) and can
- *  hold duplicate rows per session. Both would otherwise consume the
- *  LOOKBACK window and shadow the real summaries underneath, so we
- *  over-fetch, dedup by path, drop placeholders, then keep LOOKBACK reals. */
-const SCAN_LIMIT = 40;
+/** How many sessions with open work to surface in the brief, newest-first.
+ *  More than one so a glance shows the last couple of threads, not just the
+ *  very latest. */
+const MAX_BRIEF_SESSIONS = 2;
+
+/** How many raw rows to pull before filtering. We over-fetch past LOOKBACK to
+ *  survive duplicate rows per session (deduped by path below). Placeholders are
+ *  now excluded in SQL (`description <> 'in progress'`), so we no longer need
+ *  the big 40-row cushion that existed only to skip them — 20 covers dedup with
+ *  margin while roughly halving the bytes transferred each SessionStart.
+ *  isPlaceholderSummary() still runs as the correctness guard for any
+ *  placeholder a different agent wrote with a non-standard description. */
+const SCAN_LIMIT = 20;
 
 /** Hard cap on the lookup. DeeplakeApi.query retries ~3.5s on an unreachable
  *  endpoint; the SessionStart hook budget is 5s and fetchOrgStats is served
  *  from cache before us. Race it so an *unreachable* backend degrades to a
  *  plain welcome instead of stalling the hook.
  *
- *  Sized to the real cold-backend latency, NOT an optimistic guess. Measured
- *  2026-06-02: the first session against a cold backend takes ~1.9s for this
- *  query (warm: ~0.3s). The earlier 1.5s cap sat *below* that cold latency, so
- *  every fresh-open silently lost the race — withTimeout does NOT cancel the
- *  in-flight query, it just discarded the rows we were ~0.4s from receiving,
- *  and pickResumeBrief reported "no prior summary" with the data sitting right
- *  there. We already pay the cold latency; 3s lets us keep the payoff instead
- *  of throwing it away. Still well inside the 5s hook budget. */
-const QUERY_TIMEOUT_MS = 3_000;
+ *  Sized to the real cold-backend latency, NOT an optimistic guess. The query
+ *  cost grows with a user's session history: measured ~1.9s (2026-06-02) then
+ *  ~2.6s once history grew — close enough to the old 3s cap that cold spikes
+ *  crossed it and the banner silently vanished. The placeholder-exclusion +
+ *  smaller SCAN_LIMIT above cut the typical latency back under ~1s, and 4s
+ *  gives headroom for a cold spike without losing the payoff. The
+ *  session-notifications hook timeout was raised to 8s to match. */
+const QUERY_TIMEOUT_MS = 4_000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   return new Promise<T>((resolve) => {
@@ -105,8 +110,13 @@ function sections(summary: string): Map<string, string> {
   return map;
 }
 
-/** Treat these as "nothing left" even when the section is present. */
-const EMPTY_SECTION = /^(none|n\/?a|n\.a\.|nothing|nothing pending|tbd|—|-)\.?$/i;
+/** Treat these as "nothing left" even when the section is present. Matches the
+ *  bare tokens ("None", "N/A", "TBD") AND a token followed by a trailing clause
+ *  introduced by punctuation or a dash ("None — feature complete", "N/A, all
+ *  shipped", "Nothing pending."). A token followed by a *word* ("None of the
+ *  tests pass yet") is real open work and deliberately does NOT match. */
+const EMPTY_SECTION =
+  /^(?:(?:none|n\/?a|n\.a\.|nothing(?: pending)?)(?:\s*(?:[—–\-.,;:].*)?)?|tbd|—|–|-)$/i;
 
 /**
  * The "what to resume" pointer for one summary, or "" when the session
@@ -152,6 +162,39 @@ export interface SummaryRow {
 }
 
 /**
+ * Session id from a summary row path. Paths are `/summaries/<user>/<sid>.md`;
+ * we take the final segment without the `.md` suffix. Returns "" when the
+ * path is empty or unrecognizable, so the caller keeps such rows (it can't
+ * prove they belong to a live session).
+ */
+export function sessionIdFromSummaryPath(path: string): string {
+  const base = path.split("/").pop() ?? "";
+  return base.endsWith(".md") ? base.slice(0, -3) : base;
+}
+
+/**
+ * Drop rows that belong to the CURRENT session or to any OTHER session that is
+ * still live right now — a resume brief must point at finished work, never at
+ * a session open in another terminal (which gets periodic summaries written
+ * mid-flight and would otherwise be the newest "real" row). Rows with no
+ * identifiable session id are kept. `isLive` is injected for testability.
+ */
+export function excludeActiveSessions(
+  rows: SummaryRow[],
+  currentSessionId: string | undefined,
+  isLive: (sessionId: string) => boolean = isSessionLive,
+): SummaryRow[] {
+  return rows.filter((row) => {
+    const path = typeof row.path === "string" ? row.path : "";
+    if (!path) return true;
+    const sid = sessionIdFromSummaryPath(path);
+    if (!sid) return true;
+    if (currentSessionId && sid === currentSessionId) return false;
+    return !isLive(sid);
+  });
+}
+
+/**
  * From raw newest-first rows, keep the most recent REAL summary per session
  * (dedup by path), drop placeholders, and cap at `lookback`. Pure so the
  * windowing — the part that was silently broken — is unit-testable without
@@ -160,19 +203,32 @@ export interface SummaryRow {
 export function selectRealSummaries(
   rows: SummaryRow[],
   lookback = LOOKBACK,
-): { summary: string; date: string | undefined }[] {
+): { summary: string; date: string | undefined; sid: string }[] {
   const seenPath = new Set<string>();
-  const out: { summary: string; date: string | undefined }[] = [];
+  const out: { summary: string; date: string | undefined; sid: string }[] = [];
   for (const row of rows) {
     const path = typeof row.path === "string" ? row.path : "";
     if (path && seenPath.has(path)) continue; // duplicate row for a session we already took
     if (path) seenPath.add(path);
     const summary = typeof row.summary === "string" ? row.summary : "";
     if (isPlaceholderSummary(summary)) continue; // SessionStart skeleton — skip
-    out.push({ summary, date: typeof row.last_update_date === "string" ? row.last_update_date : undefined });
+    out.push({
+      summary,
+      date: typeof row.last_update_date === "string" ? row.last_update_date : undefined,
+      sid: sessionIdFromSummaryPath(path),
+    });
     if (out.length >= lookback) break;
   }
   return out;
+}
+
+/** One session's block in the brief: the open-work pointer plus a session-id +
+ *  age line (full id, copy-pasteable into `claude --resume <id>`). Trailing
+ *  newline included. */
+function sessionBlock(next: string, sid: string, date: string | undefined): string {
+  const age = relativeAge(date);
+  const meta = [sid ? `session ${sid}` : "", age].filter(Boolean).join(" · ");
+  return `   📌 ${next}\n` + (meta ? `   ↳ ${meta}\n` : "");
 }
 
 function truncate(s: string, max = MAX_LINE_CHARS): string {
@@ -202,9 +258,14 @@ function relativeAge(iso: string | undefined): string {
  * Build the resume brief for a signed-in user, or null. Only called with
  * non-null creds — the gate lives in the caller (primary-banner), which
  * routes anonymous users to the signup brief instead.
+ *
+ * `currentSessionId` (this session) is always excluded, and so is any OTHER
+ * session that is still live — a resume brief points at finished work, never
+ * at a session open in another terminal right now.
  */
 export async function pickResumeBrief(
   creds: Credentials | null | undefined,
+  currentSessionId?: string,
 ): Promise<ResumeBrief | null> {
   if (!creds?.token || !creds.userName || !creds.orgId) return null;
 
@@ -239,7 +300,12 @@ export async function pickResumeBrief(
       api.query(
         `SELECT summary, path, last_update_date FROM "${table}" ` +
           `WHERE project = '${sqlStr(project)}' AND author = '${sqlStr(creds.userName)}' ` +
-          `AND summary <> '' ORDER BY last_update_date DESC LIMIT ${SCAN_LIMIT}`,
+          // `description = 'in progress'` marks a SessionStart placeholder
+          // (see createPlaceholder). Excluding them here is the main latency
+          // win — most rows for an active project are placeholders, and we'd
+          // only drop them in code anyway. isPlaceholderSummary() still guards.
+          `AND summary <> '' AND description <> 'in progress' ` +
+          `ORDER BY last_update_date DESC LIMIT ${SCAN_LIMIT}`,
       ),
       QUERY_TIMEOUT_MS,
       null,
@@ -249,35 +315,45 @@ export async function pickResumeBrief(
       return null; // outcome 3 — plain welcome
     }
 
+    // Drop this session and any other session that is still live before
+    // windowing, so a session open in another terminal can't be surfaced as
+    // "where you left off".
+    const rows = excludeActiveSessions(rawRows as SummaryRow[], currentSessionId);
+
     // Dedup by session + drop placeholders so the walk-back lands on real
     // summaries instead of in-progress skeletons.
-    const reals = selectRealSummaries(rawRows as SummaryRow[]);
+    const reals = selectRealSummaries(rows);
     if (reals.length === 0) {
       log(`silent (only placeholders for project=${project})`);
       return null; // no real summary yet — don't claim "wrapped clean"
     }
 
-    // Walk newest-first for the most recent session with real open work.
+    // Walk newest-first, collecting up to MAX_BRIEF_SESSIONS sessions that
+    // still have real open work.
+    const blocks: string[] = [];
     for (const r of reals) {
       const next = extractNextSteps(r.summary);
       if (next.length >= 4) {
-        const age = relativeAge(r.date);
-        const when = age ? ` (${age})` : "";
-        log(`fired (project=${project}, open work)`);
-        return {
-          brief:
-            `Picking up on ${project}${when} — you left off here:\n` +
-            `   📌 ${next}\n` +
-            `   Ask me for the full thread whenever you're ready.`,
-        }; // outcome 1 — with CTA
+        blocks.push(sessionBlock(next, r.sid, r.date));
+        if (blocks.length >= MAX_BRIEF_SESSIONS) break;
       }
     }
 
-    // outcome 2 — real summaries exist, but every recent session wrapped clean.
-    const age = relativeAge(reals[0].date);
-    const when = age ? ` ${age}` : "";
-    log(`fired (project=${project}, no open work)`);
-    return { brief: `Picking up on ${project} — last session${when} wrapped up clean, nothing pending.` };
+    if (blocks.length > 0) {
+      log(`fired (project=${project}, ${blocks.length} session(s) with open work)`);
+      return {
+        brief:
+          `Picking up on ${project} — where you left off:\n` +
+          blocks.join("") +
+          `   Ask me for the full thread whenever you're ready.`,
+      };
+    }
+
+    // Every recent session wrapped clean (no open work): stay silent — the
+    // caller renders the plain welcome. We don't surface a "nothing pending"
+    // line, and we never reach back to an older session's stale TODO.
+    log(`silent (project=${project}, no open work in last ${LOOKBACK})`);
+    return null;
   } catch (e: unknown) {
     log(`pickResumeBrief: ${(e as Error).message}`);
     return null;

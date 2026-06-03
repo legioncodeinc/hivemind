@@ -25,6 +25,7 @@ import {
 } from "./query-cache.js";
 import { isSafe, touchesMemory, rewritePaths } from "./memory-path-utils.js";
 import { capOutputForClaude } from "../utils/output-cap.js";
+import { ensureSessionOwner } from "./summary-state.js";
 
 export { isSafe, touchesMemory, rewritePaths };
 
@@ -523,6 +524,14 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
 /* c8 ignore start */
 async function main(): Promise<void> {
   const input = await readStdin<PreToolUseInput>();
+  // Self-heal the owner record from a SYNCHRONOUS hook. SessionStart records it
+  // for new sessions, but a session already open when this shipped only gets a
+  // record via the async capture hook — which can be detached and unable to
+  // walk to its `claude` ancestor. PreToolUse runs synchronously under claude,
+  // so its /proc walk reliably finds the owner; no-op once recorded.
+  if (input.session_id && process.env.HIVEMIND_WIKI_WORKER !== "1") {
+    try { ensureSessionOwner(input.session_id); } catch { /* best-effort */ }
+  }
   const decision = await processPreToolUse(input);
   if (!decision) return;
   if (decision.deny !== undefined) {

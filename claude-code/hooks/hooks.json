@@ -12,7 +12,7 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/bundle/session-notifications.js\"",
-            "timeout": 5
+            "timeout": 8
           },
           {
             "type": "command",

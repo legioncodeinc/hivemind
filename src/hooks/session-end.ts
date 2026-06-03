@@ -12,7 +12,7 @@ import { readStdin } from "../utils/stdin.js";
 import { loadConfig, type Config } from "../config.js";
 import { log as _log } from "../utils/debug.js";
 import { bundleDirFromImportMeta, spawnWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
-import { tryAcquireLock, releaseLock } from "./summary-state.js";
+import { tryAcquireLock, releaseLock, markSessionEnded } from "./summary-state.js";
 import { forceSessionEndTrigger } from "../skillify/triggers.js";
 import { parseTranscript } from "../notifications/transcript-parser.js";
 import { appendUsageRecord } from "../notifications/usage-tracker.js";
@@ -58,6 +58,11 @@ async function main(): Promise<void> {
   const sessionId = input.session_id;
   const cwd = input.cwd ?? "";
   if (!sessionId) return;
+
+  // Mark this session cleanly ended so another session's resume brief stops
+  // treating it as live and may surface it immediately (without waiting for
+  // the activity window to lapse). Independent of the wiki-worker lock below.
+  markSessionEnded(sessionId);
 
   const config = loadConfig();
   if (!config) { log("no config"); return; }

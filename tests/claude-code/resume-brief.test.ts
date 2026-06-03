@@ -4,8 +4,14 @@ import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 // (query shape, dedup/placeholder windowing, the three outcomes, relative age)
 // is testable offline — same approach as cli-goal.test.ts.
 const queryMock = vi.fn();
+// Liveness is stubbed so the resume brief's "exclude live/current sessions"
+// path is testable offline. Tests add ids to `liveSessions` to mark them live.
+const liveSessions = new Set<string>();
 vi.mock("../../src/config.js", () => ({ loadConfig: vi.fn(() => ({ tableName: "memory" })) }));
 vi.mock("../../src/utils/project-name.js", () => ({ projectNameFromCwd: vi.fn(() => "proj") }));
+vi.mock("../../src/hooks/summary-state.js", () => ({
+  isSessionLive: (sid: string) => liveSessions.has(sid),
+}));
 vi.mock("../../src/deeplake-api.js", () => ({
   DeeplakeApi: class {
     constructor() { /* creds ignored under test */ }
@@ -17,6 +23,8 @@ import {
   extractNextSteps,
   isPlaceholderSummary,
   selectRealSummaries,
+  sessionIdFromSummaryPath,
+  excludeActiveSessions,
   pickResumeBrief,
 } from "../../src/notifications/sources/resume-brief.js";
 import { loadConfig } from "../../src/config.js";
@@ -54,6 +62,27 @@ describe("extractNextSteps", () => {
     expect(extractNextSteps(summary({ next: "none" }))).toBe("");
     expect(extractNextSteps(summary({ next: "None." }))).toBe("");
     expect(extractNextSteps(summary({ next: "N/A" }))).toBe("");
+  });
+
+  it("treats 'None' with a trailing clause as wrapped-clean (the self-referential bug)", () => {
+    expect(extractNextSteps(summary({ next: "None — feature implementation and testing complete" }))).toBe("");
+    expect(extractNextSteps(summary({ next: "None - all done" }))).toBe("");
+    expect(extractNextSteps(summary({ next: "N/A, all shipped" }))).toBe("");
+    expect(extractNextSteps(summary({ next: "Nothing pending — see notes" }))).toBe("");
+    expect(extractNextSteps(summary({ next: "- None — wrapped up clean" }))).toBe("");
+  });
+
+  it("does NOT treat 'None of the …' as wrapped-clean — that's real open work", () => {
+    expect(extractNextSteps(summary({ next: "None of the tests pass yet" }))).toBe("None of the tests pass yet");
+    expect(extractNextSteps(summary({ next: "Nothing works until we fix the parser" }))).toBe("Nothing works until we fix the parser");
+  });
+
+  it("treats a bare 'TBD' as wrapped-clean but NOT 'TBD: <work>' (CodeRabbit)", () => {
+    expect(extractNextSteps(summary({ next: "TBD" }))).toBe("");
+    expect(extractNextSteps(summary({ next: "tbd" }))).toBe("");
+    // A TBD with a trailing clause is real pending work — must surface.
+    expect(extractNextSteps(summary({ next: "TBD: finish rollback handling" }))).toBe("TBD: finish rollback handling");
+    expect(extractNextSteps(summary({ next: "TBD - wire the migration" }))).toBe("TBD - wire the migration");
   });
 
   it("returns '' when neither section is present", () => {
@@ -158,6 +187,47 @@ describe("selectRealSummaries (windowing)", () => {
   });
 });
 
+describe("sessionIdFromSummaryPath", () => {
+  it("extracts the session id from a /summaries/<user>/<sid>.md path", () => {
+    expect(sessionIdFromSummaryPath("/summaries/sasun/abc-123.md")).toBe("abc-123");
+  });
+  it("tolerates a bare filename with no directory", () => {
+    expect(sessionIdFromSummaryPath("abc-123.md")).toBe("abc-123");
+  });
+  it("returns the last segment unchanged when there is no .md suffix", () => {
+    expect(sessionIdFromSummaryPath("/summaries/sasun/weird")).toBe("weird");
+  });
+  it("returns '' for an empty path", () => {
+    expect(sessionIdFromSummaryPath("")).toBe("");
+  });
+});
+
+describe("excludeActiveSessions", () => {
+  const row = (sid: string) => ({ summary: "x", path: `/summaries/u/${sid}.md`, last_update_date: "2026-05-30" });
+
+  it("drops the current session", () => {
+    const out = excludeActiveSessions([row("me"), row("other")], "me", () => false);
+    expect(out.map((r) => r.path)).toEqual(["/summaries/u/other.md"]);
+  });
+
+  it("drops any session reported live by the predicate", () => {
+    const out = excludeActiveSessions([row("a"), row("b"), row("c")], undefined, (s) => s === "b");
+    expect(out.map((r) => r.path)).toEqual(["/summaries/u/a.md", "/summaries/u/c.md"]);
+  });
+
+  it("keeps rows with no path or no identifiable session id", () => {
+    const noPath = { summary: "x", last_update_date: "2026-05-30" };
+    const out = excludeActiveSessions([noPath, row("a")], undefined, () => true);
+    // noPath is kept (can't identify); row("a") is dropped (predicate true)
+    expect(out).toEqual([noPath]);
+  });
+
+  it("keeps a row whose path yields an empty session id (can't prove liveness)", () => {
+    const weird = { summary: "x", path: "/", last_update_date: "2026-05-30" };
+    expect(excludeActiveSessions([weird], "me", () => true)).toEqual([weird]);
+  });
+});
+
 describe("pickResumeBrief", () => {
   const real = (next: string) => `# Session x\n## What Happened\nstuff\n\n## Next Steps\n${next}\n`;
   const placeholder = "# Session x\n- **Status**: in-progress\n";
@@ -166,6 +236,7 @@ describe("pickResumeBrief", () => {
     queryMock.mockReset().mockResolvedValue([]);
     loadConfigMock.mockReset().mockReturnValue({ tableName: "memory" });
     projectMock.mockReset().mockReturnValue("proj");
+    liveSessions.clear();
   });
   afterEach(() => { vi.useRealTimers(); });
 
@@ -194,6 +265,8 @@ describe("pickResumeBrief", () => {
     expect(sql).toContain("project = 'proj'");
     expect(sql).toContain("author = 'u'");
     expect(sql).toContain("ORDER BY last_update_date DESC");
+    // Placeholders are excluded in SQL (latency win) — see createPlaceholder.
+    expect(sql).toContain("description <> 'in progress'");
   });
 
   it("outcome 3 — no summaries at all → null (plain welcome)", async () => {
@@ -216,17 +289,108 @@ describe("pickResumeBrief", () => {
     ]);
     const b = await pickResumeBrief(CREDS);
     expect(b?.brief).toContain("Picking up on proj");
-    expect(b?.brief).toContain("you left off here");
+    expect(b?.brief).toContain("where you left off");
     expect(b?.brief).toContain("Wire the fallback and run tests");
   });
 
-  it("outcome 2 — real summaries but every one wrapped clean → no CTA", async () => {
+  it("skips a session that is live in another terminal and falls through to the next real summary", async () => {
+    liveSessions.add("ongoing");
+    queryMock.mockResolvedValue([
+      // newest row belongs to a session still open elsewhere — must NOT be surfaced
+      { summary: real("Spec the revertop design"), path: "/summaries/u/ongoing.md", last_update_date: "2026-06-01" },
+      { summary: real("Wire the fallback and run tests"), path: "/summaries/u/done.md", last_update_date: "2026-05-30" },
+    ]);
+    const b = await pickResumeBrief(CREDS);
+    expect(b?.brief).toContain("Wire the fallback and run tests");
+    expect(b?.brief).not.toContain("Spec the revertop design");
+  });
+
+  it("never surfaces the current session's own (mid-session) summary", async () => {
+    queryMock.mockResolvedValue([
+      { summary: real("My own unfinished work"), path: "/summaries/u/self.md", last_update_date: "2026-06-01" },
+      { summary: real("Older real work"), path: "/summaries/u/old.md", last_update_date: "2026-05-29" },
+    ]);
+    const b = await pickResumeBrief(CREDS, "self");
+    expect(b?.brief).toContain("Older real work");
+    expect(b?.brief).not.toContain("My own unfinished work");
+  });
+
+  it("returns null when the only real summaries belong to live sessions", async () => {
+    liveSessions.add("live1");
+    liveSessions.add("live2");
+    queryMock.mockResolvedValue([
+      { summary: real("A"), path: "/summaries/u/live1.md", last_update_date: "2026-06-01" },
+      { summary: real("B"), path: "/summaries/u/live2.md", last_update_date: "2026-05-31" },
+    ]);
+    expect(await pickResumeBrief(CREDS, "current")).toBeNull();
+  });
+
+  it("surfaces up to two sessions with open work, newest-first, each with its id", async () => {
+    queryMock.mockResolvedValue([
+      { summary: real("Finish the parser"), path: "/summaries/u/sid-A.md", last_update_date: "2026-05-31" },
+      { summary: real("none"), path: "/summaries/u/clean.md", last_update_date: "2026-05-30" }, // skipped (clean)
+      { summary: real("Wire the CLI"), path: "/summaries/u/sid-B.md", last_update_date: "2026-05-29" },
+      { summary: real("Write the docs"), path: "/summaries/u/sid-C.md", last_update_date: "2026-05-28" }, // beyond cap
+    ]);
+    const b = await pickResumeBrief(CREDS);
+    expect(b?.brief).toContain("Finish the parser");
+    expect(b?.brief).toContain("session sid-A");
+    expect(b?.brief).toContain("Wire the CLI");
+    expect(b?.brief).toContain("session sid-B");
+    // capped at two — the third open-work session is not shown
+    expect(b?.brief).not.toContain("Write the docs");
+    expect(b?.brief).not.toContain("session sid-C");
+    // one CTA, two pins
+    expect((b!.brief.match(/📌/g) ?? []).length).toBe(2);
+    expect((b!.brief.match(/Ask me for the full thread/g) ?? []).length).toBe(1);
+  });
+
+  it("falls back to default table/apiUrl/workspaceId when config + creds omit them", async () => {
+    loadConfigMock.mockReturnValue({});                 // no tableName → '?? "memory"'
+    queryMock.mockResolvedValue([{ summary: real("Resume on defaults"), path: "/s/a.md", last_update_date: "2026-05-30" }]);
+    const b = await pickResumeBrief({ token: "t", userName: "u", orgId: "o" } as never); // no apiUrl / workspaceId
+    expect(b?.brief).toContain("Resume on defaults");
+  });
+
+  it("surfaces a pathless real summary with no id line (empty session id)", async () => {
+    queryMock.mockResolvedValue([{ summary: real("Do the no-path thing") }]); // no path, no date
+    const b = await pickResumeBrief(CREDS);
+    expect(b?.brief).toContain("Do the no-path thing");
+    expect(b?.brief).not.toContain("session ");
+    expect(b?.brief).not.toContain("↳");
+  });
+
+  it("renders an age-only id line when a pathless summary has a date", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-01T12:00:00Z"));
+    queryMock.mockResolvedValue([{ summary: real("Do dated no-path"), last_update_date: "2026-06-01T06:00:00Z" }]);
+    const b = await pickResumeBrief(CREDS);
+    expect(b?.brief).toContain("↳ earlier today");
+    expect(b?.brief).not.toContain("session ");
+  });
+
+  it("shows the session id of the surfaced summary (copy-pasteable for --resume)", async () => {
+    queryMock.mockResolvedValue([
+      { summary: real("Wire the fallback"), path: "/summaries/u/abc-123-def.md", last_update_date: "2026-05-30" },
+    ]);
+    const b = await pickResumeBrief(CREDS);
+    expect(b?.brief).toContain("session abc-123-def");
+  });
+
+  it("stays silent (null) when the only session wrapped clean — no banner", async () => {
     queryMock.mockResolvedValue([
       { summary: real("none"), path: "/s/a.md", last_update_date: "2026-05-30" },
     ]);
-    const b = await pickResumeBrief(CREDS);
-    expect(b?.brief).toContain("wrapped up clean, nothing pending");
-    expect(b?.brief).not.toContain("you left off here");
+    expect(await pickResumeBrief(CREDS)).toBeNull();
+  });
+
+  it("stays silent when every recent session wrapped clean — never reaches back to a stale TODO", async () => {
+    queryMock.mockResolvedValue([
+      { summary: real("none"), path: "/s/new.md", last_update_date: "2026-05-30" },
+      { summary: real("None — shipped"), path: "/s/mid.md", last_update_date: "2026-05-29" },
+      { summary: real("none"), path: "/s/old.md", last_update_date: "2026-05-28" },
+    ]);
+    expect(await pickResumeBrief(CREDS)).toBeNull();
   });
 
   it("truncates a long next-step line to one terminal row", async () => {
@@ -259,16 +423,16 @@ describe("pickResumeBrief", () => {
     await vi.advanceTimersByTimeAsync(2_000);
     const b = await p;
     expect(b?.brief).toContain("Wire the resume fallback");
-    expect(b?.brief).toContain("you left off here");
+    expect(b?.brief).toContain("where you left off");
   });
 
-  it("still degrades to a plain welcome when the backend is truly unreachable (slower than the 3s cap)", async () => {
+  it("still degrades to a plain welcome when the backend is truly unreachable (slower than the 4s cap)", async () => {
     vi.useFakeTimers();
     queryMock.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve([{ summary: real("too late"), path: "/s/a.md" }]), 4_000)),
+      () => new Promise((resolve) => setTimeout(() => resolve([{ summary: real("too late"), path: "/s/a.md" }]), 6_000)),
     );
     const p = pickResumeBrief(CREDS);
-    await vi.advanceTimersByTimeAsync(3_100);
+    await vi.advanceTimersByTimeAsync(4_100);
     expect(await p).toBeNull();
   });
 
@@ -285,16 +449,17 @@ describe("pickResumeBrief", () => {
   });
 
   it("drops the age clause when the date is missing or unparseable", async () => {
-    // missing date → relativeAge sees undefined
+    // missing date → relativeAge sees undefined; no " · <age>" appended to the id line
     queryMock.mockResolvedValue([{ summary: real("Resume A"), path: "/s/a.md" }]);
     let b = await pickResumeBrief(CREDS);
-    expect(b?.brief).toContain("Picking up on proj — you left off here");
-    expect(b?.brief).not.toContain("(");
+    expect(b?.brief).toContain("Picking up on proj — where you left off");
+    expect(b?.brief).toContain("session a");
+    expect(b?.brief).not.toContain(" · ");
     // unparseable date → relativeAge sees NaN
     queryMock.mockResolvedValue([{ summary: real("Resume B"), path: "/s/b.md", last_update_date: "not-a-date" }]);
     b = await pickResumeBrief(CREDS);
-    expect(b?.brief).toContain("you left off here");
-    expect(b?.brief).not.toContain("(");
+    expect(b?.brief).toContain("where you left off");
+    expect(b?.brief).not.toContain(" · ");
   });
 
   it("renders each relative-age bucket", async () => {

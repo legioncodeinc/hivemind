@@ -37,6 +37,9 @@ export interface DrainOptions {
    *  basis for the per-session savings recap so the same session's two
    *  parallel hook invocations dedupe to one emission. */
   sessionId?: string;
+  /** SessionStart source ("startup" | "resume" | "clear" | "compact"). The
+   *  primary banner is suppressed on "resume" — you already have the thread. */
+  source?: string;
   /**
    * Optional, populated by the hook entry point so rules don't have to
    * read the local-mined manifest themselves (rules contract: no IO).
@@ -90,7 +93,7 @@ export async function drainSessionStart(opts: DrainOptions): Promise<void> {
     // (including queue) under the same priority.
     const [fromBackend, primary] = await Promise.all([
       fetchBackendNotifications(opts.creds),
-      pickPrimaryBanner(opts.sessionId, opts.creds),
+      pickPrimaryBanner(opts.sessionId, opts.creds, opts.source),
     ]);
     const fromPrimary = primary != null ? [primary] : [];
     // Primary banner first so the user reads "Welcome back / <brief>" at the

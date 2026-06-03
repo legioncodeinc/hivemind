@@ -108,10 +108,18 @@ function localSavedTokens(): number {
 export async function pickPrimaryBanner(
   sessionId: string | undefined,
   creds: Credentials | null | undefined,
+  source?: string,
 ): Promise<Notification | null> {
   if (!sessionId) {
     // Without a per-session dedupKey, the two parallel hook fires can't
     // collapse to one — better to render nothing than to double-fire.
+    return null;
+  }
+  // On a resume, the user already has the thread in front of them — the
+  // welcome/"where you left off" banner is pure noise. Only a genuine fresh
+  // startup gets the banner. (Unknown/absent source → treat as startup so we
+  // don't regress older Claude Code versions that don't send it.)
+  if (source === "resume") {
     return null;
   }
   if (!creds?.token) {
@@ -171,7 +179,7 @@ export async function pickPrimaryBanner(
       prefix = cold.brief;
       firstRun = cold.firstRun;
     } else {
-      prefix = (await pickResumeBrief(creds))?.brief ?? null;
+      prefix = (await pickResumeBrief(creds, sessionId))?.brief ?? null;
     }
   } catch (e: unknown) {
     log(`session brief threw: ${(e as Error).message}`);

@@ -20,6 +20,7 @@ import {
   shouldTrigger,
   tryAcquireLock,
   releaseLock,
+  ensureSessionOwner,
 } from "./summary-state.js";
 import { bundleDirFromImportMeta, spawnWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
 import { tryStopCounterTrigger } from "../skillify/triggers.js";
@@ -78,6 +79,13 @@ async function main(): Promise<void> {
   const input = await readStdin<HookInput>();
   const config = loadConfig();
   if (!config) { log("no config"); return; }
+
+  // Self-heal the owner record for sessions that were already open before this
+  // shipped (SessionStart only records it for new sessions). One /proc walk on
+  // the first event where the record is missing; a no-op thereafter.
+  if (input.session_id && process.env.HIVEMIND_WIKI_WORKER !== "1") {
+    ensureSessionOwner(input.session_id);
+  }
 
   const sessionsTable = config.sessionsTableName;
   const api = new DeeplakeApi(config.token, config.apiUrl, config.orgId, config.workspaceId, sessionsTable);

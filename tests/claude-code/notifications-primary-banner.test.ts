@@ -64,6 +64,15 @@ describe("pickPrimaryBanner — guard conditions", () => {
   it("returns null when creds has no token", async () => {
     expect(await pickPrimaryBanner("s-1", { ...FRESH_CREDS, token: "" })).toBeNull();
   });
+
+  it("returns null on a resume — no banner when the user already has the thread", async () => {
+    expect(await pickPrimaryBanner("s-1", FRESH_CREDS, "resume")).toBeNull();
+  });
+
+  it("still renders on a fresh startup and when source is absent (older Claude Code)", async () => {
+    expect(await pickPrimaryBanner("s-startup", FRESH_CREDS, "startup")).not.toBeNull();
+    expect(await pickPrimaryBanner("s-nosrc", FRESH_CREDS)).not.toBeNull();
+  });
 });
 
 describe("pickPrimaryBanner — welcome (default when savings ≤ 1M)", () => {

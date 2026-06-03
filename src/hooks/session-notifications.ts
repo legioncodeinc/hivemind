@@ -31,6 +31,10 @@ const log = (msg: string) => _log("session-notifications", msg);
 interface SessionStartInput {
   session_id?: string;
   cwd?: string;
+  /** "startup" | "resume" | "clear" | "compact" — Claude Code tells us why the
+   *  session started. The "where you left off" banner is only meaningful on a
+   *  fresh startup; on a resume you already have the thread, so we suppress it. */
+  source?: string;
 }
 
 async function main(): Promise<void> {
@@ -49,9 +53,10 @@ async function main(): Promise<void> {
   // letting an empty string slip through.
   const rawSessionId = typeof input?.session_id === "string" ? input.session_id.trim() : "";
   const sessionId = rawSessionId.length > 0 ? rawSessionId : undefined;
+  const source = typeof input?.source === "string" ? input.source : undefined;
 
   const creds = loadCredentials();
-  await drainSessionStart({ agent: "claude-code", creds, sessionId });
+  await drainSessionStart({ agent: "claude-code", creds, sessionId, source });
 }
 
 main().catch((e) => { log(`fatal: ${e?.message ?? String(e)}`); process.exit(0); });

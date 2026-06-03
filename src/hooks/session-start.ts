@@ -28,6 +28,7 @@ import { maybeAutoMineLocal } from "../skillify/spawn-mine-local-worker.js";
 import { graphContextLine } from "../graph/session-context.js";
 import { spawnGraphPullWorker } from "../graph/spawn-pull-worker.js";
 import { entrypointPassesOnlyCliGate } from "./shared/capture-gate.js";
+import { clearSessionEnded, recordSessionOwner, touchSessionActivity } from "./summary-state.js";
 const log = (msg: string) => _log("session-start", msg);
 
 const __bundleDir = dirname(fileURLToPath(import.meta.url));
@@ -140,6 +141,18 @@ async function main(): Promise<void> {
   log(`hook entered (pid=${process.pid})`);
 
   const input = await readStdin<SessionStartInput>();
+
+  // A fresh start or --resume of this session re-activates it: drop any stale
+  // ended marker and record the owning `claude` process so other sessions can
+  // tell this one is live even while it sits idle waiting on the user.
+  if (input.session_id) {
+    clearSessionEnded(input.session_id);
+    recordSessionOwner(input.session_id);
+    // Re-arm the heartbeat so the non-Linux mtime fallback in isSessionLive()
+    // marks this resumed session live right away, not only after its first
+    // captured event (on Linux the owner record above already does this).
+    touchSessionActivity(input.session_id);
+  }
 
   let creds = loadCredentials();
 
