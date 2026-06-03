@@ -77,6 +77,14 @@ describe("extractNextSteps", () => {
     expect(extractNextSteps(summary({ next: "Nothing works until we fix the parser" }))).toBe("Nothing works until we fix the parser");
   });
 
+  it("treats a bare 'TBD' as wrapped-clean but NOT 'TBD: <work>' (CodeRabbit)", () => {
+    expect(extractNextSteps(summary({ next: "TBD" }))).toBe("");
+    expect(extractNextSteps(summary({ next: "tbd" }))).toBe("");
+    // A TBD with a trailing clause is real pending work — must surface.
+    expect(extractNextSteps(summary({ next: "TBD: finish rollback handling" }))).toBe("TBD: finish rollback handling");
+    expect(extractNextSteps(summary({ next: "TBD - wire the migration" }))).toBe("TBD - wire the migration");
+  });
+
   it("returns '' when neither section is present", () => {
     expect(extractNextSteps(summary({ whatHappened: "Just chatted." }))).toBe("");
   });

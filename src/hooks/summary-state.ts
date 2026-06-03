@@ -264,6 +264,25 @@ export function bumpTotalCount(sessionId: string): SummaryState {
   });
 }
 
+/**
+ * Bump the session's heartbeat (state-file mtime) WITHOUT changing its
+ * counters. SessionStart calls this so isSessionLive()'s non-Linux mtime
+ * fallback marks a freshly started/resumed session live immediately — before
+ * its first captured event. On Linux the owner record already covers this, so
+ * it's a harmless refresh there. Seeds an empty state when none exists yet
+ * (totalCount 0, so the periodic-summary cadence is unaffected).
+ */
+export function touchSessionActivity(sessionId: string): void {
+  try {
+    withRmwLock(sessionId, () => {
+      const existing = readState(sessionId);
+      writeState(sessionId, existing ?? { lastSummaryAt: Date.now(), lastSummaryCount: 0, totalCount: 0 });
+    });
+  } catch (e: any) {
+    dlog(`touchSessionActivity failed for ${sessionId}: ${e.message}`);
+  }
+}
+
 export function finalizeSummary(sessionId: string, jsonlLines: number): void {
   withRmwLock(sessionId, () => {
     const prev = readState(sessionId);

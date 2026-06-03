@@ -115,7 +115,8 @@ function sections(summary: string): Map<string, string> {
  *  introduced by punctuation or a dash ("None — feature complete", "N/A, all
  *  shipped", "Nothing pending."). A token followed by a *word* ("None of the
  *  tests pass yet") is real open work and deliberately does NOT match. */
-const EMPTY_SECTION = /^(none|n\/?a|n\.a\.|nothing(?: pending)?|tbd|—|–|-)\s*(?:[—–\-.,;:].*)?$/i;
+const EMPTY_SECTION =
+  /^(?:(?:none|n\/?a|n\.a\.|nothing(?: pending)?)(?:\s*(?:[—–\-.,;:].*)?)?|tbd|—|–|-)$/i;
 
 /**
  * The "what to resume" pointer for one summary, or "" when the session

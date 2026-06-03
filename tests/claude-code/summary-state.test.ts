@@ -206,6 +206,28 @@ describe("session liveness (isSessionLive / markSessionEnded / clearSessionEnded
     expect(mod.isSessionLive(sid, 60 * 60 * 1000)).toBe(true);
   });
 
+  it("touchSessionActivity re-arms a stale heartbeat so the mtime fallback reads live (CodeRabbit)", () => {
+    const sid = newSessionId();
+    mod.bumpTotalCount(sid);
+    const old = new Date(Date.now() - 60 * 60 * 1000);
+    utimesSync(mod.statePath(sid), old, old);
+    expect(mod.isSessionLive(sid)).toBe(false); // stale + no owner → not live
+    mod.touchSessionActivity(sid);
+    expect(mod.isSessionLive(sid)).toBe(true);  // heartbeat re-armed
+  });
+
+  it("touchSessionActivity seeds empty state and never bumps counters", () => {
+    const sid = newSessionId();
+    mod.touchSessionActivity(sid); // no prior state
+    let s = JSON.parse(readFileSync(mod.statePath(sid), "utf-8"));
+    expect(s.totalCount).toBe(0);
+    expect(s.lastSummaryCount).toBe(0);
+    mod.bumpTotalCount(sid); mod.bumpTotalCount(sid);
+    mod.touchSessionActivity(sid); // must preserve the count
+    s = JSON.parse(readFileSync(mod.statePath(sid), "utf-8"));
+    expect(s.totalCount).toBe(2);
+  });
+
   it("markSessionEnded makes a fresh session not live (clean exit beats heartbeat)", () => {
     const sid = newSessionId();
     mod.bumpTotalCount(sid);
@@ -271,6 +293,19 @@ describe("owner-process liveness (procInfo / findSessionOwner / ownerLiveness)",
 
   it("ownerLiveness is 'unknown' with no recorded owner", () => {
     expect(mod.ownerLiveness(newSessionId())).toBe("unknown");
+  });
+
+  it("recordSessionOwner writes nothing when no matching agent ancestor exists", () => {
+    const sid = newSessionId();
+    mod.recordSessionOwner(sid, ["no-such-agent-xyz"], process.pid);
+    expect(mod.ownerLiveness(sid)).toBe("unknown"); // no owner file written
+  });
+
+  it("ensureSessionOwner does not overwrite an existing owner record", () => {
+    const sid = newSessionId();
+    writeOwner(sid, { pid: 1, comm: "sentinel", starttime: "1" });
+    mod.ensureSessionOwner(sid, ["claude"], process.pid); // file exists → no-op
+    expect(JSON.parse(readFileSync(mod.ownerPath(sid), "utf-8")).comm).toBe("sentinel");
   });
 
   it.runIf(hasProc)("recordSessionOwner + ownerLiveness reports a running owner 'alive'", () => {
