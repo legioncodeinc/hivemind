@@ -133,6 +133,37 @@ describe("cross-file calls — extractor → snapshot", () => {
     expect(snap.links.some((e) => e.relation === "imports" && e.target === "external:lodash")).toBe(true);
   });
 
+  it("B3: extends an imported base class → real cross-file node", () => {
+    const a = extractTypeScript(
+      `import { Base } from "./b";\nexport class Sub extends Base {}\n`,
+      "src/a.ts",
+    );
+    const b = extractTypeScript(`export class Base {}\n`, "src/b.ts");
+    const snap = buildSnapshot([a, b], meta(), obs());
+    const ext = snap.links.find((e) => e.relation === "extends" && e.source === "src/a.ts:Sub:class");
+    expect(ext?.target).toBe("src/b.ts:Base:class");
+  });
+
+  it("B3: extends a SAME-FILE base class resolves (no longer unresolved)", () => {
+    const a = extractTypeScript(
+      `class Base {}\nexport class Sub extends Base {}\n`,
+      "src/a.ts",
+    );
+    const snap = buildSnapshot([a], meta(), obs());
+    const ext = snap.links.find((e) => e.relation === "extends" && e.source === "src/a.ts:Sub:class");
+    expect(ext?.target).toBe("src/a.ts:Base:class");
+  });
+
+  it("B3: extends an external base keeps the unresolved placeholder", () => {
+    const a = extractTypeScript(
+      `import { Component } from "react";\nexport class Sub extends Component {}\n`,
+      "src/a.ts",
+    );
+    const snap = buildSnapshot([a], meta(), obs());
+    const ext = snap.links.find((e) => e.relation === "extends" && e.source === "src/a.ts:Sub:class");
+    expect(ext?.target).toContain("unresolved:");
+  });
+
   it("still emits intra-file calls (no regression)", () => {
     const a = extractTypeScript(
       `function helper() { return 1; }\nexport function run() { return helper(); }\n`,

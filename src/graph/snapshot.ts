@@ -22,7 +22,7 @@ import { dirname, join } from "node:path";
 
 import { appendHistoryEntry, entryFromSnapshot, type SnapshotTrigger } from "./history.js";
 import { writeLastBuild } from "./last-build.js";
-import { repointImportEdges, resolveCrossFileCalls } from "./resolve/cross-file.js";
+import { repointImportEdges, resolveCrossFileCalls, resolveHeritageEdges } from "./resolve/cross-file.js";
 import type {
   FileExtraction,
   GraphEdge,
@@ -70,7 +70,12 @@ export function buildSnapshot(
   // real module node of the resolved file (bare/unresolved keep external:).
   const knownFiles = new Set<string>();
   for (const ex of extractions) knownFiles.add(ex.source_file);
-  const resolvedLinks = repointImportEdges(links, knownFiles);
+  let resolvedLinks = repointImportEdges(links, knownFiles);
+
+  // B3: resolve `extends`/`implements` placeholders to the real base-type node
+  // (same-file or named-import cross-file). Unresolvable bases keep their
+  // `unresolved:` placeholder.
+  resolvedLinks = resolveHeritageEdges(resolvedLinks, extractions, nodes);
 
   nodes.sort(compareNodes);
   resolvedLinks.sort(compareEdges);

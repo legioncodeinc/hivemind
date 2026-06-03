@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { repointImportEdges, resolveCrossFileCalls, resolveModule } from "../../../src/graph/resolve/cross-file.js";
+import { repointImportEdges, resolveCrossFileCalls, resolveHeritageEdges, resolveModule } from "../../../src/graph/resolve/cross-file.js";
 import type { FileExtraction, GraphEdge, GraphNode, ImportBinding, RawCall } from "../../../src/graph/types.js";
 
 function node(id: string, label: string, source_file: string, exported = true, kind: GraphNode["kind"] = "function"): GraphNode {
@@ -195,5 +195,55 @@ describe("repointImportEdges (B2)", () => {
     const snapshot = input[0]!.target;
     repointImportEdges(input, known);
     expect(input[0]!.target).toBe(snapshot);
+  });
+});
+
+describe("resolveHeritageEdges (B3)", () => {
+  const heritage = (source: string, name: string, kind: "class" | "interface", relation: "extends" | "implements"): GraphEdge =>
+    ({ source, target: `unresolved:${"src/a.ts"}:${name}:${kind}`, relation, confidence: "EXTRACTED" });
+
+  it("resolves a SAME-FILE base class (was left unresolved before)", () => {
+    const sub = node("src/a.ts:Sub:class", "Sub", "src/a.ts", true, "class");
+    const base = node("src/a.ts:Base:class", "Base", "src/a.ts", false, "class");
+    const a = extraction("src/a.ts", [sub, base]);
+    const edge = heritage("src/a.ts:Sub:class", "Base", "class", "extends");
+    const out = resolveHeritageEdges([edge], [a], a.nodes);
+    expect(out[0]!.target).toBe("src/a.ts:Base:class");
+  });
+
+  it("resolves a base class imported (named) from another file", () => {
+    const sub = node("src/a.ts:Sub:class", "Sub", "src/a.ts", true, "class");
+    const base = node("src/b.ts:Base:class", "Base", "src/b.ts", true, "class");
+    const a = extraction("src/a.ts", [sub], [],
+      [{ local_name: "Base", imported_name: "Base", kind: "named", specifier: "./b" }]);
+    const b = extraction("src/b.ts", [base]);
+    const edge = heritage("src/a.ts:Sub:class", "Base", "class", "extends");
+    const out = resolveHeritageEdges([edge], [a, b], [...a.nodes, ...b.nodes]);
+    expect(out[0]!.target).toBe("src/b.ts:Base:class");
+  });
+
+  it("resolves implements of an imported interface", () => {
+    const cls = node("src/a.ts:Impl:class", "Impl", "src/a.ts", true, "class");
+    const iface = node("src/b.ts:Shape:interface", "Shape", "src/b.ts", true, "interface");
+    const a = extraction("src/a.ts", [cls], [],
+      [{ local_name: "Shape", imported_name: "Shape", kind: "named", specifier: "./b" }]);
+    const b = extraction("src/b.ts", [iface]);
+    const edge = heritage("src/a.ts:Impl:class", "Shape", "interface", "implements");
+    const out = resolveHeritageEdges([edge], [a, b], [...a.nodes, ...b.nodes]);
+    expect(out[0]!.target).toBe("src/b.ts:Shape:interface");
+  });
+
+  it("keeps the placeholder for an unknown base (no decl, no import)", () => {
+    const sub = node("src/a.ts:Sub:class", "Sub", "src/a.ts", true, "class");
+    const a = extraction("src/a.ts", [sub]);
+    const edge = heritage("src/a.ts:Sub:class", "Ghost", "class", "extends");
+    const out = resolveHeritageEdges([edge], [a], a.nodes);
+    expect(out[0]!.target).toBe("unresolved:src/a.ts:Ghost:class");
+  });
+
+  it("does not touch calls/imports edges", () => {
+    const callEdge: GraphEdge = { source: "x", target: "y", relation: "calls", confidence: "EXTRACTED" };
+    const a = extraction("src/a.ts", []);
+    expect(resolveHeritageEdges([callEdge], [a], [])[0]).toEqual(callEdge);
   });
 });
