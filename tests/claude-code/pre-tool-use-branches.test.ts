@@ -508,6 +508,21 @@ describe("processPreToolUse: find / grep / fallback", () => {
     expect(d?.description).toContain("[DeepLake direct] find");
   });
 
+  it("Bash `find <dir> -name \"<pat>\"` (double-quoted) also routes to the find handler", async () => {
+    const findVirtualPathsFn = vi.fn(async () => ["/sessions/conv_0_session_1.json"]) as any;
+    const d = await processPreToolUse(
+      { session_id: "s", tool_name: "Bash", tool_input: { command: 'find ~/.deeplake/memory/sessions -name "*.json"' }, tool_use_id: "t" },
+      {
+        config: BASE_CONFIG as any,
+        createApi: vi.fn(() => makeApi()),
+        findVirtualPathsFn,
+        executeCompiledBashCommandFn: vi.fn(async () => null) as any,
+      },
+    );
+    expect(d?.command).toContain("/sessions/conv_0_session_1.json");
+    expect(d?.command).not.toContain("RETRY REQUIRED");
+  });
+
   it("Bash `find … | wc -l` returns the count", async () => {
     const findVirtualPathsFn = vi.fn(async () => ["/a.json", "/b.json", "/c.json"]) as any;
     const d = await processPreToolUse(

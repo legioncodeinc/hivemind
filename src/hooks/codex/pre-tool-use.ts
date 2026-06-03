@@ -307,11 +307,12 @@ export async function processCodexPreToolUse(
       // Anchor to the exact shape the VFS serves (optionally piped to wc -l);
       // a prefix match would accept `find … -name '*.md' -delete` and silently
       // drop the suffix. Everything else falls through to block+guidance.
-      const findMatch = rewritten.match(/^find\s+(\S+)\s+(?:-type\s+\S+\s+)?-name\s+'([^']+)'\s*(?:\|\s*wc\s+-l)?\s*$/);
+      const findMatch = rewritten.match(/^find\s+(\S+)\s+(?:-type\s+\S+\s+)?-name\s+(?:'([^']+)'|"([^"]+)"|([^\s|]+))\s*(?:\|\s*wc\s+-l)?\s*$/);
       if (findMatch) {
         const dir = findMatch[1].replace(/\/+$/, "") || "/";
-        const namePattern = sqlLike(findMatch[2]).replace(/\*/g, "%").replace(/\?/g, "_");
-        logFn(`direct find: ${dir} -name '${findMatch[2]}'`);
+        const rawPattern = findMatch[2] ?? findMatch[3] ?? findMatch[4] ?? "";
+        const namePattern = sqlLike(rawPattern).replace(/\*/g, "%").replace(/\?/g, "_");
+        logFn(`direct find: ${dir} -name '${rawPattern}'`);
         const paths = await findVirtualPathsFn(api, table, sessionsTable, dir, namePattern);
         let result = paths.join("\n") || "";
         if (/\|\s*wc\s+-l\s*$/.test(rewritten)) result = String(paths.length);
