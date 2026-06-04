@@ -136,23 +136,27 @@ describe("pre-tool-use: commands targeting memory are intercepted", () => {
     }
   });
 
-  // ── Write commands still use shell ──
+  // ── Commands the VFS can't serve without a backend fall back to the retry
+  //    guidance (never to the host shell). With no HIVEMIND_TOKEN configured in
+  //    this harness, even otherwise-serviceable shapes land here. ──
 
-  it("rewrites echo redirect to virtual shell", () => {
+  it("rewrites echo redirect to retry guidance when unconfigured", () => {
     const r = runPreToolUse("Bash", { command: "echo 'hello' > ~/.deeplake/memory/test.md" });
     expect(r.empty).toBe(false);
     if (!r.empty) {
       expect(r.decision).toBe("allow");
-      expect(r.updatedCommand).toContain("deeplake-shell.js");
+      expect(r.updatedCommand).toContain("RETRY REQUIRED");
+      expect(r.updatedCommand).not.toContain("deeplake-shell.js");
     }
   });
 
-  it("rewrites jq pipeline to virtual shell", () => {
+  it("rewrites jq pipeline to retry guidance when unconfigured", () => {
     const r = runPreToolUse("Bash", { command: "cat ~/.deeplake/memory/data.json | jq '.keys | length'" });
     expect(r.empty).toBe(false);
     if (!r.empty) {
       expect(r.decision).toBe("allow");
-      expect(r.updatedCommand).toContain("deeplake-shell.js");
+      expect(r.updatedCommand).toContain("RETRY REQUIRED");
+      expect(r.updatedCommand).not.toContain("deeplake-shell.js");
     }
   });
 });
@@ -240,120 +244,44 @@ describe("pre-tool-use: unsafe commands return guidance instead of deny", () => 
   });
 });
 
-describe("pre-tool-use: interpreter read on clean single-file path is rewritten to cat", () => {
-  it("python3 on tilde-prefixed memory file rewrites to cat", () => {
-    const r = runPreToolUse("Bash", {
-      command: "python3 ~/.deeplake/memory/data.json",
+describe("pre-tool-use: interpreter reads on memory paths return guidance (never a host cat)", () => {
+  // Interpreter reads (python3/node/…) are unsafe, so they are NOT rewritten to
+  // a host `cat` — that decision runs on the real filesystem and would let
+  // `python3 ~/.deeplake/memory/../../etc/passwd` read a real file. The agent is
+  // told to retry with a supported builtin (which IS routed through the VFS).
+  const { homedir } = require("node:os");
+  const interpreterReads = [
+    "python3 ~/.deeplake/memory/data.json",
+    "python3 $HOME/.deeplake/memory/foo.json",
+    `python3 ${homedir()}/.deeplake/memory/session.json`,
+    "node ~/.deeplake/memory/locomo_bench/conv_0_session_1.json",
+    "perl ~/.deeplake/memory/notes.txt",
+    "python3 ~/.deeplake/memory/file.json | head",
+    "python3 ~/.deeplake/memory/",
+    "deno ~/.deeplake/memory/config.json",
+    "bun ~/.deeplake/memory/script.ts",
+    "ruby ~/.deeplake/memory/a.rb",
+  ];
+  for (const command of interpreterReads) {
+    it(`returns RETRY guidance (not a host cat) for: ${command}`, () => {
+      const r = runPreToolUse("Bash", { command });
+      expect(r.empty).toBe(false);
+      if (!r.empty) {
+        expect(r.decision).toBe("allow");
+        expect(r.updatedCommand).toContain("RETRY REQUIRED");
+        expect(r.updatedCommand).not.toMatch(/^cat /);
+      }
     });
-    expect(r.empty).toBe(false);
-    if (!r.empty) {
-      expect(r.decision).toBe("allow");
-      expect(r.updatedCommand).toMatch(/^cat '\/[^']+'/);
-      expect(r.updatedCommand).toContain("/data.json");
-      expect(r.updatedCommand).not.toContain("RETRY REQUIRED");
-    }
-  });
+  }
 
-  it("python3 on $HOME-prefixed path correctly falls through to RETRY", () => {
-    // $HOME contains a $ metacharacter, so we can't safely rewrite — the
-    // hook sends it to the RETRY guidance rather than guess at expansion.
-    const r = runPreToolUse("Bash", {
-      command: "python3 $HOME/.deeplake/memory/foo.json",
-    });
+  it("does not leak a real host file through a traversing memory-path argument", () => {
+    // `python3 ~/.deeplake/memory/../../../etc/passwd` must NOT become
+    // `cat '/../../../etc/passwd'`.
+    const r = runPreToolUse("Bash", { command: "python3 ~/.deeplake/memory/../../../etc/passwd" });
     expect(r.empty).toBe(false);
     if (!r.empty) {
-      expect(r.updatedCommand).toContain("RETRY REQUIRED");
-    }
-  });
-
-  it("python3 on absolute /home/*/.deeplake/memory path rewrites to cat", () => {
-    // Simulates what haiku frequently generates — the agent resolves
-    // ~/ to the absolute home path before passing to Bash.
-    const { homedir } = require("node:os");
-    const cmd = `python3 ${homedir()}/.deeplake/memory/session.json`;
-    const r = runPreToolUse("Bash", { command: cmd });
-    expect(r.empty).toBe(false);
-    if (!r.empty) {
-      expect(r.decision).toBe("allow");
-      expect(r.updatedCommand).toMatch(/^cat '\/[^']+'/);
-      expect(r.updatedCommand).toContain("/session.json");
-      expect(r.updatedCommand).not.toContain("RETRY REQUIRED");
-    }
-  });
-
-  it("node on tilde-prefixed memory file rewrites to cat", () => {
-    const r = runPreToolUse("Bash", {
-      command: "node ~/.deeplake/memory/locomo_bench/conv_0_session_1.json",
-    });
-    expect(r.empty).toBe(false);
-    if (!r.empty) {
-      expect(r.decision).toBe("allow");
-      expect(r.updatedCommand).toMatch(/^cat '\/[^']+'/);
-      expect(r.updatedCommand).toContain("conv_0_session_1.json");
-      expect(r.updatedCommand).not.toContain("RETRY REQUIRED");
-    }
-  });
-
-  it("perl on memory file rewrites to cat", () => {
-    const r = runPreToolUse("Bash", {
-      command: "perl ~/.deeplake/memory/notes.txt",
-    });
-    expect(r.empty).toBe(false);
-    if (!r.empty) {
-      expect(r.decision).toBe("allow");
-      expect(r.updatedCommand).toMatch(/^cat '\/[^']+'/);
-      expect(r.updatedCommand).toContain("/notes.txt");
-    }
-  });
-
-  it("python3 with shell metacharacter still returns RETRY", () => {
-    const r = runPreToolUse("Bash", {
-      command: "python3 ~/.deeplake/memory/file.json | head",
-    });
-    expect(r.empty).toBe(false);
-    if (!r.empty) {
-      expect(r.updatedCommand).toContain("RETRY REQUIRED");
-    }
-  });
-
-  it("python3 on directory (trailing slash) returns RETRY, not cat", () => {
-    const r = runPreToolUse("Bash", {
-      command: "python3 ~/.deeplake/memory/",
-    });
-    expect(r.empty).toBe(false);
-    if (!r.empty) {
-      expect(r.updatedCommand).toContain("RETRY REQUIRED");
-    }
-  });
-
-  it("deno on memory file rewrites to cat", () => {
-    const r = runPreToolUse("Bash", {
-      command: "deno ~/.deeplake/memory/config.json",
-    });
-    expect(r.empty).toBe(false);
-    if (!r.empty) {
-      expect(r.updatedCommand).toMatch(/^cat '\/[^']+'/);
-      expect(r.updatedCommand).toContain("/config.json");
-    }
-  });
-
-  it("bun on memory file rewrites to cat", () => {
-    const r = runPreToolUse("Bash", {
-      command: "bun ~/.deeplake/memory/script.ts",
-    });
-    expect(r.empty).toBe(false);
-    if (!r.empty) {
-      expect(r.updatedCommand).toMatch(/^cat '\/[^']+'/);
-    }
-  });
-
-  it("ruby on memory file rewrites to cat", () => {
-    const r = runPreToolUse("Bash", {
-      command: "ruby ~/.deeplake/memory/a.rb",
-    });
-    expect(r.empty).toBe(false);
-    if (!r.empty) {
-      expect(r.updatedCommand).toMatch(/^cat '\/[^']+'/);
+      expect(r.updatedCommand).not.toContain("/etc/passwd");
+      expect(r.updatedCommand).not.toMatch(/^cat /);
     }
   });
 
@@ -431,9 +359,11 @@ describe("pre-tool-use: non-Bash tools targeting memory", () => {
     const r = runPreToolUse("Read", { file_path: "~/.deeplake/memory/index.md" });
     expect(r.empty).toBe(false);
     if (!r.empty) {
-      expect(r.decision).toBe("allow");
-      // Should rewrite to cat via shell or direct SQL
-      expect(r.updatedCommand).toBeDefined();
+      // Unconfigured harness (no HIVEMIND_TOKEN): the VFS can't serve the read.
+      // Read must be DENIED (not a command-shaped allow) — a {command} payload
+      // would leave the Read tool's file_path undefined and error the harness.
+      expect(r.decision).toBe("deny");
+      expect(r.reason).toContain("RETRY REQUIRED");
     }
   });
 
@@ -441,8 +371,10 @@ describe("pre-tool-use: non-Bash tools targeting memory", () => {
     const r = runPreToolUse("Read", { path: "~/.deeplake/memory" });
     expect(r.empty).toBe(false);
     if (!r.empty) {
-      expect(r.decision).toBe("allow");
-      expect(r.updatedCommand).toContain("ls /");
+      // Same as above: still intercepted (never passed to the host), but as a
+      // shape-safe deny rather than the old shell-fallback command rewrite.
+      expect(r.decision).toBe("deny");
+      expect(r.reason).toContain("RETRY REQUIRED");
     }
   });
 

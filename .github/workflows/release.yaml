@@ -231,6 +231,9 @@ jobs:
           # commit the reviewer never approved.
           ref: ${{ needs.release.outputs.sha }}
           fetch-depth: 1
+          # Publish reads a pinned SHA and never pushes; don't leave
+          # GITHUB_TOKEN in .git/config.
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v6.4.0
@@ -246,9 +249,10 @@ jobs:
           cache: "npm"
 
       - name: Load secrets from 1Password
+        id: op_secrets
         uses: 1Password/load-secrets-action@v4.0.0
         with:
-          export-env: true
+          export-env: false
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLAWHUB_TOKEN: "op://GitHub Actions/hivemind/CLAWHUB_TOKEN"
@@ -316,13 +320,19 @@ jobs:
           npm publish --provenance --access public
 
       - name: Install ClawHub CLI
-        run: npm install -g clawhub
+        # Pin the CLI version: it runs immediately before `clawhub login --token`
+        # with the real CLAWHUB_TOKEN in env, so a floating `@latest` would let an
+        # unexpected publish read/exfiltrate the token. Bump deliberately.
+        run: npm install -g clawhub@0.18.0
 
       - name: Authenticate ClawHub CLI
         # `clawhub login --token` writes a credential file inside the
         # runner's $HOME, which is ephemeral and discarded when the job
-        # ends. The token only ever appears as ${{ secrets.* }}, which
-        # GitHub auto-masks in logs.
+        # ends. The token is scoped to this step only (not exported to all
+        # steps via export-env) to limit the blast radius if any build step
+        # is compromised.
+        env:
+          CLAWHUB_TOKEN: ${{ steps.op_secrets.outputs.CLAWHUB_TOKEN }}
         run: clawhub login --token "$CLAWHUB_TOKEN" --no-browser
 
       - name: Publish openclaw bundle to ClawHub

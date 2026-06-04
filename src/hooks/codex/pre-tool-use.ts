@@ -13,10 +13,7 @@
  * spawning the bundled script in a subprocess.
  */
 
-import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { readStdin } from "../../utils/stdin.js";
 import { loadConfig } from "../../config.js";
 import { DeeplakeApi } from "../../deeplake-api.js";
@@ -41,11 +38,6 @@ export { isSafe, touchesMemory, rewritePaths };
 
 const log = (msg: string) => _log("codex-pre", msg);
 
-const __bundleDir = dirname(fileURLToPath(import.meta.url));
-const SHELL_BUNDLE = existsSync(join(__bundleDir, "shell", "deeplake-shell.js"))
-  ? join(__bundleDir, "shell", "deeplake-shell.js")
-  : join(__bundleDir, "..", "shell", "deeplake-shell.js");
-
 export interface CodexPreToolUseInput {
   session_id: string;
   tool_name: string;
@@ -65,23 +57,9 @@ export interface CodexPreToolDecision {
 
 export function buildUnsupportedGuidance(): string {
   return "This command is not supported for ~/.deeplake/memory/ operations. " +
-    "Only bash builtins are available: cat, ls, grep, echo, jq, head, tail, sed, awk, wc, sort, find, etc. " +
+    "Only bash builtins are available: cat, ls, grep, echo, jq, head, tail, wc, sort, find, etc. " +
     "Do NOT use python, python3, node, curl, or other interpreters. " +
     "Rewrite your command using only bash tools and retry.";
-}
-
-export function runVirtualShell(cmd: string, shellBundle = SHELL_BUNDLE, logFn: (msg: string) => void = log): string {
-  try {
-    return execFileSync("node", [shellBundle, "-c", cmd], {
-      encoding: "utf-8",
-      timeout: 10_000,
-      env: { ...process.env },
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
-  } catch (e: any) {
-    logFn(`virtual shell failed: ${e.message}`);
-    return "";
-  }
 }
 
 function buildIndexContent(rows: Record<string, unknown>[]): string {
@@ -107,8 +85,6 @@ interface CodexPreToolDeps {
   handleGrepDirectFn?: typeof handleGrepDirect;
   readCachedIndexContentFn?: typeof readCachedIndexContent;
   writeCachedIndexContentFn?: typeof writeCachedIndexContent;
-  runVirtualShellFn?: typeof runVirtualShell;
-  shellBundle?: string;
   logFn?: (msg: string) => void;
 }
 
@@ -133,8 +109,6 @@ export async function processCodexPreToolUse(
     handleGrepDirectFn = handleGrepDirect,
     readCachedIndexContentFn = readCachedIndexContent,
     writeCachedIndexContentFn = writeCachedIndexContent,
-    runVirtualShellFn = runVirtualShell,
-    shellBundle = SHELL_BUNDLE,
     logFn = log,
   } = deps;
 
@@ -145,11 +119,14 @@ export async function processCodexPreToolUse(
 
   const rewritten = rewritePaths(cmd);
   if (!isSafe(rewritten)) {
-    const guidance = buildUnsupportedGuidance();
-    logFn(`unsupported command, returning guidance: ${rewritten}`);
+    // BLOCK (exit 2), not "guide" (exit 0). guide lets Codex run the original
+    // command on the host, so an unsafe memory command — `python … x.py`,
+    // backticks, `$()`, `curl` — would still execute and could read/run real
+    // files. Block stops it and injects the guidance instead.
+    logFn(`unsupported command, blocking with guidance: ${rewritten}`);
     return {
-      action: "guide",
-      output: guidance,
+      action: "block",
+      output: buildUnsupportedGuidance(),
       rewrittenCommand: rewritten,
     };
   }
@@ -276,6 +253,11 @@ export async function processCodexPreToolUse(
           }
           return { action: "block", output: content, rewrittenCommand: rewritten };
         }
+        // Concrete file path with no VFS row → "not found", not an unsupported
+        // command. Returning the generic guidance would mislead the model into
+        // rewriting an already-valid `cat`/`head`/… shape.
+        logFn(`virtual path not found: ${virtualPath}`);
+        return { action: "block", output: `${virtualPath}: No such file or directory`, rewrittenCommand: rewritten };
       }
 
       const lsMatch = rewritten.match(/^ls\s+(?:-[a-zA-Z]+\s+)*(\S+)?\s*$/);
@@ -322,11 +304,18 @@ export async function processCodexPreToolUse(
         };
       }
 
-      const findMatch = rewritten.match(/^find\s+(\S+)\s+(?:-type\s+\S+\s+)?-name\s+'([^']+)'/);
+      // Anchor to the exact shape the VFS serves (optionally piped to wc -l);
+      // a prefix match would accept `find … -name '*.md' -delete` and silently
+      // drop the suffix. Everything else falls through to block+guidance.
+      // No `-type` clause: the VFS find handler can't enforce a type filter, so
+      // accepting `-type d` and ignoring it would return wrong results. Such
+      // commands fall through to block+guidance instead.
+      const findMatch = rewritten.match(/^find\s+(\S+)\s+-name\s+(?:'([^']+)'|"([^"]+)"|([^\s|]+))\s*(?:\|\s*wc\s+-l)?\s*$/);
       if (findMatch) {
         const dir = findMatch[1].replace(/\/+$/, "") || "/";
-        const namePattern = sqlLike(findMatch[2]).replace(/\*/g, "%").replace(/\?/g, "_");
-        logFn(`direct find: ${dir} -name '${findMatch[2]}'`);
+        const rawPattern = findMatch[2] ?? findMatch[3] ?? findMatch[4] ?? "";
+        const namePattern = sqlLike(rawPattern).replace(/\*/g, "%").replace(/\?/g, "_");
+        logFn(`direct find: ${dir} -name '${rawPattern}'`);
         const paths = await findVirtualPathsFn(api, table, sessionsTable, dir, namePattern);
         let result = paths.join("\n") || "";
         if (/\|\s*wc\s+-l\s*$/.test(rewritten)) result = String(paths.length);
@@ -346,15 +335,21 @@ export async function processCodexPreToolUse(
         }
       }
     } catch (e: any) {
-      logFn(`direct query failed, falling back to shell: ${e.message}`);
+      logFn(`direct query failed: ${e.message}`);
     }
   }
 
-  logFn(`intercepted → running via virtual shell: ${rewritten}`);
-  const result = runVirtualShellFn(rewritten, shellBundle, logFn);
+  // Nothing matched: no config, an unhandled command shape, or a direct-query
+  // error. Do NOT run the command through just-bash or the host shell — it only
+  // passed isSafe(), and just-bash can invoke real host binaries, which is the
+  // exact code-execution surface this hook exists to remove. BLOCK (exit 2) so
+  // the command never reaches the host, and inject the guidance as the result.
+  // (We can't use "guide" here: guide exits 0, which lets Codex run the original
+  // command on the host — the very thing we're preventing.)
+  logFn(`unroutable memory command, blocking with guidance: ${rewritten}`);
   return {
     action: "block",
-    output: result || "[Deeplake Memory] Command returned empty or the file does not exist in cloud storage.",
+    output: buildUnsupportedGuidance(),
     rewrittenCommand: rewritten,
   };
 }

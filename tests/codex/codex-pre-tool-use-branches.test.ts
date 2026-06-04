@@ -14,7 +14,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildUnsupportedGuidance,
   processCodexPreToolUse,
-  runVirtualShell,
 } from "../../src/hooks/codex/pre-tool-use.js";
 
 const BASE_CONFIG = {
@@ -41,7 +40,6 @@ function baseDeps(extra: Record<string, any> = {}) {
     createApi: vi.fn(() => makeApi()),
     readCachedIndexContentFn: vi.fn(() => null) as any,
     writeCachedIndexContentFn: vi.fn() as any,
-    runVirtualShellFn: vi.fn(() => "") as any,
     logFn: vi.fn(),
     ...extra,
   };
@@ -67,13 +65,6 @@ describe("codex: pure helpers", () => {
     expect(s).toMatch(/python|node|curl/);
   });
 
-  it("runVirtualShell returns empty string and calls logFn when the spawn fails", () => {
-    const logFn = vi.fn();
-    // /nope is not executable → execFileSync throws, caught by the wrapper.
-    const out = runVirtualShell("cat /x", "/nope", logFn);
-    expect(out).toBe("");
-    expect(logFn).toHaveBeenCalledWith(expect.stringContaining("virtual shell failed"));
-  });
 });
 
 describe("processCodexPreToolUse: pass-through + unsafe", () => {
@@ -85,38 +76,42 @@ describe("processCodexPreToolUse: pass-through + unsafe", () => {
     expect(d.action).toBe("pass");
   });
 
-  it("returns `guide` with the unsupported-command guidance when a memory-path command uses an interpreter", async () => {
+  it("blocks (not `guide`) the unsafe command when a memory-path command uses an interpreter", async () => {
+    // "guide" exits 0 and would let Codex run python on the host; must block.
     const d = await processCodexPreToolUse(
       toolInput("python ~/.deeplake/memory/x.py"),
       baseDeps(),
     );
-    expect(d.action).toBe("guide");
+    expect(d.action).toBe("block");
     expect(d.output).toContain("not supported");
     expect(d.rewrittenCommand).toContain("python");
   });
 
-  it("falls back to runVirtualShell when no config is loaded", async () => {
-    const runVirtualShellFn = vi.fn(() => "FROM-SHELL") as any;
+  it("blocks (does NOT run a shell or proceed to host) when no config is loaded", async () => {
+    // Must be "block" (exit 2), not "guide" (exit 0): guide would let Codex run
+    // the original command on the host. Block stops it and injects guidance.
     const d = await processCodexPreToolUse(
       toolInput("cat ~/.deeplake/memory/index.md"),
-      { ...baseDeps({ runVirtualShellFn }), config: null as any },
+      { ...baseDeps(), config: null as any },
     );
     expect(d.action).toBe("block");
-    expect(d.output).toBe("FROM-SHELL");
-    expect(runVirtualShellFn).toHaveBeenCalledTimes(1);
+    expect(d.output).toContain("not supported");
   });
 
-  it("falls back to the virtual shell's empty-result placeholder when the shell returns empty", async () => {
-    const runVirtualShellFn = vi.fn(() => "") as any;
+  it("blocks with a not-found result (not generic guidance) for a concrete cat on a missing VFS file", async () => {
     const d = await processCodexPreToolUse(
       toolInput("cat ~/.deeplake/memory/nonexistent.md"),
       {
-        ...baseDeps({ runVirtualShellFn }),
+        ...baseDeps(),
         executeCompiledBashCommandFn: vi.fn(async () => null) as any,
         readVirtualPathContentFn: vi.fn(async () => null) as any,
       },
     );
-    expect(d.output).toContain("Command returned empty or the file does not exist");
+    expect(d.action).toBe("block");
+    expect(d.output).toContain("No such file or directory");
+    // Path-specific, not a generic error (a regression to generic text must fail).
+    expect(d.output).toContain("nonexistent.md");
+    expect(d.output).not.toContain("not supported");
   });
 });
 
@@ -411,17 +406,16 @@ describe("processCodexPreToolUse: find + grep + fallback", () => {
     expect(handleGrepDirectFn).toHaveBeenCalled();
   });
 
-  it("falls back to runVirtualShell when the direct-query path throws mid-flow", async () => {
-    const runVirtualShellFn = vi.fn(() => "SHELL OK") as any;
+  it("blocks (does NOT run a shell or proceed to host) when the direct-query path throws mid-flow", async () => {
     const d = await processCodexPreToolUse(
       toolInput("cat ~/.deeplake/memory/sessions/a.json"),
       {
-        ...baseDeps({ runVirtualShellFn }),
+        ...baseDeps(),
         executeCompiledBashCommandFn: vi.fn(async () => null) as any,
         readVirtualPathContentFn: vi.fn(async () => { throw new Error("network bonk"); }) as any,
       },
     );
-    expect(d.output).toBe("SHELL OK");
-    expect(runVirtualShellFn).toHaveBeenCalled();
+    expect(d.action).toBe("block");
+    expect(d.output).toContain("not supported");
   });
 });

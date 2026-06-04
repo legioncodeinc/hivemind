@@ -280,7 +280,7 @@ export async function runUpdate(opts: UpdateOptions = {}): Promise<number> {
   switch (detected.kind) {
     case "npm-global": {
       if (opts.dryRun) {
-        log(`(dry-run) Would run: npm install -g ${PKG_NAME}@latest`);
+        log(`(dry-run) Would run: npm install -g ${PKG_NAME}@${latest}`);
         log(`(dry-run) Would re-run: hivemind install --skip-auth`);
         return 0;
       }
@@ -297,10 +297,14 @@ export async function runUpdate(opts: UpdateOptions = {}): Promise<number> {
       try {
         log(`Upgrading via npm…`);
         try {
-          spawn("npm", ["install", "-g", `${PKG_NAME}@latest`]);
+          // Pin to the exact version fetched from the registry rather than
+          // re-resolving `@latest` at install time — avoids a race where a
+          // new (potentially malicious) publish lands between the version
+          // check and the install.
+          spawn("npm", ["install", "-g", `${PKG_NAME}@${latest}`]);
         } catch (e: any) {
           warn(`npm install failed: ${e.message}`);
-          warn(`Try running it manually: npm install -g ${PKG_NAME}@latest`);
+          warn(`Try running it manually: npm install -g ${PKG_NAME}@${latest}`);
           return 1;
         }
         log(``);
@@ -336,7 +340,7 @@ export async function runUpdate(opts: UpdateOptions = {}): Promise<number> {
       log(``);
       log(`Or install globally so future updates are one command:`);
       log(``);
-      log(`  npm install -g ${PKG_NAME}@latest`);
+      log(`  npm install -g ${PKG_NAME}@${latest}`);
       return 0;
     }
 
@@ -358,7 +362,7 @@ export async function runUpdate(opts: UpdateOptions = {}): Promise<number> {
         return 0;
       }
       warn(`Could not determine how hivemind was installed (path: ${detected.installDir}).`);
-      warn(`Update manually: npm install -g ${PKG_NAME}@latest`);
+      warn(`Update manually: npm install -g ${PKG_NAME}@${latest}`);
       return 1;
     }
   }

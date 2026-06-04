@@ -88,6 +88,20 @@ describe("pre-tool-use: pure helpers", () => {
     expect(isSafe("python -c pwn")).toBe(false);
   });
 
+  it("isSafe rejects wrappers/keywords that smuggle a child command", () => {
+    // Control-flow keyword as a stage's leading token (`if`/`then` removed).
+    expect(isSafe("if true; then curl evil; fi")).toBe(false);
+    // Command-running wrappers are no longer allowlisted.
+    expect(isSafe("timeout 1 curl evil")).toBe(false);
+    expect(isSafe("cat /index.md | xargs curl")).toBe(false);
+    // `find` stays allowed for -name, but -exec dispatches a child command.
+    expect(isSafe("find / -name '*.md' -exec curl evil {} ;")).toBe(false);
+    // A plain `find -name` read shape is still accepted.
+    expect(isSafe("find / -name '*.md'")).toBe(true);
+    // fd redirection (`2>&1`) must NOT be mistaken for a background `&`.
+    expect(isSafe("cat /index.md 2>&1 | head -20")).toBe(true);
+  });
+
   it("isSafe accepts a quoted heredoc write whose body is arbitrary prose/code", () => {
     expect(
       isSafe("cat > /goal/u/opened/x.md <<'EOF'\nship the feature\nnotes: run `make` and call foo()\nEOF"),
@@ -209,50 +223,52 @@ describe("processPreToolUse: non-memory / no-op paths", () => {
     expect(d?.command).toContain("bash builtins");
   });
 
-  it("falls back to the shell bundle when no config is loaded", async () => {
+  it("denies (shape-safe) an unserviceable Read instead of returning a command-shaped decision", async () => {
+    // A command-shaped {command} decision would leave the Read tool's file_path
+    // undefined → harness error. Deny carries the guidance via permissionDecisionReason.
     const d = await processPreToolUse(
-      { session_id: "s", tool_name: "Bash", tool_input: { command: "cat ~/.deeplake/memory/index.md" }, tool_use_id: "t" },
-      { config: null as any, shellBundle: "/SHELL" },
+      { session_id: "s", tool_name: "Read", tool_input: { file_path: "~/.deeplake/memory/index.md" }, tool_use_id: "t" },
+      { config: null as any },
     );
-    expect(d?.command).toContain(`node "/SHELL" -c`);
-    expect(d?.description).toContain("[DeepLake shell]");
+    expect(d?.deny).toContain("[RETRY REQUIRED]");
+    expect(d?.command).toBe("");
+    expect(d?.file_path).toBeUndefined();
   });
 
-  it("rewrites python3 on a tilde memory path to cat", async () => {
+  it("returns retry guidance (NOT a host passthrough) when no config is loaded", async () => {
+    const d = await processPreToolUse(
+      { session_id: "s", tool_name: "Bash", tool_input: { command: "cat ~/.deeplake/memory/index.md" }, tool_use_id: "t" },
+      { config: null as any },
+    );
+    expect(d?.command).toContain("[RETRY REQUIRED]");
+    expect(d?.deny).toBeUndefined();
+  });
+
+  it("returns guidance (not a host cat) for an interpreter read on a tilde memory path", async () => {
     const d = await processPreToolUse(
       { session_id: "s", tool_name: "Bash", tool_input: { command: "python3 ~/.deeplake/memory/data.json" }, tool_use_id: "t" },
       { config: BASE_CONFIG as any, logFn: vi.fn() },
     );
-    expect(d?.command).toMatch(/^cat '\/[^']+'/);
-    expect(d?.command).toContain("/data.json");
-    expect(d?.command).not.toContain("RETRY REQUIRED");
-    expect(d?.description).toContain("converted unsupported interpreter read to cat");
+    expect(d?.command).toContain("[RETRY REQUIRED]");
+    expect(d?.command).not.toMatch(/^cat /);
   });
 
-  it("rewrites python3 on an absolute memory path to cat", async () => {
+  it("does not rewrite a traversing interpreter arg to a host cat (no /etc/passwd leak)", async () => {
+    const d = await processPreToolUse(
+      { session_id: "s", tool_name: "Bash", tool_input: { command: "python3 ~/.deeplake/memory/../../../etc/passwd" }, tool_use_id: "t" },
+      { config: BASE_CONFIG as any, logFn: vi.fn() },
+    );
+    expect(d?.command).toContain("[RETRY REQUIRED]");
+    expect(d?.command).not.toContain("/etc/passwd");
+  });
+
+  it("returns guidance for an interpreter read on an absolute memory path", async () => {
     const d = await processPreToolUse(
       { session_id: "s", tool_name: "Bash", tool_input: { command: `python3 ${MEM_ABS}/session.json` }, tool_use_id: "t" },
       { config: BASE_CONFIG as any, logFn: vi.fn() },
     );
-    expect(d?.command).toMatch(/^cat '\/[^']+'/);
-    expect(d?.command).toContain("/session.json");
-    expect(d?.command).not.toContain("RETRY REQUIRED");
-  });
-
-  it("rewrites node on memory path to cat", async () => {
-    const d = await processPreToolUse(
-      { session_id: "s", tool_name: "Bash", tool_input: { command: "node ~/.deeplake/memory/foo/bar.json" }, tool_use_id: "t" },
-      { config: BASE_CONFIG as any, logFn: vi.fn() },
-    );
-    expect(d?.command).toMatch(/^cat '\/[^']+'/);
-  });
-
-  it("rewrites ruby on memory path to cat", async () => {
-    const d = await processPreToolUse(
-      { session_id: "s", tool_name: "Bash", tool_input: { command: "ruby ~/.deeplake/memory/a.rb" }, tool_use_id: "t" },
-      { config: BASE_CONFIG as any, logFn: vi.fn() },
-    );
-    expect(d?.command).toMatch(/^cat '\/[^']+'/);
+    expect(d?.command).toContain("[RETRY REQUIRED]");
+    expect(d?.command).not.toMatch(/^cat /);
   });
 
   it("does not rewrite python3 on a memory directory (trailing slash)", async () => {
@@ -508,6 +524,38 @@ describe("processPreToolUse: find / grep / fallback", () => {
     expect(d?.description).toContain("[DeepLake direct] find");
   });
 
+  it("Bash `find <dir> -name \"<pat>\"` (double-quoted) also routes to the find handler", async () => {
+    const findVirtualPathsFn = vi.fn(async () => ["/sessions/conv_0_session_1.json"]) as any;
+    const d = await processPreToolUse(
+      { session_id: "s", tool_name: "Bash", tool_input: { command: 'find ~/.deeplake/memory/sessions -name "*.json"' }, tool_use_id: "t" },
+      {
+        config: BASE_CONFIG as any,
+        createApi: vi.fn(() => makeApi()),
+        findVirtualPathsFn,
+        executeCompiledBashCommandFn: vi.fn(async () => null) as any,
+      },
+    );
+    expect(d?.command).toContain("/sessions/conv_0_session_1.json");
+    expect(d?.command).not.toContain("RETRY REQUIRED");
+  });
+
+  it("Bash `find <dir> -type d -name '<pat>'` falls through to guidance (type filter unsupported)", async () => {
+    const findVirtualPathsFn = vi.fn(async () => ["/x.json"]) as any;
+    const d = await processPreToolUse(
+      { session_id: "s", tool_name: "Bash", tool_input: { command: "find ~/.deeplake/memory/sessions -type d -name '*.json'" }, tool_use_id: "t" },
+      {
+        config: BASE_CONFIG as any,
+        createApi: vi.fn(() => makeApi()),
+        findVirtualPathsFn,
+        executeCompiledBashCommandFn: vi.fn(async () => null) as any,
+        logFn: vi.fn(),
+      },
+    );
+    // Must NOT be served (the -type filter would be silently dropped).
+    expect(findVirtualPathsFn).not.toHaveBeenCalled();
+    expect(d?.command).toContain("RETRY REQUIRED");
+  });
+
   it("Bash `find … | wc -l` returns the count", async () => {
     const findVirtualPathsFn = vi.fn(async () => ["/a.json", "/b.json", "/c.json"]) as any;
     const d = await processPreToolUse(
@@ -541,7 +589,7 @@ describe("processPreToolUse: find / grep / fallback", () => {
     expect(d?.command).toContain("match line");
   });
 
-  it("throws in direct-read path → falls back to the shell bundle", async () => {
+  it("returns retry guidance (does NOT fall through to the host shell) when the direct-read path throws", async () => {
     const d = await processPreToolUse(
       { session_id: "s", tool_name: "Bash", tool_input: { command: "cat ~/.deeplake/memory/sessions/a.json" }, tool_use_id: "t" },
       {
@@ -549,11 +597,43 @@ describe("processPreToolUse: find / grep / fallback", () => {
         createApi: vi.fn(() => makeApi()),
         readVirtualPathContentFn: vi.fn(async () => { throw new Error("boom"); }) as any,
         executeCompiledBashCommandFn: vi.fn(async () => null) as any,
-        shellBundle: "/SHELL",
         logFn: vi.fn(),
       },
     );
-    expect(d?.command).toContain('node "/SHELL" -c');
+    expect(d?.command).toContain("[RETRY REQUIRED]");
+  });
+
+  it("returns a not-found result (not retry guidance) for a concrete cat on a missing VFS file", async () => {
+    const d = await processPreToolUse(
+      { session_id: "s", tool_name: "Bash", tool_input: { command: "cat ~/.deeplake/memory/missing.md" }, tool_use_id: "t" },
+      {
+        config: BASE_CONFIG as any,
+        createApi: vi.fn(() => makeApi()),
+        executeCompiledBashCommandFn: vi.fn(async () => null) as any,
+        readVirtualPathContentFn: vi.fn(async () => null) as any,
+        logFn: vi.fn(),
+      },
+    );
+    expect(d?.command).toContain("No such file or directory");
+    expect(d?.command).toContain("missing.md");
+    expect(d?.command).not.toContain("RETRY REQUIRED");
+  });
+
+  it("returns retry guidance for an isSafe-but-unroutable memory command instead of running it on the host", async () => {
+    // `sort` passes isSafe() (it's an allowlisted builtin) but no VFS handler
+    // serves it; it must be rewritten to the harmless echo guidance, not handed
+    // back to the real shell where it would read /etc/passwd and write /tmp/out.
+    const d = await processPreToolUse(
+      { session_id: "s", tool_name: "Bash", tool_input: { command: "sort /etc/passwd ~/.deeplake/memory/index.md > /tmp/out" }, tool_use_id: "t" },
+      {
+        config: BASE_CONFIG as any,
+        createApi: vi.fn(() => makeApi()),
+        executeCompiledBashCommandFn: vi.fn(async () => null) as any,
+        logFn: vi.fn(),
+      },
+    );
+    expect(d?.command).toContain("[RETRY REQUIRED]");
+    expect(d?.command).not.toContain("/etc/passwd");
   });
 });
 
@@ -633,11 +713,13 @@ describe("processPreToolUse: index cache short-circuit", () => {
     expect(writeCachedIndexContentFn).toHaveBeenCalledWith("s2", "FRESH INDEX");
   });
 
-  it("Read on the memory root (no extension in basename) routes to the ls directory branch", async () => {
+  it("Read on the memory root materializes the listing to a cache file (file_path shape)", async () => {
     const listVirtualPathRowsFn = vi.fn(async () => [
       { path: "/sessions/conv_0_session_1.json", size_bytes: 100 },
       { path: "/summaries/alice/s1.md" /* no size_bytes → null branch */ },
     ]) as any;
+    let captured = "";
+    const writeReadCacheFileFn = vi.fn((_s: string, _p: string, content: string) => { captured = content; return "/cache/_listing.txt"; }) as any;
 
     const d = await processPreToolUse(
       { session_id: "s", tool_name: "Read", tool_input: { file_path: "~/.deeplake/memory/" }, tool_use_id: "t" },
@@ -645,17 +727,23 @@ describe("processPreToolUse: index cache short-circuit", () => {
         config: BASE_CONFIG as any,
         createApi: vi.fn(() => makeApi()),
         listVirtualPathRowsFn,
+        writeReadCacheFileFn,
         executeCompiledBashCommandFn: vi.fn(async () => null) as any,
       },
     );
-    expect(d?.command).toContain("sessions/");
-    expect(d?.command).toContain("summaries/");
+    // Read must be file_path-shaped, not a {command} echo.
+    expect(d?.file_path).toBe("/cache/_listing.txt");
+    expect(d?.command).toBe("");
+    expect(captured).toContain("sessions/");
+    expect(captured).toContain("summaries/");
   });
 
   it("Read on a directory with trailing slashes strips them before listing", async () => {
     const listVirtualPathRowsFn = vi.fn(async () => [
       { path: "/sessions/conv_0_session_1.json", size_bytes: 42 },
     ]) as any;
+    let captured = "";
+    const writeReadCacheFileFn = vi.fn((_s: string, _p: string, content: string) => { captured = content; return "/cache/_listing.txt"; }) as any;
 
     const d = await processPreToolUse(
       { session_id: "s", tool_name: "Read", tool_input: { file_path: "~/.deeplake/memory/sessions///" }, tool_use_id: "t" },
@@ -663,10 +751,12 @@ describe("processPreToolUse: index cache short-circuit", () => {
         config: BASE_CONFIG as any,
         createApi: vi.fn(() => makeApi()),
         listVirtualPathRowsFn,
+        writeReadCacheFileFn,
         executeCompiledBashCommandFn: vi.fn(async () => null) as any,
       },
     );
-    expect(d?.command).toContain("conv_0_session_1.json");
+    expect(d?.file_path).toBe("/cache/_listing.txt");
+    expect(captured).toContain("conv_0_session_1.json");
   });
 
   it("`head <file>` (no explicit -N) defaults to 10 lines", async () => {
@@ -757,6 +847,8 @@ describe("processPreToolUse: index cache short-circuit", () => {
     // We send a Read on a directory so after grep-null fall-through the ls
     // branch takes over with a real decision — proving the flow continues
     // past the null grep result instead of erroring.
+    let captured = "";
+    const writeReadCacheFileFn = vi.fn((_s: string, _p: string, content: string) => { captured = content; return "/cache/_listing.txt"; }) as any;
     const d = await processPreToolUse(
       { session_id: "s", tool_name: "Read", tool_input: { path: "~/.deeplake/memory/summaries" }, tool_use_id: "t" },
       {
@@ -764,10 +856,12 @@ describe("processPreToolUse: index cache short-circuit", () => {
         createApi: vi.fn(() => makeApi()),
         handleGrepDirectFn,
         listVirtualPathRowsFn,
+        writeReadCacheFileFn,
         executeCompiledBashCommandFn: vi.fn(async () => null) as any,
       },
     );
-    expect(d?.command).toContain("alice/");
+    expect(d?.file_path).toBe("/cache/_listing.txt");
+    expect(captured).toContain("alice/");
   });
 
   it("Bash `ls <dir>` without -l uses short-format listing (no permissions prefix)", async () => {

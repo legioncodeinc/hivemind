@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,9 +32,6 @@ export { isSafe, touchesMemory, rewritePaths };
 const log = (msg: string) => _log("pre", msg);
 
 const __bundleDir = dirname(fileURLToPath(import.meta.url));
-const SHELL_BUNDLE = existsSync(join(__bundleDir, "shell", "deeplake-shell.js"))
-  ? join(__bundleDir, "shell", "deeplake-shell.js")
-  : join(__bundleDir, "..", "shell", "deeplake-shell.js");
 
 export interface PreToolUseInput {
   session_id: string;
@@ -103,6 +100,32 @@ export function buildDenyDecision(reason: string, description: string): ClaudePr
   return { command: "", description, deny: reason };
 }
 
+const MEMORY_RETRY_GUIDANCE =
+  "[RETRY REQUIRED] The command you tried is not available for ~/.deeplake/memory/. " +
+  "This virtual filesystem only supports bash builtins: cat, ls, grep, echo, jq, head, tail, wc, sort, find, etc. " +
+  "python, python3, node, and curl are NOT available. " +
+  "You MUST rewrite your command using only the bash tools listed above and try again. " +
+  "For example, to parse JSON use: cat file.json | jq '.key'. To count keys: cat file.json | jq 'keys | length'.";
+
+// Send an unserviceable memory request back to the agent as retry guidance,
+// shaped per tool so the original never reaches the host shell.
+//   - Bash/Grep/Glob: an *allow* decision that REWRITES the command to a
+//     harmless `echo`, so e.g. `sort /etc/passwd ~/.deeplake/memory/x >
+//     /tmp/out` is replaced before it can run.
+//   - Read: a *deny*. Claude Code's Read tool reads `updatedInput.file_path`;
+//     handing it a `{command}` payload leaves file_path undefined and the
+//     harness errors with "Path must be a string". Deny is shape-safe and
+//     still tells the agent how to retry via Bash.
+function buildRetryGuidanceDecision(toolName: string): ClaudePreToolDecision {
+  if (toolName === "Read") {
+    return buildDenyDecision(MEMORY_RETRY_GUIDANCE, "[DeepLake] memory Read unavailable — use Bash builtins");
+  }
+  return buildAllowDecision(
+    `echo ${JSON.stringify(MEMORY_RETRY_GUIDANCE)}`,
+    "[DeepLake] unsupported command — rewrite using bash builtins",
+  );
+}
+
 const WRITE_EDIT_DENY_REASON =
   "Write and Edit tools cannot route through the Deeplake VFS at ~/.deeplake/memory/. " +
   "The pre-tool-use hook only intercepts Bash, Read, Grep, and Glob; tool-shape mismatches make a " +
@@ -132,7 +155,11 @@ export function getShellCommand(toolName: string, toolInput: Record<string, unkn
         const flags: string[] = ["-r"];
         if (toolInput["-i"]) flags.push("-i");
         if (toolInput["-n"]) flags.push("-n");
-        return `grep ${flags.join(" ")} '${pattern}' /`;
+        // Single-quote the pattern safely: escape any embedded single quotes
+        // so the string can never break out of the shell quoting context if
+        // this command string is ever forwarded to a shell executor.
+        const escaped = pattern.replace(/'/g, "'\\''");
+        return `grep ${flags.join(" ")} '${escaped}' /`;
       }
       break;
     }
@@ -190,13 +217,6 @@ export function extractGrepParams(
   return null;
 }
 
-function buildFallbackDecision(shellCmd: string, shellBundle = SHELL_BUNDLE): ClaudePreToolDecision {
-  return buildAllowDecision(
-    `node "${shellBundle}" -c "${shellCmd.replace(/"/g, '\\"')}"`,
-    `[DeepLake shell] ${shellCmd}`,
-  );
-}
-
 interface ClaudePreToolDeps {
   config?: ReturnType<typeof loadConfig>;
   createApi?: (table: string, config: NonNullable<ReturnType<typeof loadConfig>>) => DeeplakeApi;
@@ -210,7 +230,6 @@ interface ClaudePreToolDeps {
   readCachedIndexContentFn?: typeof readCachedIndexContent;
   writeCachedIndexContentFn?: typeof writeCachedIndexContent;
   writeReadCacheFileFn?: typeof writeReadCacheFile;
-  shellBundle?: string;
   logFn?: (msg: string) => void;
 }
 
@@ -234,7 +253,6 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
     readCachedIndexContentFn = readCachedIndexContent,
     writeCachedIndexContentFn = writeCachedIndexContent,
     writeReadCacheFileFn = writeReadCacheFile,
-    shellBundle = SHELL_BUNDLE,
     logFn = log,
   } = deps;
 
@@ -254,44 +272,22 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
   }
 
   if (!shellCmd && (touchesMemory(cmd) || touchesMemory(toolPath))) {
-    const guidance = "[RETRY REQUIRED] The command you tried is not available for ~/.deeplake/memory/. " +
-      "This virtual filesystem only supports bash builtins: cat, ls, grep, echo, jq, head, tail, sed, awk, wc, sort, find, etc. " +
-      "python, python3, node, and curl are NOT available. " +
-      "You MUST rewrite your command using only the bash tools listed above and try again. " +
-      "For example, to parse JSON use: cat file.json | jq '.key'. To count keys: cat file.json | jq 'keys | length'.";
-
-    // Fast-path: a clean single-file read attempt by an unsupported interpreter
-    // (python/node/ruby/perl, no shell metacharacters) gets rewritten to
-    // `cat '<path>'` so the agent doesn't burn a turn on a RETRY. Anything with
-    // $(...), backticks, pipes, redirects, or chains falls through to the
-    // guidance below — safer than trying to rewrite composite commands.
-    const isReadLike = /^(?:python3?|node|deno|bun|ruby|perl)\b/.test(cmd.trim());
-    const hasShellMeta = /[$`;|&<>()\\]/.test(cmd);
-    if (isReadLike && !hasShellMeta) {
-      // Normalize path prefix (~/, $HOME/, or absolute /home/user/) to / via
-      // rewritePaths, then extract the leading memory-relative path.
-      // This catches all three forms that touchesMemory() accepts.
-      const normalized = rewritePaths(cmd) + " " + rewritePaths(toolPath);
-      const pathMatch = normalized.match(/\s(\/[\w./_-]+)/);
-      const cleanPath = pathMatch ? pathMatch[1] : "";
-      if (cleanPath && !cleanPath.endsWith("/")) {
-        logFn(`unsupported command on file, converting to cat: ${cleanPath}`);
-        return buildAllowDecision(
-          `cat '${cleanPath.replace(/'/g, "'\\''")}'`,
-          "[DeepLake] converted unsupported interpreter read to cat",
-        );
-      }
-    }
-
+    // Unsupported/unsafe command targeting memory (interpreter, $(), pipes,
+    // chains, …). Do NOT rewrite it to a host `cat`: that decision runs on the
+    // real filesystem, not the VFS, so `python3 ~/.deeplake/memory/../../etc/passwd`
+    // would become `cat '/../../etc/passwd'` and read a real host file. Return
+    // guidance; the agent reissues a supported builtin (e.g. `cat …`) which IS
+    // routed through the VFS.
     logFn(`unsupported command, returning guidance: ${cmd}`);
-    return buildAllowDecision(
-      `echo ${JSON.stringify(guidance)}`,
-      "[DeepLake] unsupported command — rewrite using bash builtins",
-    );
+    return buildRetryGuidanceDecision(input.tool_name);
   }
 
   if (!shellCmd) return null;
-  if (!config) return buildFallbackDecision(shellCmd, shellBundle);
+  // A memory command we could rewrite, but with no config the VFS backend is
+  // unreachable. Do NOT return null here — that hands the original command to
+  // the host shell. Return the retry guidance instead so the command never
+  // touches the real filesystem.
+  if (!config) return buildRetryGuidanceDecision(input.tool_name);
 
   const table = process.env["HIVEMIND_TABLE"] ?? "memory";
   const sessionsTable = process.env["HIVEMIND_SESSIONS_TABLE"] ?? "sessions";
@@ -416,7 +412,9 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
     if (lsDir === "/graph" || lsDir === "/graph/") {
       const body = "index.md\nfind/\nshow/\n";
       if (input.tool_name === "Read") {
-        const file_path = writeReadCacheFileFn(input.session_id, "/graph", body);
+        // Synthetic leaf (not "/graph" itself) so later reads of
+        // /graph/index.md or /graph/show/... can still create children.
+        const file_path = writeReadCacheFileFn(input.session_id, "/graph/_listing.txt", body);
         return buildReadDecision(file_path, "[hivemind graph] ls /graph");
       }
       return buildAllowDecision(`echo ${JSON.stringify(body)}`, `[hivemind graph] ls /graph`);
@@ -455,6 +453,16 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
         const capped = capOutputForClaude(content, { kind: label });
         return buildAllowDecision(`echo ${JSON.stringify(capped)}`, `[DeepLake direct] ${label} ${virtualPath}`);
       }
+      // The path was normalized to a concrete file but no VFS row exists — that
+      // is "not found", NOT an unsupported command. Falling through to the
+      // generic retry guidance would loop the agent on an already-valid shape.
+      logFn(`virtual path not found: ${virtualPath}`);
+      const notFound = `${virtualPath}: No such file or directory`;
+      if (input.tool_name === "Read") {
+        const file_path = writeReadCacheFileFn(input.session_id, virtualPath, notFound);
+        return buildReadDecision(file_path, `[DeepLake] not found: ${virtualPath}`);
+      }
+      return buildAllowDecision(`echo ${JSON.stringify(notFound)}`, `[DeepLake] not found: ${virtualPath}`);
     }
 
     if (!lsDir && input.tool_name === "Glob") {
@@ -498,15 +506,32 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
         }
       }
       const lsOutput = capOutputForClaude(lines.join("\n") || "(empty directory)", { kind: "ls" });
+      if (input.tool_name === "Read") {
+        // Read needs a file_path-shaped decision (a {command} payload would
+        // leave file_path undefined). Materialize the listing under a synthetic
+        // leaf inside the dir — not the dir path itself — so later child reads
+        // can still create files alongside it in the cache.
+        const leaf = (dir === "/" ? "" : dir) + "/_listing.txt";
+        const file_path = writeReadCacheFileFn(input.session_id, leaf, lsOutput);
+        return buildReadDecision(file_path, `[DeepLake direct] ls ${dir}`);
+      }
       return buildAllowDecision(`echo ${JSON.stringify(lsOutput)}`, `[DeepLake direct] ls ${dir}`);
     }
 
     if (input.tool_name === "Bash") {
-      const findMatch = shellCmd.match(/^find\s+(\S+)\s+(?:-type\s+\S+\s+)?-name\s+'([^']+)'/);
+      // Anchor to the exact shape the VFS serves: `find <dir> [-type X] -name
+      // '<pat>'` optionally piped to `wc -l`. A prefix match would accept
+      // `find … -name '*.md' -delete` or `… -o -name '…'` and silently drop the
+      // trailing semantics; anything else falls through to guidance.
+      // No `-type` clause: the VFS find handler can't enforce a type filter, so
+      // accepting `-type d` and ignoring it would return wrong results. Such
+      // commands fall through to guidance instead.
+      const findMatch = shellCmd.match(/^find\s+(\S+)\s+-name\s+(?:'([^']+)'|"([^"]+)"|([^\s|]+))\s*(?:\|\s*wc\s+-l)?\s*$/);
       if (findMatch) {
         const dir = findMatch[1].replace(/\/+$/, "") || "/";
-        const namePattern = sqlLike(findMatch[2]).replace(/\*/g, "%").replace(/\?/g, "_");
-        logFn(`direct find: ${dir} -name '${findMatch[2]}'`);
+        const rawPattern = findMatch[2] ?? findMatch[3] ?? findMatch[4] ?? "";
+        const namePattern = sqlLike(rawPattern).replace(/\*/g, "%").replace(/\?/g, "_");
+        logFn(`direct find: ${dir} -name '${rawPattern}'`);
         const paths = await findVirtualPathsFn(api, table, sessionsTable, dir, namePattern);
         let result = paths.join("\n") || "";
         if (/\|\s*wc\s+-l\s*$/.test(shellCmd)) result = String(paths.length);
@@ -515,10 +540,17 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
       }
     }
   } catch (e: any) {
-    logFn(`direct query failed, falling back to shell: ${e.message}`);
+    logFn(`direct query failed: ${e.message}`);
   }
 
-  return buildFallbackDecision(shellCmd, shellBundle);
+  // No compiled handler matched (or a direct query failed). Do NOT return null
+  // here: null hands the ORIGINAL command back to Claude Code's host shell, and
+  // the command only passed isSafe() — it isn't guaranteed to be confined to
+  // the (non-existent) virtual paths. `sort /etc/passwd ~/.deeplake/memory/x >
+  // /tmp/out` would still read/write real files. Replace it with the retry
+  // guidance so nothing reaches the host shell.
+  logFn(`unroutable memory command, returning guidance: ${shellCmd}`);
+  return buildRetryGuidanceDecision(input.tool_name);
 }
 
 /* c8 ignore start */
