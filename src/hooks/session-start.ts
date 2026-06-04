@@ -14,12 +14,15 @@ import { loadConfig } from "../config.js";
 import { DeeplakeApi } from "../deeplake-api.js";
 import { sqlStr } from "../utils/sql.js";
 import { projectNameFromCwd } from "../utils/project-name.js";
+import { buildSessionPath } from "../utils/session-path.js";
+import { listActiveOrgSkills, sessionBucket, buildSkillsActiveInsert } from "../skillify/skills-active.js";
 import { readStdin } from "../utils/stdin.js";
 import { log as _log } from "../utils/debug.js";
 import { getInstalledVersion } from "../utils/version-check.js";
 import { makeWikiLogger } from "../utils/wiki-log.js";
 import { autoUpdate } from "./shared/autoupdate.js";
 import { autoPullSkills } from "../skillify/auto-pull.js";
+import { maybeFireSkillOpt } from "../skillify/skillopt-trigger.js";
 import { renderSkillifyCommands } from "../cli/skillify-spec.js";
 import { renderContextBlock } from "./shared/context-renderer.js";
 import { countLocalManifestEntries } from "../skillify/local-manifest.js";
@@ -225,6 +228,35 @@ async function main(): Promise<void> {
           await api.ensureSessionsTable(sessionsTable);
           await createPlaceholder(api, table, input.session_id, input.cwd ?? "", config.userName, config.orgName, config.workspaceId, pluginVersion);
           log("placeholder created");
+
+          // Skill attribution (measurement): record which org-shared skills were in
+          // context this session + a deterministic A/B bucket. This is the label that
+          // makes skill value measurable (sessions with vs without skill X / v1 vs v2).
+          // Org skills only (`<name>--<author>` dirs). Opt-out: HIVEMIND_SKILL_ATTRIBUTION=0.
+          // Swallowed — must never fail SessionStart.
+          if (process.env.HIVEMIND_SKILL_ATTRIBUTION !== "0") {
+            try {
+              const skills = listActiveOrgSkills();
+              const attrSessionPath = buildSessionPath(config, input.session_id);
+              const sql = buildSkillsActiveInsert({
+                sessionsTable,
+                sessionPath: attrSessionPath,
+                filename: attrSessionPath.split("/").pop() ?? "",
+                userName: config.userName,
+                projectName: projectNameFromCwd(input.cwd),
+                pluginVersion,
+                sessionId: input.session_id,
+                cwd: input.cwd,
+                skills,
+                bucket: sessionBucket(input.session_id),
+                ts: new Date().toISOString(),
+              });
+              await api.query(sql);
+              log(`skills_active recorded: ${skills.length} org skills, bucket ${sessionBucket(input.session_id)}`);
+            } catch (e: any) {
+              log(`skills_active attribution failed (swallowed): ${e?.message ?? e}`);
+            }
+          }
         } else {
           const reason = process.env.HIVEMIND_CAPTURE === "false"
             ? "HIVEMIND_CAPTURE=false"
@@ -266,6 +298,12 @@ async function main(): Promise<void> {
   // never-rejecting), so no try/catch needed here.
   const pullResult = await autoPullSkills();
   log(`autopull: pulled=${pullResult.pulled} skipped=${pullResult.skipped}`);
+
+  // Weekly, user-side SkillOpt auto-fire. Non-blocking: checks a once-a-week throttle and, if due,
+  // spawns a DETACHED worker that runs the optimize loop with the user's own agent. Never awaits;
+  // all failures swallowed inside. Opt-out: HIVEMIND_SKILLOPT_DISABLED=1.
+  try { const r = maybeFireSkillOpt(); log(`skillopt: ${r.fired ? "fired (detached worker)" : `skipped (${r.reason})`}`); }
+  catch (e: any) { log(`skillopt trigger failed (swallowed): ${e?.message ?? e}`); }
 
   // Version notice in additionalContext — informational only; the
   // upgrade-applied signal goes to stderr from inside autoUpdate (which
