@@ -1,0 +1,38 @@
+# CodeRabbit configuration — https://docs.coderabbit.ai/getting-started/yaml-configuration
+# This repo-level file overrides the org UI settings for hivemind.
+language: en-US
+reviews:
+  profile: chill # fewer low-value nitpicks; "assertive" is the only alternative
+  request_changes_workflow: false
+  high_level_summary: true
+  auto_review:
+    enabled: true
+    base_branches: ["main"]
+  # Don't spend review on generated / vendored / lock artifacts.
+  path_filters:
+    - "!**/package-lock.json"
+    - "!**/bundle/**"
+    - "!**/dist/**"
+    - "!docs/screenshots/**"
+  # Repo-specific context so CodeRabbit stops re-raising known won't-fix items.
+  path_instructions:
+    - path: "src/hooks/**"
+      instructions: >
+        These pre-tool-use hooks are a best-effort STRING-based gate over a
+        virtual filesystem at ~/.deeplake/memory. They match literal path
+        patterns in the command text; they CANNOT intercept dynamically
+        computed paths (e.g. os.homedir() + "...") — do not suggest runtime
+        path resolution. Decisions are tool-shaped: Read needs file_path,
+        Bash/Grep/Glob use a command-shaped echo. The key invariant to flag is
+        that a memory-touching command must never be handed to the real host
+        shell.
+    - path: ".github/workflows/**"
+      instructions: >
+        Read-only jobs should set persist-credentials: false. The `release`
+        job legitimately persists GITHUB_TOKEN because it runs `git fetch
+        origin main` AND `git push`; only flag it if proposing a COMPLETE
+        inline-auth replacement for BOTH operations, not a partial patch.
+    - path: "tests/**"
+      instructions: >
+        Prefer asserting on specific values (paths, messages) over generic
+        substrings.
