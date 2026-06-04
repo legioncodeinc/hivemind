@@ -21,7 +21,7 @@ import { getInstalledVersion } from "../utils/version-check.js";
 import { makeWikiLogger } from "../utils/wiki-log.js";
 import { autoUpdate } from "./shared/autoupdate.js";
 import { autoPullSkills } from "../skillify/auto-pull.js";
-import { maybeFireSkillOpt } from "../skillify/skillopt-trigger.js";
+import { runWeeklySkillOpt } from "../skillify/skillopt-trigger.js";
 import { renderSkillifyCommands } from "../cli/skillify-spec.js";
 import { renderContextBlock } from "./shared/context-renderer.js";
 import { countLocalManifestEntries } from "../skillify/local-manifest.js";
@@ -314,7 +314,7 @@ async function main(): Promise<void> {
   // Weekly, user-side SkillOpt auto-fire. Non-blocking: checks a once-a-week throttle and, if due,
   // spawns a DETACHED worker that runs the optimize loop with the user's own agent. Never awaits;
   // all failures swallowed inside. Opt-out: HIVEMIND_SKILLOPT_DISABLED=1.
-  try { const r = maybeFireSkillOpt(); log(`skillopt: ${r.fired ? "fired (detached worker)" : `skipped (${r.reason})`}`); }
+  try { const r = runWeeklySkillOpt(); log(`skillopt: ${r.fired ? "fired (detached worker)" : `skipped (${r.reason})`}`); }
   catch (e: any) { log(`skillopt trigger failed (swallowed): ${e?.message ?? e}`); }
 
   // Version notice in additionalContext — informational only; the

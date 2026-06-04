@@ -20,7 +20,7 @@ import { tryAcquireWorkerLock, releaseWorkerLock } from "./state.js";
 const log = (m: string) => _log("skillopt-trigger", m);
 
 export const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-/** Cross-process lock key arbitrating the weekly fire (see maybeFireSkillOpt). */
+/** Cross-process lock key arbitrating the weekly fire (see runWeeklySkillOpt). */
 const LOCK_KEY = "skillopt-weekly";
 
 /**
@@ -92,7 +92,7 @@ export interface FireResult {
  * Decide + (if due) fire. Stamps lastRun BEFORE spawning so a crashing worker can't hot-loop
  * every session. Non-blocking; returns immediately.
  */
-export function maybeFireSkillOpt(deps: FireDeps = {}): FireResult {
+export function runWeeklySkillOpt(deps: FireDeps = {}): FireResult {
   const env = deps.env ?? process.env;
   // Default ON. Fires weekly for everyone; opt-out via HIVEMIND_SKILLOPT_DISABLED=1.
   if (env.HIVEMIND_SKILLOPT_DISABLED === "1") return { fired: false, reason: "disabled" };

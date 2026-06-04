@@ -23,7 +23,7 @@ const ensureSessionsTableMock = vi.fn();
 const queryMock = vi.fn();
 const knownTablesMock = vi.fn();
 const autoUpdateMock = vi.fn();
-const maybeFireSkillOptMock = vi.fn();
+const runWeeklySkillOptMock = vi.fn();
 
 vi.mock("../../src/utils/stdin.js", () => ({ readStdin: (...a: any[]) => stdinMock(...a) }));
 vi.mock("../../src/commands/auth.js", () => ({
@@ -44,12 +44,12 @@ vi.mock("../../src/deeplake-api.js", () => ({
     async knownTablesOrNull() { return knownTablesMock(); }
   },
 }));
-// SkillOpt weekly trigger mocked at the boundary: the real maybeFireSkillOpt
+// SkillOpt weekly trigger mocked at the boundary: the real runWeeklySkillOpt
 // spawns a detached worker + writes a state file (side effects we must NOT do
 // in unit tests). Its own logic is covered in tests/shared/skillopt-trigger.test.ts.
 vi.mock("../../src/skillify/skillopt-trigger.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/skillify/skillopt-trigger.js")>();
-  return { ...actual, maybeFireSkillOpt: (...a: any[]) => maybeFireSkillOptMock(...a) };
+  return { ...actual, runWeeklySkillOpt: (...a: any[]) => runWeeklySkillOptMock(...a) };
 });
 // autoUpdate mocked at the boundary (CLAUDE.md rule 5) — the helper
 // itself is exhaustively tested in autoupdate.test.ts. Here we only
@@ -165,7 +165,7 @@ beforeEach(() => {
   maybeAutoMineLocalMock.mockReset().mockReturnValue({ triggered: false, reason: "no-claude-sessions" });
   // Default: SkillOpt weekly trigger throttled (no spawn). Individual tests
   // override to exercise the fired / error branches.
-  maybeFireSkillOptMock.mockReset().mockReturnValue({ fired: false, reason: "throttled" });
+  runWeeklySkillOptMock.mockReset().mockReturnValue({ fired: false, reason: "throttled" });
   // Disable auto-pull during this test: autoPullSkills would otherwise issue
   // an extra SQL query (against `skills`) through the same DeeplakeApi mock,
   // breaking the placeholder-branching call-count assertions. The auto-pull
@@ -360,13 +360,13 @@ describe("session-start hook — placeholder branching", () => {
   });
 
   it("logs the SkillOpt fired branch when the weekly trigger spawns a worker", async () => {
-    maybeFireSkillOptMock.mockReturnValue({ fired: true, reason: "spawned" });
+    runWeeklySkillOptMock.mockReturnValue({ fired: true, reason: "spawned" });
     await runHook();
     expect(debugLogMock).toHaveBeenCalledWith("skillopt: fired (detached worker)");
   });
 
   it("swallows a throwing SkillOpt trigger (never breaks SessionStart)", async () => {
-    maybeFireSkillOptMock.mockImplementation(() => { throw new Error("fire boom"); });
+    runWeeklySkillOptMock.mockImplementation(() => { throw new Error("fire boom"); });
     const out = await runHook();
     expect(out).toBeTruthy();
     expect(debugLogMock).toHaveBeenCalledWith(

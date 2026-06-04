@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { shouldFire, maybeFireSkillOpt, WEEK_MS } from "../../src/skillify/skillopt-trigger.js";
+import { shouldFire, runWeeklySkillOpt, WEEK_MS } from "../../src/skillify/skillopt-trigger.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = 1_900_000_000_000; // fixed clock
@@ -21,12 +21,12 @@ describe("shouldFire (weekly throttle)", () => {
   });
 });
 
-describe("maybeFireSkillOpt (auto-fire decision)", () => {
-  function harness(over: Partial<Parameters<typeof maybeFireSkillOpt>[0]> = {}) {
+describe("runWeeklySkillOpt (auto-fire decision)", () => {
+  function harness(over: Partial<Parameters<typeof runWeeklySkillOpt>[0]> = {}) {
     const saved: unknown[] = [];
     const spawn = vi.fn();
     const release = vi.fn();
-    const res = maybeFireSkillOpt({
+    const res = runWeeklySkillOpt({
       now: NOW,
       save: (s) => saved.push(s),
       spawnWorker: spawn,
