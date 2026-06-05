@@ -19,23 +19,27 @@ export interface Anchor {
   evidence: string; // the user turn that triggered it (truncated)
 }
 
-// User pushback: rejection / correction of what the assistant just produced.
-const PUSHBACK = /\b(no|nope|wrong|incorrect|not what|that'?s not|does ?n'?t work|did ?n'?t work|do ?n'?t work|wo ?n'?t work|is ?n'?t|that'?s wrong|broke|broken|still (failing|broken|not working|wrong|the same)|try again|undo|revert that|that fail)/i;
+// Unambiguous correction — ALWAYS an anchor, even amid polite words. This must
+// win over BENIGN so "thanks, but this is still failing" still fires.
+const STRONG = /\b(wrong|incorrect|not what|that'?s not|does ?n'?t work|did ?n'?t work|do ?n'?t work|wo ?n'?t work|is ?n'?t|broke|broken|still (failing|broken|not working|wrong|the same)|try again|undo|revert that|that fail|not right)/i;
 
-// Clear benign negatives we don't want to fire on (keeps obvious false positives
-// out of the judge to save tokens). Intentionally narrow — when in doubt, fire.
-const BENIGN = /\b(no (problem|worries|need|biggie)|no,? thanks|all good|works? (now|great|fine|perfectly)|that works|perfect|looks good|thank)/i;
+// Ambiguous negation: "no" is pushback ("no, that's off") but also benign
+// ("no problem"), so it only anchors when the turn isn't a clear benign phrase.
+const AMBIGUOUS = /\b(no|nope)\b/i;
+const BENIGN = /\b(no (problem|worries|need|biggie)|no,? thanks|all good|works? (now|great|fine|perfectly)|that works|perfect|looks good)\b/i;
 
 /**
  * Detect a correction anchor in a windowed slice of turns. Only a USER turn that
  * immediately follows an ASSISTANT turn can be pushback (the first user turn is
- * the request, not a reaction).
+ * the request, not a reaction). Recall-oriented: a strong correction phrase fires
+ * regardless of polite framing; only the bare "no" is benign-gated.
  */
 export function detectAnchor(turns: Turn[]): Anchor {
   for (let i = 1; i < turns.length; i++) {
     const t = turns[i];
     if (t.role !== "USER" || turns[i - 1].role !== "ASSISTANT") continue;
-    if (PUSHBACK.test(t.text) && !BENIGN.test(t.text)) {
+    const anchored = STRONG.test(t.text) || (AMBIGUOUS.test(t.text) && !BENIGN.test(t.text));
+    if (anchored) {
       return { anchored: true, kind: "correction", evidence: t.text.slice(0, 200) };
     }
   }

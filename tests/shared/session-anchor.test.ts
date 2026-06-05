@@ -34,6 +34,11 @@ describe("detectAnchor", () => {
     }
   });
 
+  it("fires on polite-but-failing corrections (strong pushback overrides benign words)", () => {
+    expect(detectAnchor([a("here"), u("thanks, but this is still failing")]).anchored).toBe(true);
+    expect(detectAnchor([a("done"), u("perfect start, but that's still wrong")]).anchored).toBe(true);
+  });
+
   it("returns none when the user is satisfied / silent", () => {
     expect(detectAnchor([u("do X"), a("done")]).anchored).toBe(false);
     expect(detectAnchor([]).anchored).toBe(false);
