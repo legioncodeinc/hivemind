@@ -9,21 +9,16 @@ import { spawn } from "node:child_process";
 /** (systemPrompt, userPrompt) -> raw model text. */
 export type ModelCall = (systemPrompt: string, userPrompt: string) => Promise<string>;
 
-// Deny EVERY write/exec/network tool — the judge & proposer get untrusted captured
-// transcript text in their prompts, so a prompt-injected failure example must not be
-// able to act. Enumerate the write-capable ones (MultiEdit/NotebookEdit/TodoWrite)
-// too, not just the obvious Edit/Write.
-const DENY = [
-  "Bash", "Edit", "MultiEdit", "Write", "NotebookEdit", "Read", "Glob", "Grep",
-  "WebFetch", "WebSearch", "Task", "TodoWrite",
-];
-
 export function claudeModel(model: string, opts: { timeoutMs?: number } = {}): ModelCall {
   const timeoutMs = opts.timeoutMs ?? 120_000;
   return (system, user) => new Promise<string>((resolve, reject) => {
     const args = [
       "-p", user, "--model", model, "--no-session-persistence",
-      "--output-format", "json", "--system-prompt", system, "--disallowed-tools", ...DENY,
+      "--output-format", "json", "--system-prompt", system,
+      // Empty allow-list = NO tools available. Authoritative: it covers built-ins AND
+      // any MCP/configured tools (a deny-list can't enumerate those), so prompt-injected
+      // transcript text in the judge/proposer prompt can never trigger tool use.
+      "--tools", "",
     ];
     // HIVEMIND_CAPTURE=false so these judge/proposer calls are NOT captured as
     // real sessions — otherwise the engine pollutes the very sessions data it
