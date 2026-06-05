@@ -27,6 +27,7 @@ import { autoUpdate } from "../shared/autoupdate.js";
 import { autoPullSkills } from "../../skillify/auto-pull.js";
 import { GOALS_INSTRUCTIONS_CLI } from "../shared/goals-instructions.js";
 import { spawnGraphPullWorker } from "../../graph/spawn-pull-worker.js";
+import { graphContextLine } from "../../graph/session-context.js";
 const log = (msg: string) => _log("hermes-session-start", msg);
 
 const __bundleDir = dirname(fileURLToPath(import.meta.url));
@@ -205,9 +206,14 @@ async function main(): Promise<void> {
   // `hivemind goal add/list/...` via terminal. End state in tables
   // is identical to the VFS-routed path.
   const baseWithGoals = creds?.token ? `${baseContext}\n\n${GOALS_INSTRUCTIONS_CLI}` : baseContext;
-  const additional = rulesBlock
+  // Code-graph inject. Unlike claude-code/cursor this is user-visible in the
+  // Hermes TUI (Hermes has no model-only SessionStart channel), but an
+  // always-present structural index is worth the extra lines. graphContextLine
+  // returns null — and appends nothing — when no graph exists for this repo yet.
+  const graphNote = graphContextLine(cwd) ?? "";
+  const additional = (rulesBlock
     ? `${baseWithGoals}\n\n${rulesBlock}`
-    : baseWithGoals;
+    : baseWithGoals) + graphNote;
 
   // Hermes expects { context: "..." } on stdout
   console.log(JSON.stringify({ context: additional }));
