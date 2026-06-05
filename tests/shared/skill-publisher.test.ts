@@ -27,6 +27,11 @@ describe("bumpVersion", () => {
     expect(r).toMatchObject({ oldVersion: 1, newVersion: 2 });
     expect(r.frontmatter).toMatch(/version: 2\n---\n$/);
   });
+  it("creates a frontmatter block when the doc has none", () => {
+    const r = bumpVersion("");
+    expect(r).toMatchObject({ oldVersion: 1, newVersion: 2 });
+    expect(r.frontmatter).toBe("---\nversion: 2\n---\n");
+  });
 });
 
 describe("publishSkillEdit", () => {

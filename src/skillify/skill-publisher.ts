@@ -31,9 +31,14 @@ export function bumpVersion(frontmatter: string): { frontmatter: string; oldVers
   const m = frontmatter.match(/^version:\s*(\d+)\s*$/m);
   const oldVersion = m ? parseInt(m[1], 10) : 1;
   const newVersion = oldVersion + 1;
-  const next = m
-    ? frontmatter.replace(/^version:\s*\d+\s*$/m, `version: ${newVersion}`)
-    : frontmatter.replace(/\n---\n$/, `\nversion: ${newVersion}\n---\n`);
+  let next: string;
+  if (m) {
+    next = frontmatter.replace(/^version:\s*\d+\s*$/m, `version: ${newVersion}`); // has a version line
+  } else if (/\n---\n$/.test(frontmatter)) {
+    next = frontmatter.replace(/\n---\n$/, `\nversion: ${newVersion}\n---\n`);     // frontmatter, no version
+  } else {
+    next = `---\nversion: ${newVersion}\n---\n`;                                   // no frontmatter → create one
+  }
   return { frontmatter: next, oldVersion, newVersion };
 }
 
