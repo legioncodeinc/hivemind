@@ -55,6 +55,15 @@ describe("loadGraphIgnore", () => {
     expect(cfg.ignoreDirs).toEqual([...DEFAULT_IGNORE_DIRS]);
     expect(cfg.respectGitignore).toBe(true);
   });
+
+  it("falls back per-field when a present config has wrong types", () => {
+    // valid JSON object, but ignoreDirs isn't an array and respectGitignore isn't a boolean
+    writeFileSync(join(dir, "graph-ignore.json"),
+      JSON.stringify({ ignoreDirs: "not-an-array", respectGitignore: 123 }));
+    const cfg = loadGraphIgnore(dir);
+    expect(cfg.ignoreDirs).toEqual([...DEFAULT_IGNORE_DIRS]); // non-array → defaults
+    expect(cfg.respectGitignore).toBe(true);                  // non-boolean → true
+  });
 });
 
 describe("pathHasIgnoredSegment", () => {

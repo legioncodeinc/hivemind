@@ -461,6 +461,9 @@ export default defineConfig({
         "src/graph/last-build.ts":           { statements: 90, branches: 80, functions: 90, lines: 90 },
         "src/hooks/graph-on-stop.ts":        { statements: 85, branches: 70, functions: 85, lines: 85 },
         "src/commands/graph.ts":             { statements: 65, branches: 55, functions: 90, lines: 65 },
+        // graph-pull-hash branch — Python cross-file resolution + build ignores.
+        "src/graph/ignore-config.ts":        { statements: 90, branches: 90, functions: 90, lines: 90 },
+        "src/graph/resolve/cross-file.ts":   { statements: 90, branches: 90, functions: 90, lines: 90 },
         "src/utils/repo-identity.ts":        { statements: 85, branches: 50, functions: 90, lines: 90 },
         // fix/goals-vfs-skew — the Deeplake VFS (goal/kpi routing, graph
         // bridge, session reads, soft-close/status-transition). Previously

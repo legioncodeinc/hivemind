@@ -52,6 +52,28 @@ describe("resolvePythonModule", () => {
       .toBe("server/graph_service/dto/common.py");
   });
 
+  it("resolves a bare `.` (current package) to its __init__.py", () => {
+    // `from . import x` in pkg/sub/mod.py → the current package's __init__.py
+    const pkg = new Set(["pkg/sub/mod.py", "pkg/sub/__init__.py"]);
+    expect(resolvePythonModule("pkg/sub/mod.py", ".", pkg)).toBe("pkg/sub/__init__.py");
+  });
+
+  it("resolves a relative package to its __init__.pyi (stub-only package)", () => {
+    // exercises the .pyi extension on the __init__ fallback
+    const pkg = new Set(["pkg/mod.py", "pkg/sub/__init__.pyi"]);
+    expect(resolvePythonModule("pkg/mod.py", ".sub", pkg)).toBe("pkg/sub/__init__.pyi");
+  });
+
+  it("returns null for a relative import that matches neither a module nor a package", () => {
+    // exercises the fall-through: no <base>.py and no <base>/__init__.py
+    expect(resolvePythonModule("pkg/mod.py", ".ghost", new Set(["pkg/mod.py"]))).toBeNull();
+  });
+
+  it("returns null for an empty / dot-less specifier with no segments", () => {
+    // absolute branch (no leading dots) with an empty tail → nothing to anchor
+    expect(resolvePythonModule("a.py", "", new Set(["a.py"]))).toBeNull();
+  });
+
   it("returns null for stdlib / third-party (no matching repo file)", () => {
     expect(resolvePythonModule("server/graph_service/routers/ingest.py", "os", known)).toBeNull();
     expect(resolvePythonModule("server/graph_service/routers/ingest.py", "fastapi", known)).toBeNull();
