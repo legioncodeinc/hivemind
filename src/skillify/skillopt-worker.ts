@@ -1,32 +1,51 @@
 #!/usr/bin/env node
 /**
- * Detached weekly SkillOpt worker (spawned by skillopt-trigger). Runs the loop ONCE:
- *   1. detect a deficient skill (behavioral: sessions that loaded it still scored low)
- *   2. optimizer proposes a bounded edit (v2)
- *   3. real-rollout gate: keep v2 only if it measurably beats v1
- *   4. silent canary publish + post-publish monitor / auto-revert
+ * Detached weekly SkillOpt worker (spawned by skillopt-trigger). Runs the cycle ONCE:
+ *   1. detect deficient skills from real invocations (anchor + judge, windowed)
+ *   2. ≥5 fire gate (act on a pattern, not noise)
+ *   3. propose a bounded edit per deficient skill and write a REVIEW PROPOSAL
  *
- * Uses the user's own agent (claude -p / codex), so no org API key. Runs in the background; the
- * user never notices. HIVEMIND_SKILLOPT_WORKER=1 is set by the trigger as a recursion guard.
- *
- * STATUS: scaffold. Steps 1/3/4 depend on prerequisites not yet shipped (deployed attribution data
- * for detection + monitoring, and a local rollout sandbox). The loop ENGINE (rollout->optimize->gate)
- * is prototyped in experiments/skillopt-spike (skillopt-loop.ts, validated both directions). This
- * entry exists so the trigger has a real, spawnable target and the wiring is testable end to end.
+ * It does NOT auto-publish: the offline gate isn't trustworthy (spike finding), so
+ * live publish is reserved for the real-usage A/B (deferred). Runs on the user's own
+ * agent (claude -p) — no org key, cost lands on the user — in the background, weekly.
+ * HIVEMIND_SKILLOPT_WORKER=1 is set by the trigger as a recursion guard.
  */
+import os from "node:os";
+import path from "node:path";
 import { log as _log } from "../utils/debug.js";
+import { loadConfig } from "../config.js";
+import { DeeplakeApi } from "../deeplake-api.js";
+import { getStateDir } from "./state-dir.js";
+import { runSkillOptCycle, writeProposalToDisk, readSkillBodyFromDisk } from "./skillopt-engine.js";
 
 const log = (m: string) => _log("skillopt-worker", m);
 
 async function main(): Promise<void> {
   log("skillopt worker started (detached, weekly)");
-  // TODO(skillopt): wire the validated loop engine here once prerequisites land:
-  //   const skill = await detectDeficientSkill();        // needs deployed attribution + satisfaction
-  //   if (!skill) { log("no deficient skill found"); return; }
-  //   const v2 = await optimize(skill);                   // optimizer proposes a bounded edit
-  //   const gain = await gateViaRealRollout(skill, v2);   // keep only if v2 beats v1 (validated)
-  //   if (gain > THRESHOLD) await canaryPublish(skill, v2); // silent; monitor + auto-revert
-  log("skillopt worker: loop body not yet enabled (prerequisites pending) — exiting cleanly");
+  const config = loadConfig();
+  if (!config?.token) { log("no config/credentials — exiting"); return; }
+
+  const api = new DeeplakeApi(config.token, config.apiUrl, config.orgId, config.workspaceId, config.tableName);
+  const query = (sql: string) => api.query(sql) as Promise<Array<Record<string, unknown>>>;
+  const skillsRoot = path.join(os.homedir(), ".claude", "skills");
+  const proposalsRoot = path.join(getStateDir(), "skillopt", "proposals");
+  const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(); // 30-day lookback
+
+  const res = await runSkillOptCycle({
+    query,
+    sessionsTable: config.sessionsTableName,
+    readSkillBody: (name, author) => readSkillBodyFromDisk(skillsRoot, name, author),
+    writeProposal: (rec) => writeProposalToDisk(proposalsRoot, rec),
+    detector: { sinceIso, limit: 5000 },
+    now: new Date().toISOString(),
+  });
+
+  if (!res.fired) {
+    log(`skillopt: ${res.deficientCount} deficient skill(s) — below the fire gate, no action`);
+  } else {
+    const changed = res.proposals.filter((p) => p.changed).length;
+    log(`skillopt: fired — ${res.deficientCount} deficient, ${changed} edit proposal(s) written to ${proposalsRoot}`);
+  }
 }
 
 main().catch((e) => { log(`fatal (swallowed): ${(e as Error)?.message ?? e}`); process.exit(0); });
