@@ -43,6 +43,15 @@ describe("applyEdits", () => {
     // appended content sits before the protected block
     expect(r.skill.indexOf("2. b")).toBeLessThan(r.skill.indexOf(SU_START));
   });
+
+  it("rejects a target that SPANS INTO the protected region (not just one starting inside)", () => {
+    const doc = `## Rules\n1. a\n${SU_START}\nLongitudinal guidance.\n${SU_END}`;
+    // target begins before SLOW_UPDATE_START but extends into the protected block
+    const r = applyEdits(doc, [{ op: "delete", target: `1. a\n${SU_START}\nLongitudinal` }]);
+    expect(r.applied).toBe(0);
+    expect(r.skill).toContain("Longitudinal guidance.");
+    expect(r.report.some((l) => l.includes("protected slow-update region"))).toBe(true);
+  });
 });
 
 describe("selectEdits (edit budget)", () => {

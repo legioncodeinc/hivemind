@@ -30,7 +30,11 @@ function targetsProtected(skill: string, target: string): boolean {
   const r = protectedRange(skill);
   if (!r || !target) return false;
   const idx = skill.indexOf(target);
-  return idx !== -1 && idx >= r[0] && idx < r[1];
+  if (idx === -1) return false;
+  // Reject if the target RANGE [idx, idx+len) overlaps the protected range at all —
+  // not just if it starts inside it (a target that begins just before SLOW_UPDATE_START
+  // and spans into the block must not be allowed to delete protected guidance).
+  return idx < r[1] && idx + target.length > r[0];
 }
 
 /** Enforce the edit budget ("textual learning rate"): keep at most `budget` edits. */
