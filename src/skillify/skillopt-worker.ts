@@ -17,6 +17,7 @@ import { loadConfig } from "../config.js";
 import { DeeplakeApi } from "../deeplake-api.js";
 import { getStateDir } from "./state-dir.js";
 import { runSkillOptCycle, writeProposalToDisk, readSkillBodyFromDisk } from "./skillopt-engine.js";
+import { loadMeta, appendMeta, priorEditSummaries, alreadyProposed, metaEntryFor } from "./skillopt-meta.js";
 
 const log = (m: string) => _log("skillopt-worker", m);
 
@@ -29,6 +30,8 @@ async function main(): Promise<void> {
   const query = (sql: string) => api.query(sql) as Promise<Array<Record<string, unknown>>>;
   const skillsRoot = path.join(os.homedir(), ".claude", "skills");
   const proposalsRoot = path.join(getStateDir(), "skillopt", "proposals");
+  const metaFile = path.join(getStateDir(), "skillopt", "meta.jsonl");
+  const metaCache = loadMeta(metaFile);
   const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(); // 30-day lookback
 
   const res = await runSkillOptCycle({
@@ -36,6 +39,11 @@ async function main(): Promise<void> {
     sessionsTable: config.sessionsTableName,
     readSkillBody: (name, author) => readSkillBodyFromDisk(skillsRoot, name, author),
     writeProposal: (rec) => writeProposalToDisk(proposalsRoot, rec),
+    meta: {
+      prior: (n, a) => priorEditSummaries(metaCache, n, a),
+      has: (n, a, edits) => alreadyProposed(metaCache, n, a, edits),
+      record: (n, a, edits) => { const e = metaEntryFor(n, a, edits, new Date().toISOString()); appendMeta(metaFile, e); metaCache.push(e); },
+    },
     detector: { sinceIso, limit: 5000 },
     now: new Date().toISOString(),
   });

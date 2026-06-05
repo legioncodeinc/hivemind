@@ -20,8 +20,9 @@ export interface Proposal {
 }
 
 export interface ProposeConfig {
-  editBudget?: number; // max edits to keep (default 3)
-  model?: ModelCall;   // injected; default = claude sonnet
+  editBudget?: number;     // max edits to keep (default 3)
+  model?: ModelCall;       // injected; default = claude sonnet
+  priorEdits?: string[];   // meta-skill: edits already tried for this skill (don't repeat)
 }
 
 const SYSTEM =
@@ -34,9 +35,12 @@ const SYSTEM =
   'insert_after/replace/delete>","content":"<new text; required for ' +
   'append/insert_after/replace>"}. Prefer the smallest change that fixes the weakness.';
 
-function buildUserPrompt(body: string, failures: string[]): string {
+function buildUserPrompt(body: string, failures: string[], priorEdits: string[]): string {
   const cases = failures.slice(0, 8).map((f, i) => `${i + 1}. ${f}`).join("\n");
-  return `CURRENT SKILL:\n${body}\n\nCONFIRMED FAILURES it produced (user pushed back AND a judge confirmed the task was not accomplished):\n${cases}\n\nPropose the bounded edits. JSON array only.`;
+  const prior = priorEdits.length
+    ? `\n\nALREADY TRIED for this skill on earlier runs (do NOT repeat these — propose something different, or nothing):\n${priorEdits.slice(0, 12).map((p) => `- ${p}`).join("\n")}`
+    : "";
+  return `CURRENT SKILL:\n${body}\n\nCONFIRMED FAILURES it produced (user pushed back AND a judge confirmed the task was not accomplished):\n${cases}${prior}\n\nPropose the bounded edits. JSON array only.`;
 }
 
 const OPS = new Set<EditOp>(["append", "insert_after", "replace", "delete"]);
@@ -77,7 +81,7 @@ export async function proposeSkillEdit(
   const model = cfg.model ?? claudeModel("sonnet");
   let raw: string;
   try {
-    raw = await model(SYSTEM, buildUserPrompt(skillBody, failures));
+    raw = await model(SYSTEM, buildUserPrompt(skillBody, failures, cfg.priorEdits ?? []));
   } catch {
     return { edits: [], editedBody: skillBody, report: ["proposer model call failed"], changed: false };
   }

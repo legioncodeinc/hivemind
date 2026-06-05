@@ -42,6 +42,11 @@ export interface CycleDeps {
   fireThreshold?: number; // deficient-skill count to fire (default 5)
   maxProposals?: number;  // cap edits proposed per cycle (default 10)
   now: string;            // ISO timestamp (injected — Date is awkward in workers)
+  meta?: {                // optimizer cross-run memory (skillopt-meta); optional
+    prior: (name: string, author: string) => string[];
+    has: (name: string, author: string, edits: Edit[]) => boolean;
+    record: (name: string, author: string, edits: Edit[]) => void;
+  };
 }
 
 export interface CycleResult {
@@ -64,16 +69,20 @@ export async function runSkillOptCycle(deps: CycleDeps): Promise<CycleResult> {
   for (const s of targets) {
     const body = deps.readSkillBody(s.name, s.author);
     if (!body) continue; // not installed locally → nothing to edit
-    const p = await proposeSkillEdit(body, s.examples, deps.proposer);
-    if (p.changed) {
+    const priorEdits = deps.meta?.prior(s.name, s.author) ?? [];
+    const p = await proposeSkillEdit(body, s.examples, { ...deps.proposer, priorEdits });
+    // dedup against the meta memory — don't re-write an edit already tried for this skill.
+    const isDup = p.changed && (deps.meta?.has(s.name, s.author, p.edits) ?? false);
+    if (p.changed && !isDup) {
       deps.writeProposal({
         name: s.name, author: s.author,
         invocations: s.invocations, confirmedFailures: s.confirmedFailures, failureRate: s.failureRate,
         examples: s.examples, edits: p.edits, report: p.report,
         candidateBody: p.editedBody, createdAt: deps.now,
       });
+      deps.meta?.record(s.name, s.author, p.edits);
     }
-    proposals.push({ name: s.name, author: s.author, changed: p.changed, failureRate: s.failureRate });
+    proposals.push({ name: s.name, author: s.author, changed: p.changed && !isDup, failureRate: s.failureRate });
   }
   return { deficientCount, fired: true, proposals };
 }

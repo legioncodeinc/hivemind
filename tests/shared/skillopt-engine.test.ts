@@ -75,6 +75,27 @@ describe("runSkillOptCycle", () => {
     expect(written.some((w) => w.name === "bad0")).toBe(false);
   });
 
+  it("dedups against meta memory: a skill whose edit was already proposed isn't re-written", async () => {
+    const written: ProposalRecord[] = [];
+    const recorded: string[] = [];
+    const res = await runSkillOptCycle({
+      query: world(6), sessionsTable: "sessions", now: "t",
+      readSkillBody: () => "## Rules\n1. mock the client",
+      writeProposal: (r) => written.push(r),
+      detector: { judge: judge() }, proposer: { model: proposerModel() },
+      meta: {
+        prior: () => ["append: earlier idea"],          // fed to the proposer as context
+        has: (name) => name === "bad0",                  // bad0 already tried → dedup
+        record: (name) => recorded.push(name),
+      },
+    });
+    expect(res.fired).toBe(true);
+    expect(written).toHaveLength(5);                     // bad0 deduped
+    expect(written.some((w) => w.name === "bad0")).toBe(false);
+    expect(recorded).not.toContain("bad0");              // not recorded again
+    expect(res.proposals.find((p) => p.name === "bad0")!.changed).toBe(false);
+  });
+
   it("honors a custom fireThreshold", async () => {
     const res = await runSkillOptCycle({
       query: world(3), sessionsTable: "sessions", now: "t", fireThreshold: 3,
