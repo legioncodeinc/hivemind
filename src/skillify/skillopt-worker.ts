@@ -19,6 +19,7 @@ import { getStateDir } from "./state-dir.js";
 import { agentModel, detectScorerAgent } from "./agent-model.js";
 import { improveSkillIfFailed } from "./skillopt-improve.js";
 import { loadMeta, appendMeta, priorEditSummaries, alreadyProposed, metaEntryFor } from "./skillopt-meta.js";
+import { tryAcquireWorkerLock, releaseWorkerLock } from "./state.js";
 
 const log = (m: string) => _log("skillopt-worker", m);
 
@@ -62,28 +63,41 @@ async function main(): Promise<void> {
   const metaFile = path.join(getStateDir(), "skillopt", "meta.jsonl");
   const metaCache = loadMeta(metaFile);
 
-  log(`judging ${skillRef} in ${sessionId} (agent=${agent})`);
-  const r = await improveSkillIfFailed({
-    query,
-    sessionsTable: config.sessionsTableName,
-    skillsTable: config.skillsTableName,
-    workspaceId: config.workspaceId,
-    sessionId,
-    skillRef,
-    reaction,
-    judge: agentModel({ agent, role: "judge", bin: agentBin }),
-    proposerModel: agentModel({ agent, role: "proposer", bin: agentBin }),
-    collaborator: config.userName,
-    now,
-    prior: (n, a) => priorEditSummaries(metaCache, n, a),
-    alreadyProposed: (n, a, edits) => alreadyProposed(metaCache, n, a, edits),
-    recordEdit: (n, a, edits) => { const e = metaEntryFor(n, a, edits, now); appendMeta(metaFile, e); metaCache.push(e); },
-  });
+  // Serialize per-skill: the K=3 reactions spawn up to K workers for the SAME skill, and
+  // two users can react to the same org skill at once. A per-skill lock lets only one
+  // read-current-row + publish at a time, so two workers can't both publish a duplicate
+  // version+1 (codex P2). The loser skips; a later worker re-reads the now-improved skill
+  // → meta-dedup makes it a no-op. (Cross-MACHINE concurrency is still possible; the
+  // append-only history preserves every version and a deterministic pull tie-breaker is a
+  // sensible follow-up — but this removes the dominant same-machine multi-worker race.)
+  const lockKey = `skillopt-improve-${skillRef.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+  if (!tryAcquireWorkerLock(lockKey)) { log(`another worker is improving ${skillRef} — skipping`); return; }
+  try {
+    log(`judging ${skillRef} in ${sessionId} (agent=${agent})`);
+    const r = await improveSkillIfFailed({
+      query,
+      sessionsTable: config.sessionsTableName,
+      skillsTable: config.skillsTableName,
+      workspaceId: config.workspaceId,
+      sessionId,
+      skillRef,
+      reaction,
+      judge: agentModel({ agent, role: "judge", bin: agentBin }),
+      proposerModel: agentModel({ agent, role: "proposer", bin: agentBin }),
+      collaborator: config.userName,
+      now,
+      prior: (n, a) => priorEditSummaries(metaCache, n, a),
+      alreadyProposed: (n, a, edits) => alreadyProposed(metaCache, n, a, edits),
+      recordEdit: (n, a, edits) => { const e = metaEntryFor(n, a, edits, now); appendMeta(metaFile, e); metaCache.push(e); },
+    });
 
-  if (r.improved) log(`improved ${skillRef} → v${r.version} (${r.reason})`);
-  else if (r.failed) log(`${skillRef} failed but not improved: ${r.reason}`);
-  else if (r.judged) log(`${skillRef} ok — no change (${r.reason})`);
-  else log(`${skillRef} not judged: ${r.reason}`);
+    if (r.improved) log(`improved ${skillRef} → v${r.version} (${r.reason})`);
+    else if (r.failed) log(`${skillRef} failed but not improved: ${r.reason}`);
+    else if (r.judged) log(`${skillRef} ok — no change (${r.reason})`);
+    else log(`${skillRef} not judged: ${r.reason}`);
+  } finally {
+    releaseWorkerLock(lockKey);
+  }
 }
 
 main().catch((e) => { log(`fatal (swallowed): ${(e as Error)?.message ?? e}`); process.exit(0); });

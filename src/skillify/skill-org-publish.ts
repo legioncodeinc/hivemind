@@ -63,7 +63,10 @@ export async function readCurrentSkillRow(
     `source_agent, scope, contributors, description, trigger_text, body, version ` +
     `FROM "${sqlIdent(skillsTable)}" ` +
     `WHERE name = '${sqlStr(name)}' AND author = '${sqlStr(author)}' ` +
-    `ORDER BY version DESC LIMIT 1`,
+    // version DESC, then created_at DESC as a deterministic tie-breaker — if two workers
+    // ever land the same version (cross-machine race), readers resolve the SAME row
+    // instead of an arbitrary one (codex P2).
+    `ORDER BY version DESC, created_at DESC LIMIT 1`,
   );
   const r = rows?.[0];
   if (!r) return null;
