@@ -61,12 +61,19 @@
     "deeplake": "^0.3.30",
     "js-yaml": "^4.1.1",
     "just-bash": "^2.14.0",
-    "tree-sitter-python": "^0.21.0",
     "yargs-parser": "^22.0.0",
     "zod": "^4.3.6"
   },
   "optionalDependencies": {
     "tree-sitter": "^0.21.1",
+    "tree-sitter-c": "^0.23.6",
+    "tree-sitter-cpp": "^0.23.4",
+    "tree-sitter-go": "^0.23.4",
+    "tree-sitter-java": "^0.23.5",
+    "tree-sitter-javascript": "^0.23.1",
+    "tree-sitter-python": "^0.23.6",
+    "tree-sitter-ruby": "^0.23.1",
+    "tree-sitter-rust": "^0.23.3",
     "tree-sitter-typescript": "^0.23.2"
   },
   "devDependencies": {

@@ -58,12 +58,18 @@ await build({
     "onnxruntime-node",
     "onnxruntime-common",
     "sharp",
-    // graph-on-stop hook transitively imports the tree-sitter parser
-    // (via runBuildCommand → extractTypeScript). Native .node prebuilds
-    // can't be bundled by esbuild; resolved from node_modules at runtime.
+    // tree-sitter and language grammars ship native .node prebuilds that
+    // esbuild cannot bundle. Resolved from node_modules at runtime.
     "tree-sitter",
     "tree-sitter-typescript",
+    "tree-sitter-javascript",
     "tree-sitter-python",
+    "tree-sitter-go",
+    "tree-sitter-rust",
+    "tree-sitter-java",
+    "tree-sitter-ruby",
+    "tree-sitter-c",
+    "tree-sitter-cpp",
   ],
   define: {
     __HIVEMIND_VERSION__: JSON.stringify(hivemindVersion),
@@ -117,10 +123,17 @@ await build({
     "onnxruntime-node",
     "onnxruntime-common",
     "sharp",
-    // graph-on-stop transitively imports the tree-sitter native parser (G3).
+    // graph-pull-worker transitively imports all language extractors.
     "tree-sitter",
     "tree-sitter-typescript",
+    "tree-sitter-javascript",
     "tree-sitter-python",
+    "tree-sitter-go",
+    "tree-sitter-rust",
+    "tree-sitter-java",
+    "tree-sitter-ruby",
+    "tree-sitter-c",
+    "tree-sitter-cpp",
   ],
   define: {
     __HIVEMIND_VERSION__: JSON.stringify(hivemindVersion),
@@ -189,13 +202,17 @@ await build({
     "onnxruntime-node",
     "onnxruntime-common",
     "sharp",
-    // graph-on-stop transitively imports the tree-sitter native parser
-    // (via runBuildCommand → extractTypeScript); same externalization as
-    // the Claude Code bundle. Native .node prebuilds resolve from
-    // node_modules at runtime.
+    // graph-pull-worker transitively imports all language extractors.
     "tree-sitter",
     "tree-sitter-typescript",
+    "tree-sitter-javascript",
     "tree-sitter-python",
+    "tree-sitter-go",
+    "tree-sitter-rust",
+    "tree-sitter-java",
+    "tree-sitter-ruby",
+    "tree-sitter-c",
+    "tree-sitter-cpp",
   ],
   define: {
     __HIVEMIND_VERSION__: JSON.stringify(hivemindVersion),
@@ -234,10 +251,17 @@ await build({
     "onnxruntime-node",
     "onnxruntime-common",
     "sharp",
-    // graph-on-stop transitively imports the tree-sitter native parser (G3).
+    // graph-pull-worker transitively imports all language extractors.
     "tree-sitter",
     "tree-sitter-typescript",
+    "tree-sitter-javascript",
     "tree-sitter-python",
+    "tree-sitter-go",
+    "tree-sitter-rust",
+    "tree-sitter-java",
+    "tree-sitter-ruby",
+    "tree-sitter-c",
+    "tree-sitter-cpp",
   ],
   define: {
     __HIVEMIND_VERSION__: JSON.stringify(hivemindVersion),
@@ -489,15 +513,18 @@ await build({
     "node:*",
     "node-liblzma",
     "@mongodb-js/zstd",
-    // tree-sitter ships native .node prebuilds via prebuild-install. esbuild
-    // can't bundle .node files, and even if it could, native bindings have to
-    // be loaded from disk at runtime. The CLI resolves them from its sibling
-    // node_modules — same pattern as transformers/onnxruntime in the embed-
-    // daemon bundle. Imported via src/commands/graph.ts (codebase-graph
-    // Phase 1).
+    // tree-sitter and language grammars ship native .node prebuilds that
+    // esbuild cannot bundle. Resolved from node_modules at runtime.
     "tree-sitter",
     "tree-sitter-typescript",
+    "tree-sitter-javascript",
     "tree-sitter-python",
+    "tree-sitter-go",
+    "tree-sitter-rust",
+    "tree-sitter-java",
+    "tree-sitter-ruby",
+    "tree-sitter-c",
+    "tree-sitter-cpp",
   ],
   banner: { js: "#!/usr/bin/env node" },
 });

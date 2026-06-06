@@ -1,14 +1,14 @@
 /**
- * Types for the codebase-graph feature (Phase 1).
+ * Types for the codebase-graph feature (Phase 1.5).
  *
  * Output shape mirrors the NetworkX node-link JSON format so the snapshot can
  * be consumed by any tool that already understands NetworkX graphs (including
  * graphify's own visualizers if we ever want to fall back to them). Snapshot
  * canonicalization (sort + stable JSON) is the responsibility of snapshot.ts.
  *
- * Phase scope: TypeScript only. Edge types are intra-file for `calls` and
- * file-level for `imports`. Cross-file call resolution and additional
- * languages land in Phase 1.5+.
+ * Supported languages: TypeScript, JavaScript, Python, Go, Rust, Java, Ruby, C, C++.
+ * Edge types are intra-file for `calls` and file-level for `imports`.
+ * Cross-file call resolution lands in Phase 2.
  */
 
 /**
@@ -100,7 +100,6 @@ export interface GraphNode {
   source_file: string;
   /** `L<line>` or `L<line>-<endLine>` (1-indexed). */
   source_location: string;
-  /** Phase 1 = "typescript" only; extend in Phase 1.5. */
   language: NodeLanguage;
   /** Whether the symbol is `export`ed (relevant for cross-file resolution in Phase 1.5). */
   exported: boolean;
@@ -135,7 +134,16 @@ export type NodeKind =
   | "const"
   | "module";
 
-export type NodeLanguage = "typescript" | "javascript" | "python";
+export type NodeLanguage =
+  | "typescript"
+  | "javascript"
+  | "python"
+  | "go"
+  | "rust"
+  | "java"
+  | "ruby"
+  | "c"
+  | "cpp";
 
 export interface GraphEdge {
   /** Source node `id`. */

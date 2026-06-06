@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * CLI surface for the codebase-graph feature (Phase 1).
+ * CLI surface for the codebase-graph feature (Phase 1.5).
  *
- * Phase 1 ships ONE subcommand:
- *   hivemind graph build [--cwd <path>]
- *     Walk the project for supported source files (TypeScript/JavaScript/Python),
- *     run the tree-sitter extractor on each, write a snapshot to
- *     ~/.hivemind/graphs/<repo-key>/.
- *
- * Later phases add: daemon, diff, history, search, latest, push, pull, init,
- * uninstall, prune. None of those exist yet.
+ * hivemind graph build [--cwd <path>]
+ *   Walk the project for source files, run the tree-sitter extractor on each
+ *   (TypeScript, JavaScript, Python, Go, Rust, Java, Ruby, C, C++), write a
+ *   snapshot to ~/.hivemind/graphs/<repo-key>/.
  */
 
 import { execSync } from "node:child_process";
@@ -48,7 +44,7 @@ import type {
 } from "../graph/types.js";
 import { deriveProjectKey } from "../utils/repo-identity.js";
 
-const USAGE = `hivemind graph — codebase-graph commands (TypeScript / JavaScript / Python)
+const USAGE = `hivemind graph — codebase-graph commands (Phase 1.5)
 
 Usage:
   hivemind graph build [--cwd <path>]
@@ -691,10 +687,7 @@ function walk(dir: string, out: string[], ignore: Set<string>): void {
 
 function isSourceFile(name: string): boolean {
   if (name.endsWith(".d.ts")) return false; // declarations only, no implementation
-  // B7: JS/JSX/ESM/CJS via the TS grammar (superset). B6: Python via the
-  // tree-sitter Python grammar. extractFile() routes by extension; the
-  // per-file language label is set inside each extractor.
-  return /\.(tsx?|jsx?|mjs|cjs|pyi?)$/.test(name);
+  return /\.(tsx?|jsx?|mjs|cjs|pyi?|go|rs|java|rb|cpp|cc|cxx|hpp|[ch])$/.test(name.toLowerCase());
 }
 
 function toForwardSlash(p: string): string {

@@ -17,7 +17,18 @@ import { createRequire } from 'node:module';
 
 const ROOT = process.cwd();
 const require = createRequire(`${ROOT}/`);
-const PKGS = ['tree-sitter', 'tree-sitter-typescript', 'tree-sitter-python'];
+const PKGS = [
+  'tree-sitter',
+  'tree-sitter-typescript',
+  'tree-sitter-javascript',
+  'tree-sitter-python',
+  'tree-sitter-go',
+  'tree-sitter-rust',
+  'tree-sitter-java',
+  'tree-sitter-ruby',
+  'tree-sitter-c',
+  'tree-sitter-cpp',
+];
 
 function bindingsLoad() {
   try {
