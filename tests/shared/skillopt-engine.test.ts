@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { runSkillOptCycle, readSkillBodyViaManifest, readSkillBodyFromOrgTable, type ProposalRecord } from "../../src/skillify/skillopt-engine.js";
+import { runSkillOptCycle, readSkillBodyViaManifest, type ProposalRecord } from "../../src/skillify/skillopt-engine.js";
+import type { CurrentSkillRow } from "../../src/skillify/skill-org-publish.js";
 import type { PulledManifest } from "../../src/skillify/manifest.js";
 
 const invRow = (skill: string, sid: string) => ({
@@ -38,13 +39,20 @@ function world(nBad: number) {
 const judge = () => vi.fn(async (_s: string, _u: string) => '{"success":0,"confidence":0.9,"reason":"mocks the client"}');
 const proposerModel = () => vi.fn(async (_s: string, _u: string) => '[{"op":"append","content":"Always verify via the PostHog API."}]');
 
+/** A full current-row stub for the readSkill dep (only body/version vary per test). */
+const skillRow = (body: string, version: number): CurrentSkillRow => ({
+  name: "x", author: "a", project: "p", projectKey: "pk", localPath: "", install: "global",
+  sourceSessions: [], sourceAgent: "claude_code", scope: "me", contributors: ["a"],
+  description: "", trigger: "", body, version,
+});
+
 describe("runSkillOptCycle", () => {
   it("fires when >=5 skills are deficient and publishes a version per editable skill", async () => {
     const written: ProposalRecord[] = [];
     const res = await runSkillOptCycle({
       query: world(6), sessionsTable: "sessions", now: "2026-06-05T00:00:00Z",
-      readSkillBody: async () => ({ body: "## Rules\n1. mock the client", version: 3 }),
-      publish: (r) => { written.push(r); },
+      readSkill: async () => skillRow("## Rules\n1. mock the client", 3),
+      publish: (_c, r) => { written.push(r); },
       detector: { judge: judge() }, proposer: { model: proposerModel() },
     });
     expect(res.fired).toBe(true);
@@ -58,7 +66,7 @@ describe("runSkillOptCycle", () => {
     const publish = vi.fn();
     const res = await runSkillOptCycle({
       query: world(4), sessionsTable: "sessions", now: "t",
-      readSkillBody: async () => ({ body: "## Rules", version: 1 }), publish,
+      readSkill: async () => skillRow("## Rules", 1), publish,
       detector: { judge: judge() }, proposer: { model: proposerModel() },
     });
     expect(res).toMatchObject({ fired: false, deficientCount: 4 });
@@ -70,8 +78,8 @@ describe("runSkillOptCycle", () => {
     const written: ProposalRecord[] = [];
     const res = await runSkillOptCycle({
       query: world(6), sessionsTable: "sessions", now: "t",
-      readSkillBody: async (name) => (name === "bad0" ? null : { body: "## Rules\n1. mock the client", version: 1 }),
-      publish: (r) => { written.push(r); },
+      readSkill: async (name) => (name === "bad0" ? null : skillRow("## Rules\n1. mock the client", 1)),
+      publish: (_c, r) => { written.push(r); },
       detector: { judge: judge() }, proposer: { model: proposerModel() },
     });
     expect(res.fired).toBe(true);
@@ -84,8 +92,8 @@ describe("runSkillOptCycle", () => {
     const recorded: string[] = [];
     const res = await runSkillOptCycle({
       query: world(6), sessionsTable: "sessions", now: "t",
-      readSkillBody: async () => ({ body: "## Rules\n1. mock the client", version: 1 }),
-      publish: (r) => { written.push(r); },
+      readSkill: async () => skillRow("## Rules\n1. mock the client", 1),
+      publish: (_c, r) => { written.push(r); },
       detector: { judge: judge() }, proposer: { model: proposerModel() },
       meta: {
         prior: () => ["append: earlier idea"],          // fed to the proposer as context
@@ -117,29 +125,10 @@ describe("runSkillOptCycle", () => {
     }
   });
 
-  it("readSkillBodyFromOrgTable reads the latest version's body straight from the skills table", async () => {
-    const query = vi.fn(async (sql: string) => {
-      // org-wide source of truth: queries the skills table by (name, author), latest version
-      expect(sql).toContain('FROM "skills"');
-      expect(sql).toContain("name = 'posthog'");
-      expect(sql).toContain("author = 'kamo'");
-      expect(sql).toContain("ORDER BY version DESC");
-      return [{ body: "## Rules\n1. use the real client", version: 4 }];
-    });
-    expect(await readSkillBodyFromOrgTable(query, "skills", "posthog", "kamo"))
-      .toEqual({ body: "## Rules\n1. use the real client", version: 4 });
-  });
-
-  it("readSkillBodyFromOrgTable returns null when the skill isn't in the table (works even if not installed locally)", async () => {
-    expect(await readSkillBodyFromOrgTable(async () => [], "skills", "ghost", "nobody")).toBeNull();
-    // present row but empty body → null (don't propose against nothing)
-    expect(await readSkillBodyFromOrgTable(async () => [{ body: "   ", version: 2 }], "skills", "x", "y")).toBeNull();
-  });
-
   it("honors a custom fireThreshold", async () => {
     const res = await runSkillOptCycle({
       query: world(3), sessionsTable: "sessions", now: "t", fireThreshold: 3,
-      readSkillBody: async () => ({ body: "## Rules", version: 1 }), publish: vi.fn(),
+      readSkill: async () => skillRow("## Rules", 1), publish: vi.fn(),
       detector: { judge: judge() }, proposer: { model: proposerModel() },
     });
     expect(res.fired).toBe(true);

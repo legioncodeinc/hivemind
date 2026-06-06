@@ -15,7 +15,7 @@ import { log as _log } from "../utils/debug.js";
 import { loadConfig } from "../config.js";
 import { DeeplakeApi } from "../deeplake-api.js";
 import { getStateDir } from "./state-dir.js";
-import { runSkillOptCycle, readSkillBodyFromOrgTable } from "./skillopt-engine.js";
+import { runSkillOptCycle } from "./skillopt-engine.js";
 import { readCurrentSkillRow, publishImprovedSkill } from "./skill-org-publish.js";
 import { loadMeta, appendMeta, priorEditSummaries, alreadyProposed, metaEntryFor } from "./skillopt-meta.js";
 
@@ -45,12 +45,11 @@ async function main(): Promise<void> {
   const res = await runSkillOptCycle({
     query,
     sessionsTable: config.sessionsTableName,
-    readSkillBody: (name, author) => readSkillBodyFromOrgTable(query, config.skillsTableName, name, author),
+    readSkill: (name, author) => readCurrentSkillRow(query, config.skillsTableName, name, author),
     // Direct publish: land the improved body as the skill's next org version. No
     // approval gate — detect → improve → publish (append-only; teammates re-pull).
-    publish: async (rec) => {
-      const current = await readCurrentSkillRow(query, config.skillsTableName, rec.name, rec.author);
-      if (!current) { log(`publish skipped: ${rec.name}--${rec.author} not in skills table`); return; }
+    // Reuses the row the cycle already read — no second read-after-write to disagree.
+    publish: async (current, rec) => {
       const { version } = await publishImprovedSkill({
         query, tableName: config.skillsTableName, workspaceId: config.workspaceId,
         current, newBody: rec.candidateBody, collaborator: config.userName, now,

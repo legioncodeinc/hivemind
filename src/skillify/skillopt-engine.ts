@@ -17,7 +17,7 @@ import { detectDeficientSkills, type DetectorConfig } from "./deficiency-detecto
 import { proposeSkillEdit, type ProposeConfig } from "./skill-proposer.js";
 import { splitFrontmatter } from "./skill-publisher.js";
 import type { QueryFn } from "./skill-invocations.js";
-import { sqlStr, sqlIdent } from "../utils/sql.js";
+import type { CurrentSkillRow } from "./skill-org-publish.js";
 import type { Edit } from "./skill-edits.js";
 import type { PulledManifest } from "./manifest.js";
 
@@ -38,8 +38,8 @@ export interface ProposalRecord {
 export interface CycleDeps {
   query: QueryFn;
   sessionsTable: string;
-  readSkillBody: (name: string, author: string) => Promise<{ body: string; version: number } | null>; // org skills table is the source of truth — null when the skill isn't there
-  publish: (rec: ProposalRecord) => void | Promise<void>; // land the edit directly as the skill's next org version
+  readSkill: (name: string, author: string) => Promise<CurrentSkillRow | null>; // full current row from the org skills table; null when the skill isn't there
+  publish: (current: CurrentSkillRow, rec: ProposalRecord) => void | Promise<void>; // land the edit as version+1, reusing the SAME row (no re-read → no read-after-write disagreement)
   detector?: DetectorConfig;
   proposer?: ProposeConfig;
   fireThreshold?: number; // deficient-skill count to fire (default 5)
@@ -70,15 +70,15 @@ export async function runSkillOptCycle(deps: CycleDeps): Promise<CycleResult> {
   const targets = skills.filter((s) => s.deficient).slice(0, deps.maxProposals ?? 10);
   const proposals: CycleResult["proposals"] = [];
   for (const s of targets) {
-    const current = await deps.readSkillBody(s.name, s.author);
+    const current = await deps.readSkill(s.name, s.author);
     if (!current) continue; // not in the org skills table → nothing to edit
-    const { body } = current;
+    const body = current.body;
     const priorEdits = deps.meta?.prior(s.name, s.author) ?? [];
     const p = await proposeSkillEdit(body, s.examples, { ...deps.proposer, priorEdits });
     // dedup against the meta memory — don't re-write an edit already tried for this skill.
     const isDup = p.changed && (deps.meta?.has(s.name, s.author, p.edits) ?? false);
     if (p.changed && !isDup) {
-      await deps.publish({
+      await deps.publish(current, {
         name: s.name, author: s.author, baseVersion: current.version,
         invocations: s.invocations, confirmedFailures: s.confirmedFailures, failureRate: s.failureRate,
         examples: s.examples, edits: p.edits, report: p.report,
@@ -89,35 +89,6 @@ export async function runSkillOptCycle(deps: CycleDeps): Promise<CycleResult> {
     proposals.push({ name: s.name, author: s.author, changed: p.changed && !isDup, failureRate: s.failureRate });
   }
   return { deficientCount, fired: true, proposals };
-}
-
-/**
- * Read a skill's CURRENT body + version from the Deeplake `skills` table — the
- * ORG-WIDE source of truth. Latest version wins (mirrors pull.ts's `ORDER BY
- * version DESC`). The table's `body` column is already frontmatter-less (pull
- * reconstructs frontmatter from the other columns), which is exactly what the
- * proposer consumes. Unlike readSkillBodyViaManifest (local disk), this works
- * even when the deficient skill ISN'T installed on the machine running the
- * worker — the common case, since detection is org-wide but any one user has
- * only a subset of org skills pulled. null when the skill isn't in the table
- * or carries no body.
- */
-export async function readSkillBodyFromOrgTable(
-  query: QueryFn,
-  skillsTable: string,
-  name: string,
-  author: string,
-): Promise<{ body: string; version: number } | null> {
-  const rows = await query(
-    `SELECT body, version FROM "${sqlIdent(skillsTable)}" ` +
-    `WHERE name = '${sqlStr(name)}' AND author = '${sqlStr(author)}' ` +
-    `ORDER BY version DESC LIMIT 1`,
-  );
-  const row = rows?.[0];
-  const body = typeof row?.body === "string" ? row.body.trim() : "";
-  if (!body) return null;
-  const version = Number(row?.version);
-  return { body, version: Number.isFinite(version) && version > 0 ? version : 1 };
 }
 
 /** Read a skill's SKILL.md body (frontmatter stripped) from a skills root; null if absent. */
