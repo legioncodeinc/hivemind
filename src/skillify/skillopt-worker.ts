@@ -19,6 +19,9 @@ import { getStateDir } from "./state-dir.js";
 import { runSkillOptCycle } from "./skillopt-engine.js";
 import { agentModel, detectScorerAgent } from "./agent-model.js";
 import { readCurrentSkillRow, publishImprovedSkill } from "./skill-org-publish.js";
+import { runEventTick } from "./skillopt-tick.js";
+import { anchoredOrgSkillsInSession } from "./skillopt-session-scan.js";
+import { loadCounterState, saveCounterState, fireCount } from "./skillopt-counter.js";
 import { loadMeta, appendMeta, priorEditSummaries, alreadyProposed, metaEntryFor } from "./skillopt-meta.js";
 
 const log = (m: string) => _log("skillopt-worker", m);
@@ -39,7 +42,7 @@ function resolveAgentBin(agent: string): string | undefined {
 }
 
 async function main(): Promise<void> {
-  log("skillopt worker started (detached, weekly)");
+  log("skillopt worker started (detached, event-driven)");
   const config = loadConfig();
   if (!config?.token) { log("no config/credentials — exiting"); return; }
 
@@ -64,6 +67,26 @@ async function main(): Promise<void> {
   const envNum = (k: string): number | undefined => { const n = Number(process.env[k]); return Number.isFinite(n) && n > 0 ? n : undefined; };
   const lookbackDays = envNum("HIVEMIND_SKILLOPT_LOOKBACK_DAYS") ?? 30;
   const sinceIso = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000).toISOString();
+
+  // Event tick: when spawned for a specific session (the hook path), do the cheap
+  // no-LLM pushback scan + counter FIRST and run the paid org cycle ONLY when a
+  // skill crossed the fire threshold. A bare run (no session) is a manual/explicit
+  // invocation that always proceeds to the cycle.
+  const tickSession = process.env.HIVEMIND_SKILLOPT_SESSION;
+  if (tickSession) {
+    const tick = await runEventTick(tickSession, {
+      scan: (sid) => anchoredOrgSkillsInSession(query, config.sessionsTableName, sid),
+      loadState: loadCounterState,
+      saveState: saveCounterState,
+      now,
+      threshold: fireCount(),
+    });
+    if (tick.toFire.length === 0) {
+      log(`tick (${tickSession}): ${tick.observed} pushback(s), nothing crossed the fire threshold — no cycle`);
+      return;
+    }
+    log(`tick (${tickSession}): fired by [${tick.toFire.join(", ")}] — running the org cycle`);
+  }
 
   const res = await runSkillOptCycle({
     query,
@@ -91,7 +114,10 @@ async function main(): Promise<void> {
       judge: agentModel({ agent, role: "judge", bin: agentBin }),
     },
     proposer: { model: agentModel({ agent, role: "proposer", bin: agentBin }) },
-    fireThreshold: envNum("HIVEMIND_SKILLOPT_FIRE_THRESHOLD"),
+    // Under event-firing the ≥N-deficient-SKILLS gate is redundant — the per-skill
+    // counter already established the pattern, so improve whatever the org-wide judge
+    // confirms deficient (default 1). A bare/manual run keeps the engine default.
+    fireThreshold: envNum("HIVEMIND_SKILLOPT_FIRE_THRESHOLD") ?? (tickSession ? 1 : undefined),
     now,
   });
 
