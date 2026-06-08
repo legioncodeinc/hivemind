@@ -99,6 +99,29 @@ describe("runDashboardCommand", () => {
   const out = (s: string) => { stdout += s; };
   const err = (s: string) => { stderr += s; };
 
+  function makeFakeServer() {
+    let resolveStopped!: () => void;
+    const stopped = new Promise<void>(r => { resolveStopped = r; });
+    const close = vi.fn(async () => { resolveStopped(); });
+    const server = vi.fn(async (_opts: any) => ({
+      host: "127.0.0.1",
+      port: 8123,
+      stopped,
+      close,
+    }));
+    return { server, close, resolveStopped };
+  }
+
+  function makeSignalSink() {
+    let captured: { signal: NodeJS.Signals; handler: () => void } | null = null;
+    const off = vi.fn();
+    const onSignal = vi.fn((signal: NodeJS.Signals, handler: () => void) => {
+      if (signal === "SIGINT") captured = { signal, handler };
+      return off;
+    });
+    return { onSignal, off, fire: () => captured?.handler() };
+  }
+
   beforeEach(() => {
     homeDir = mkdtempSync(join(tmpdir(), "hm-dash-cli-"));
     originalHome = process.env.HOME;
@@ -132,7 +155,7 @@ describe("runDashboardCommand", () => {
 
   it("writes the HTML to the default path under HOME and reports it", async () => {
     const opener = vi.fn().mockReturnValue({ attempted: true, command: "xdg-open" });
-    const code = await runDashboardCommand(["--cwd", "/tmp"], { out, err, opener });
+    const code = await runDashboardCommand(["--cwd", "/tmp"], { out, err, opener, isRemote: false });
     expect(code).toBe(0);
     const { key } = deriveProjectKey("/tmp");
     const expectedPath = join(homeDir, ".hivemind", "dashboards", key, "index.html");
@@ -167,10 +190,16 @@ describe("runDashboardCommand", () => {
     expect(opener).not.toHaveBeenCalled();
   });
 
-  it("reports the 'open manually' line when the opener returns attempted=false", async () => {
+  it("falls back to local serve when the opener returns attempted=false", async () => {
     const opener = vi.fn().mockReturnValue({ attempted: false });
-    await runDashboardCommand(["--cwd", "/tmp"], { out, err, opener });
-    expect(stdout).toContain("no opener for this platform");
+    const { server } = makeFakeServer();
+    const { onSignal, fire } = makeSignalSink();
+    const runP = runDashboardCommand(["--cwd", "/tmp"], { out, err, opener, server: server as any, onSignal, isRemote: false });
+    await new Promise(r => setImmediate(r));
+    fire();
+    const code = await runP;
+    expect(code).toBe(0);
+    expect(stdout).toContain("(no opener for this platform; click the URL above or open it manually)");
   });
 
   it("surfaces a runtime write failure as a one-line stderr instead of a stack", async () => {
@@ -193,29 +222,6 @@ describe("runDashboardCommand", () => {
   });
 
   describe("--serve mode", () => {
-    function makeFakeServer() {
-      let resolveStopped!: () => void;
-      const stopped = new Promise<void>(r => { resolveStopped = r; });
-      const close = vi.fn(async () => { resolveStopped(); });
-      const server = vi.fn(async (_opts: any) => ({
-        host: "127.0.0.1",
-        port: 8123,
-        stopped,
-        close,
-      }));
-      return { server, close, resolveStopped };
-    }
-
-    function makeSignalSink() {
-      let captured: { signal: NodeJS.Signals; handler: () => void } | null = null;
-      const off = vi.fn();
-      const onSignal = vi.fn((signal: NodeJS.Signals, handler: () => void) => {
-        if (signal === "SIGINT") captured = { signal, handler };
-        return off;
-      });
-      return { onSignal, off, fire: () => captured?.handler() };
-    }
-
     it("starts the server, prints the URL, opens it (URL not path), and exits 0 on SIGINT", async () => {
       const { server, close } = makeFakeServer();
       const { onSignal, off, fire } = makeSignalSink();

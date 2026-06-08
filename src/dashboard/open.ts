@@ -163,3 +163,20 @@ export function openInBrowser(
     return { attempted: false };
   }
 }
+
+/**
+ * Returns true when the process is running inside a remote session
+ * (SSH, VS Code Remote, GitHub Codespaces) where launching a local
+ * browser via xdg-open / open is impossible.
+ *
+ * Detection signals:
+ *   SSH_CLIENT / SSH_TTY  — set by sshd for every SSH login
+ *   VSCODE_INJECTION      — set by VS Code Remote-SSH / Dev Containers
+ *   CODESPACES            — set by GitHub Codespaces
+ *
+ * Exported so tests can verify the detection logic without stubbing
+ * process.env globally.
+ */
+export function isRemoteSession(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !!(env.SSH_CLIENT || env.SSH_TTY || env.VSCODE_INJECTION || env.CODESPACES);
+}

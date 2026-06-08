@@ -475,6 +475,19 @@ export default defineConfig({
         // mock DeeplakeApi, bringing it to 97/91/97/99. Floor set at 90 to
         // catch regressions on these paths going forward.
         "src/shell/deeplake-fs.ts":          { statements: 90, branches: 90, functions: 90, lines: 90 },
+        // feat(graph): multi-language support (PR #241) — 8 new language extractors
+        // + shared helper module. Branches calibrated below statements: each
+        // extractor has error/fallback branches (isError, isMissing, unknown node
+        // types) that aren't triggered by happy-path tests without crafting
+        // pathological ASTs. Floors set 5–10 pts below measured coverage.
+        "src/graph/extract/shared.ts":       { statements: 80, branches: 75, functions: 90, lines: 80 },
+        "src/graph/extract/javascript.ts":   { statements: 70, branches: 50, functions: 90, lines: 75 },
+        "src/graph/extract/go.ts":           { statements: 80, branches: 60, functions: 90, lines: 85 },
+        "src/graph/extract/rust.ts":         { statements: 80, branches: 60, functions: 85, lines: 90 },
+        "src/graph/extract/java.ts":         { statements: 85, branches: 65, functions: 90, lines: 90 },
+        "src/graph/extract/ruby.ts":         { statements: 90, branches: 75, functions: 90, lines: 90 },
+        "src/graph/extract/c.ts":            { statements: 85, branches: 70, functions: 90, lines: 90 },
+        "src/graph/extract/cpp.ts":          { statements: 80, branches: 60, functions: 90, lines: 85 },
       },
     },
   },

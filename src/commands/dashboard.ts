@@ -29,7 +29,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { loadDashboardData } from "../dashboard/data.js";
-import { openInBrowser } from "../dashboard/open.js";
+import { isRemoteSession, openInBrowser } from "../dashboard/open.js";
 import { renderDashboardHtml } from "../dashboard/render.js";
 import { serveDashboardHtml, type ServeHandle } from "../dashboard/serve.js";
 
@@ -148,11 +148,10 @@ export function parseDashboardArgs(args: string[]): ParseResult {
     return { error: `unknown arg '${a}'` };
   }
 
-  // --port is meaningful only in --serve mode. Accepting it silently
-  // without --serve produced confusing no-ops (`hivemind dashboard
-  // --port 9000` looked like it should start a server). Codex review
-  // on the --serve commit caught this — reject explicitly so the user
-  // sees the misconfiguration.
+  // --port is meaningful only with --serve. The parser is pure and has no
+  // access to isRemoteSession(), so --port without --serve is always rejected
+  // even on remote sessions where auto-serve would kick in. Users who want a
+  // custom port on a remote session must pass both: --serve --port <n>.
   if (port !== undefined && !serve) {
     return { error: "--port requires --serve" };
   }
@@ -183,6 +182,9 @@ export interface RunDashboardOptions {
   /** Test injection — defaults to a real process.on('SIGINT', ...).
    *  Returns a cleanup fn the runner calls after the server stops. */
   onSignal?: (signal: NodeJS.Signals, handler: () => void) => () => void;
+  /** Test injection — overrides isRemoteSession() so tests are not
+   *  affected by the CI runner's SSH/VSCODE env vars. */
+  isRemote?: boolean;
   /** Where stdout messages land. Defaults to process.stdout.write. */
   out?: (msg: string) => void;
   /** Where errors land. Defaults to process.stderr.write. */
@@ -237,7 +239,16 @@ export async function runDashboardCommand(
     out(`(no codebase graph yet — run 'hivemind graph build' to populate)\n`);
   }
 
-  if (parsed.args.serve) {
+  // Auto-enable --serve on remote sessions (SSH, VS Code Remote,
+  // Codespaces) where xdg-open / open can't reach a local browser.
+  // The user can still suppress this with --no-open if they only want
+  // the file written.
+  const remote = runOpts.isRemote ?? isRemoteSession();
+  const autoServe = !parsed.args.serve && open && remote;
+  if (parsed.args.serve || autoServe) {
+    if (autoServe) {
+      out(`(remote session detected — serving over localhost instead of opening a file)\n`);
+    }
     return await runServeLoop(html, parsed.args, runOpts, out, err);
   }
 
@@ -246,7 +257,11 @@ export async function runDashboardCommand(
     if (result.attempted) {
       out(`Opening via ${result.command}\n`);
     } else {
-      out(`(no opener for this platform; open the file above manually)\n`);
+      // Opener not available (no xdg-open, no display) — fall back to
+      // a local serve so the user gets a clickable URL instead of a
+      // path they can't easily open.
+      out(`(no browser opener found — starting local server instead)\n`);
+      return await runServeLoop(html, parsed.args, runOpts, out, err);
     }
   }
   return 0;

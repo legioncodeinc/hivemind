@@ -89,6 +89,39 @@ describe("extractPython (B6)", () => {
     expect(ex.language).toBe("python");
   });
 
+  it("extracts decorated methods (@decorator before def)", () => {
+    // Covers the decorated_definition branch in collectClassBody (line ~177)
+    const ex = extractPython(
+      "class Svc:\n    @staticmethod\n    def create():\n        return Svc()\n",
+      "svc.py",
+    );
+    const method = ex.nodes.find(n => n.id === "svc.py:Svc.create:method");
+    expect(method).toBeDefined();
+    const edge = ex.edges.find(e => e.relation === "method_of" && e.target === method!.id);
+    expect(edge).toBeDefined();
+  });
+
+  it("extracts aliased import (import x as y)", () => {
+    // Covers aliased_import branch in extractImports (import statement)
+    const ex = extractPython("import numpy as np\ndef f(): pass\n", "a.py");
+    expect(ex.edges.some(e => e.relation === "imports" && e.target === "external:numpy")).toBe(true);
+    expect(ex.import_bindings!.some(b => b.local_name === "np" && b.kind === "namespace")).toBe(true);
+  });
+
+  it("extracts aliased from-import (from x import y as z)", () => {
+    // Covers aliased_import branch in extractImports (from statement)
+    const ex = extractPython("from collections import OrderedDict as OD\ndef f(): pass\n", "a.py");
+    expect(ex.import_bindings!.some(b => b.local_name === "OD" && b.imported_name === "OrderedDict")).toBe(true);
+  });
+
+  it("records raw_calls for calls to unknown functions", () => {
+    // Covers the raw_calls path in extractCalls when target not in declByName
+    const ex = extractPython("def run():\n    external_lib.do_something()\n", "a.py");
+    expect(ex.raw_calls).toBeDefined();
+    // No crashes and run is still extracted
+    expect(ex.nodes.some(n => n.id === "a.py:run:function")).toBe(true);
+  });
+
   it("builds a snapshot with python nodes (intra-file heritage resolves)", () => {
     const ex = extractPython("class Base:\n    pass\n\nclass Sub(Base):\n    pass\n", "a.py");
     const snap = buildSnapshot([ex], meta(), obs());
