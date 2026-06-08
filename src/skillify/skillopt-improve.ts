@@ -82,6 +82,38 @@ export interface ImproveOpts {
   prior?: (name: string, author: string) => string[];
   alreadyProposed?: (name: string, author: string, edits: Edit[]) => boolean;
   recordEdit?: (name: string, author: string, edits: Edit[]) => void;
+  // Deeplake insert→read lag tolerance: the invocation row is written by a SEPARATE process
+  // (capture.js) and lands in Deeplake on a short visibility lag (expected, not a defect), so a
+  // worker firing on a fast reaction can read stale. Poll findInvocation with linear backoff
+  // before giving up. Injectable for tests.
+  invocationRetries?: number;            // extra attempts after the first (default 5)
+  invocationBackoffMs?: number;          // linear backoff base ms: sleep = base * attempt (default 3000)
+  sleep?: (ms: number) => Promise<void>; // default real timer
+}
+
+const DEFAULT_INVOCATION_RETRIES = 5;
+const DEFAULT_INVOCATION_BACKOFF_MS = 3000;
+const realSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * findInvocation, tolerant of Deeplake's insert→read visibility lag (expected latency, not a
+ * defect). The window's skill-invocation row is captured by a SEPARATE process and may not be queryable the instant the
+ * worker fires on a fast reaction. The row is near-certain to land (capture is a reliable path), so
+ * poll with linear backoff; but it's NOT guaranteed (capture may be disabled/errored), so the
+ * attempts are BOUNDED — on exhaustion we return null and the caller gives up gracefully (no
+ * publish) instead of spinning. Runs inside the already-detached worker, so the waits block nothing.
+ * Only a not-found (null) result is retried — a query ERROR (e.g. 402) propagates immediately.
+ */
+async function findInvocationWithRetry(opts: ImproveOpts, name: string, author: string): Promise<SkillInvocation | null> {
+  const retries = opts.invocationRetries ?? DEFAULT_INVOCATION_RETRIES;
+  const backoffMs = opts.invocationBackoffMs ?? DEFAULT_INVOCATION_BACKOFF_MS;
+  const sleep = opts.sleep ?? realSleep;
+  for (let attempt = 0; ; attempt++) {
+    const inv = await findInvocation(opts.query, opts.sessionsTable, opts.sessionId, name, author, opts.toolUseId);
+    if (inv) return inv;
+    if (attempt >= retries) return null;
+    await sleep(backoffMs * (attempt + 1));
+  }
 }
 
 export async function improveSkillIfFailed(opts: ImproveOpts): Promise<ImproveResult> {
@@ -89,7 +121,7 @@ export async function improveSkillIfFailed(opts: ImproveOpts): Promise<ImproveRe
   const parts = splitOrgSkill(opts.skillRef);
   if (!parts) return none("not an org skill");
 
-  const inv = await findInvocation(opts.query, opts.sessionsTable, opts.sessionId, parts.name, parts.author, opts.toolUseId);
+  const inv = await findInvocationWithRetry(opts, parts.name, parts.author);
   if (!inv) return none("invocation not found in session");
 
   let window = await windowAroundInvocation(opts.query, opts.sessionsTable, inv);
