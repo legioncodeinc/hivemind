@@ -357,10 +357,17 @@ export async function processCodexPreToolUse(
   // Nothing matched by the inline fast-path. Route through the VFS shell bundle
   // — a sandboxed Node.js interpreter against the SQL backend, no host access.
   // We run it synchronously here (spawnSync) so the output is available before
-  // returning the block decision. The original command is still blocked (exit 2
-  // prevents Codex from running it on the host shell).
+  // returning the decision.
+  //
+  // Action choice:
+  //   "guide" (exit 0) — Codex treats the command as successful and also runs
+  //     the original on the host. Safe ONLY for write-redirect patterns
+  //     (echo/printf/tee … > /file) where the side-effect on the real
+  //     ~/.deeplake/memory/ disk dir is harmless — VFS reads always query SQL.
+  //   "block" (exit 2) — Codex treats the command as rejected. Used for
+  //     everything else (pipes, finds, reads) to prevent host execution.
+  const isWriteRedirect = /\s>>?\s/.test(rewritten);
   const shellBundle = join(__bundleDir, "shell", "deeplake-shell.js");
-  const escaped = rewritten.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   logFn(`unroutable memory command, falling back to VFS shell: ${rewritten}`);
   try {
     const proc = spawnSync("node", [shellBundle, "-c", rewritten], {
@@ -369,7 +376,9 @@ export async function processCodexPreToolUse(
     });
     if (proc.status === 0 || (proc.stdout && proc.stdout.trim())) {
       const output = (proc.stdout?.trim() ?? "") || "(done)";
-      return { action: "block", output, rewrittenCommand: rewritten };
+      // Write redirects: use "guide" so Codex reports success (not "blocked").
+      // Other commands: keep "block" so the host shell never runs them.
+      return { action: isWriteRedirect ? "guide" : "block", output, rewrittenCommand: rewritten };
     }
     // Shell exited non-zero (bundle missing or command failed) — fall back to guidance.
     return { action: "block", output: buildUnsupportedGuidance(), rewrittenCommand: rewritten };
