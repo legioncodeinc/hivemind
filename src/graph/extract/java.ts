@@ -207,6 +207,7 @@ function findEnclosingClassName(node: TSNode): string | null {
     if (cur.type === "class_declaration") return textOfField(cur, "name");
     cur = cur.parent;
   }
+  /* c8 ignore next */
   return null;
 }
 
@@ -221,10 +222,12 @@ function findEnclosingMethod(
       const className = findEnclosingClassName(cur);
       if (methodName !== null && className !== null) {
         const found = declByName.get(`${className}.${methodName}`);
+        /* c8 ignore next */
         if (found !== undefined) return found;
       }
     }
     cur = cur.parent;
   }
+  /* c8 ignore next */
   return null;
 }

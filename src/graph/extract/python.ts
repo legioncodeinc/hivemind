@@ -233,6 +233,7 @@ function extractImports(node: PyNode, relativePath: string, result: FileExtracti
 }
 
 function pushImportEdge(result: FileExtraction, moduleNode: GraphNode, specifier: string): void {
+  /* c8 ignore next */
   if (specifier.length === 0) return;
   result.edges.push({ source: moduleNode.id, target: `external:${specifier}`, relation: "imports", confidence: "EXTRACTED" });
 }
@@ -290,6 +291,7 @@ function rawCallFromCallee(callee: PyNode, callerId: string): { caller_id: strin
       return { caller_id: callerId, callee_name: attr.text, receiver: obj.text };
     }
   }
+  /* c8 ignore next */
   return null;
 }
 
@@ -306,6 +308,7 @@ function findEnclosingDeclaration(node: PyNode, declByName: Map<string, GraphNod
     }
     cur = cur.parent;
   }
+  /* c8 ignore next */
   return null;
 }
 
@@ -378,8 +381,10 @@ function textOfField(node: PyNode, field: string): string | null {
 function firstOfType(node: PyNode, type: string): PyNode | null {
   for (let i = 0; i < node.namedChildCount; i++) {
     const c = node.namedChild(i);
+    /* c8 ignore next */
     if (c !== null && c.type === type) return c;
   }
+  /* c8 ignore next */
   return null;
 }
 

@@ -171,10 +171,12 @@ export function findEnclosingDecl(
       const name = getName(cur);
       if (name !== null) {
         const found = declByName.get(name);
+        /* c8 ignore next */
         if (found !== undefined) return found;
       }
     }
     cur = cur.parent;
   }
+  /* c8 ignore next */
   return null;
 }

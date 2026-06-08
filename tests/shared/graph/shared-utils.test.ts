@@ -10,8 +10,8 @@ import { describe, it, expect } from "vitest";
 import {
   pushNode,
   collectParseErrors,
+  findEnclosingDecl,
   firstOfType,
-  makeNode,
   makeModuleNode,
   nodeId,
   locationStr,
@@ -19,6 +19,7 @@ import {
   type TSNode,
 } from "../../../src/graph/extract/shared.js";
 import type { FileExtraction } from "../../../src/graph/types.js";
+import type { ParseError } from "../../../src/graph/types.js";
 
 function makeResult(): FileExtraction {
   return { source_file: "f.ts", language: "typescript", nodes: [], edges: [], parse_errors: [] };
@@ -85,28 +86,28 @@ describe("pushNode", () => {
 
 describe("collectParseErrors", () => {
   it("records nothing for a clean node tree", () => {
-    const errors: any[] = [];
+    const errors: ParseError[] = [];
     collectParseErrors(stubNode(), "f.ts", errors);
     expect(errors).toHaveLength(0);
   });
 
   it("records an isError node", () => {
-    const errors: any[] = [];
+    const errors: ParseError[] = [];
     collectParseErrors(stubNode({ isError: true }), "f.ts", errors);
     expect(errors).toHaveLength(1);
-    expect(errors[0].message).toContain("parse error");
+    expect(errors[0].message).toBe("parse error at L1");
     expect(errors[0].source_file).toBe("f.ts");
   });
 
   it("records an isMissing node with 'missing node' message", () => {
-    const errors: any[] = [];
+    const errors: ParseError[] = [];
     collectParseErrors(stubNode({ isMissing: true }), "f.ts", errors);
     expect(errors).toHaveLength(1);
-    expect(errors[0].message).toContain("missing node");
+    expect(errors[0].message).toBe("missing node: identifier");
   });
 
   it("recurses into children and collects nested errors", () => {
-    const errors: any[] = [];
+    const errors: ParseError[] = [];
     const child = stubNode({ isError: true });
     const parent = stubNode({
       namedChildCount: 1,
@@ -162,9 +163,7 @@ describe("makeModuleNode", () => {
 });
 
 describe("findEnclosingDecl", () => {
-  // Import findEnclosingDecl
-  it("returns the enclosing declaration when found", async () => {
-    const { findEnclosingDecl } = await import("../../../src/graph/extract/shared.js");
+  it("returns the enclosing declaration when found", () => {
     const map = new Map<string, any>();
     const node = makeGraphNode("f.ts:foo:function");
     map.set("foo", node);
@@ -187,8 +186,7 @@ describe("findEnclosingDecl", () => {
     expect(found).toBe(node);
   });
 
-  it("returns null when no enclosing decl matches", async () => {
-    const { findEnclosingDecl } = await import("../../../src/graph/extract/shared.js");
+  it("returns null when no enclosing decl matches", () => {
     const map = new Map<string, any>();
     const found = findEnclosingDecl(stubNode(), ["function_definition"], () => null, map);
     expect(found).toBeNull();

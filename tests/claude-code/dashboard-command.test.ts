@@ -199,7 +199,7 @@ describe("runDashboardCommand", () => {
     fire();
     const code = await runP;
     expect(code).toBe(0);
-    expect(stdout).toContain("no opener for this platform");
+    expect(stdout).toContain("(no opener for this platform; click the URL above or open it manually)");
   });
 
   it("surfaces a runtime write failure as a one-line stderr instead of a stack", async () => {
