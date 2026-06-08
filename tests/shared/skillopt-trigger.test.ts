@@ -1,5 +1,12 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { join } from "node:path";
+import { mkdtempSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { markSkillPending, runEventTrigger, judgeWindow, DEFAULT_JUDGE_WINDOW, type PendingSkill, type PendingStore } from "../../src/skillify/skillopt-trigger.js";
+
+// Mock node:child_process so the REAL spawnWorker can run without a detached process.
+const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn(() => ({ unref: () => {}, pid: 4242 })) }));
+vi.mock("node:child_process", () => ({ spawn: spawnMock }));
 
 /** In-memory per-session store standing in for the per-session files. */
 function memStore(initial: Record<string, PendingSkill> = {}) {
@@ -104,5 +111,63 @@ describe("judgeWindow", () => {
     expect(judgeWindow({ HIVEMIND_SKILLOPT_JUDGE_WINDOW: "5" } as never)).toBe(5);
     expect(judgeWindow({ HIVEMIND_SKILLOPT_JUDGE_WINDOW: "0" } as never)).toBe(3);
     expect(judgeWindow({ HIVEMIND_SKILLOPT_JUDGE_WINDOW: "x" } as never)).toBe(3);
+  });
+});
+
+// Exercise the REAL default fileStore (per-session files) + the REAL spawnWorker, which the
+// dependency-injected tests above never touch — these are the trigger's actual side effects.
+describe("default fileStore + spawnWorker (real implementations)", () => {
+  let tmp: string;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "skillopt-trig-")); process.env.HIVEMIND_STATE_DIR = tmp; spawnMock.mockClear(); });
+  afterEach(() => { delete process.env.HIVEMIND_STATE_DIR; });
+
+  it("persists the pending window to a per-session file and reads it back across mark→react", () => {
+    // arm via the REAL fileStore (no injected store), org-gate injected
+    expect(markSkillPending("fs-a", "posthog--kamo", "tuF", { isOrgSkill: () => true, env: {} as never })).toBe(true);
+    expect(existsSync(join(tmp, "skillopt", "pending", "fs-a.json"))).toBe(true);
+    // react via the REAL fileStore (load → decrement → save) + REAL spawnWorker (mocked spawn)
+    const r = runEventTrigger("fs-a", "no, mocking hides the failure", { agent: "hermes", deps: { canFire: () => true, env: {} as never } });
+    expect(r).toEqual({ fired: true, reason: "spawned" });
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("spawnWorker passes the SKILLOPT_* env contract the worker reads back", () => {
+    markSkillPending("fs-b", "x--a", "tuZ", { isOrgSkill: () => true, env: {} as never });
+    runEventTrigger("fs-b", "you broke it", { agent: "codex", deps: { canFire: () => true, env: {} as never } });
+    const [bin, args, opts] = spawnMock.mock.calls[0] as unknown as [string, string[], { env: Record<string, string> }];
+    expect(args[0]).toContain("skillopt-worker.js");
+    expect(opts.env.HIVEMIND_SKILLOPT_WORKER).toBe("1");
+    expect(opts.env.HIVEMIND_SKILLOPT_SESSION).toBe("fs-b");
+    expect(opts.env.HIVEMIND_SKILLOPT_SKILL).toBe("x--a");
+    expect(opts.env.HIVEMIND_SKILLOPT_REACTION).toBe("you broke it");
+    expect(opts.env.HIVEMIND_SKILLOPT_TOOL_USE_ID).toBe("tuZ");
+    expect(opts.env.HIVEMIND_SKILLOPT_AGENT).toBe("codex");
+  });
+
+  it("react closes the window (deletes the file) when the last budget is spent", () => {
+    markSkillPending("fs-c", "y--b", undefined, { isOrgSkill: () => true, env: { HIVEMIND_SKILLOPT_JUDGE_WINDOW: "1" } as never });
+    runEventTrigger("fs-c", "still wrong", { deps: { canFire: () => true, env: {} as never } });
+    expect(existsSync(join(tmp, "skillopt", "pending", "fs-c.json"))).toBe(false); // budget 1 → cleared
+  });
+
+  it("react is a no-op when no file exists for the session", () => {
+    expect(runEventTrigger("never-armed", "x", { deps: { canFire: () => true, env: {} as never } }))
+      .toEqual({ fired: false, reason: "no-skill" });
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it("real defaultIsOrgSkill (pull manifest) rejects a ref absent from the manifest", () => {
+    // no injected isOrgSkill → the real defaultIsOrgSkill(loadManifest) runs against the empty
+    // temp state dir → the ref isn't a pulled org skill → not armed (no shared-row edit risk).
+    const s = memStore();
+    expect(markSkillPending("real-org", "x--a", "tu", { store: s.store, env: {} as never })).toBe(false);
+    expect(s.get("real-org")).toBeNull();
+  });
+
+  it("real defaultHasCreds runs when canFire isn't injected (spawns iff creds resolve)", () => {
+    // no injected canFire → the real defaultHasCreds(loadConfig) runs. Either outcome exercises it.
+    const s = memStore({ s1: { skill: "x--a", budget: 2 } });
+    const r = runEventTrigger("s1", "reaction", { deps: { store: s.store, env: {} as never } });
+    expect(["spawned", "no-creds"]).toContain(r.reason);
   });
 });

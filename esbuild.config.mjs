@@ -89,6 +89,9 @@ const codexHooks = [
   { entry: "dist/src/hooks/codex/stop.js", out: "stop" },
   { entry: "dist/src/hooks/codex/wiki-worker.js", out: "wiki-worker" },
   { entry: "dist/src/skillify/skillify-worker.js", out: "skillify-worker" },
+  // SkillOpt worker — codex's capture spawns it on a user reaction to judge + improve a
+  // recently-used org skill (judging runs on the codex CLI). Same shared module CC uses.
+  { entry: "dist/src/skillify/skillopt-worker.js", out: "skillopt-worker" },
   { entry: "dist/src/hooks/graph-pull-worker.js", out: "graph-pull-worker" },
   // G3: code-graph auto-build parity for Codex (same shared hook as CC/Cursor).
   { entry: "dist/src/hooks/graph-on-stop.js", out: "graph-on-stop" },
@@ -161,6 +164,9 @@ const hermesHooks = [
   { entry: "dist/src/hooks/hermes/pre-tool-use.js", out: "pre-tool-use" },
   { entry: "dist/src/hooks/hermes/wiki-worker.js", out: "wiki-worker" },
   { entry: "dist/src/skillify/skillify-worker.js", out: "skillify-worker" },
+  // SkillOpt worker — hermes capture spawns it on a reaction to judge + improve a recently-used
+  // org skill (judging runs on the hermes CLI). Same shared module CC uses.
+  { entry: "dist/src/skillify/skillopt-worker.js", out: "skillopt-worker" },
   { entry: "dist/src/hooks/graph-pull-worker.js", out: "graph-pull-worker" },
   // G3: code-graph auto-build parity for Hermes (registered on on_session_end).
   { entry: "dist/src/hooks/graph-on-stop.js", out: "graph-on-stop" },
@@ -267,6 +273,9 @@ const piWorker = [
   { entry: "dist/src/hooks/pi/wiki-worker.js", out: "wiki-worker" },
   { entry: "dist/src/skillify/skillify-worker.js", out: "skillify-worker" },
   { entry: "dist/src/skillify/autopull-worker.js", out: "autopull-worker" },
+  // SkillOpt worker — pi spawns it on a user reaction (the extension can't import the
+  // raw-.ts trigger, so it shells this bundle like the others). Same shared module CC uses.
+  { entry: "dist/src/skillify/skillopt-worker.js", out: "skillopt-worker" },
 ];
 await build({
   entryPoints: Object.fromEntries(piWorker.map(h => [h.out, h.entry])),

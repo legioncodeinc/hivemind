@@ -466,6 +466,94 @@ function runAutopullWorker(): void {
   }
 }
 
+// ---------- SkillOpt: arm on org-skill use, react on the next user message ------------
+// Mirrors the CC PreToolUse/UserPromptSubmit wiring, inlined because this extension is raw
+// .ts with zero non-builtin deps (it can't import the skillify trigger). pi has no first-class
+// `Skill` tool — it USES a skill by READING its SKILL.md — so we arm on a tool_result whose
+// path is .../skills/<name--author>/SKILL.md, then on the next user prompt (the reaction) spawn
+// the bundled skillopt-worker to judge + improve. Env-var names are the cross-process contract
+// with the worker (SKILLOPT_ENV in src/skillify/skillopt-env.ts) — kept as literals here since
+// the extension can't import. Fully swallowed; never blocks pi. Both call sites sit AFTER the
+// handler's captureEnabled check, so the worker's own pi-judge subprocess (HIVEMIND_CAPTURE=false)
+// can't re-arm/re-react — that's the recursion guard.
+const PI_SKILLOPT_WORKER_PATH = join(homedir(), ".pi", "agent", "hivemind", "skillopt-worker.js");
+// Mirror getStateDir()'s contract: a non-empty (trimmed) HIVEMIND_STATE_DIR overrides the default
+// ~/.deeplake/state/skillify root, so pi's pending state co-locates with the rest of Skillify
+// (and test-isolation overrides apply here too, not just in the shared trigger).
+const SKILLOPT_STATE_ROOT = (typeof process.env.HIVEMIND_STATE_DIR === "string" && process.env.HIVEMIND_STATE_DIR.trim())
+  ? process.env.HIVEMIND_STATE_DIR.trim()
+  : join(homedir(), ".deeplake", "state", "skillify");
+const SKILLOPT_PENDING_DIR = join(SKILLOPT_STATE_ROOT, "skillopt", "pending");
+const SKILLOPT_JUDGE_WINDOW = 3; // K reactions to keep judging after a skill use (DEFAULT_JUDGE_WINDOW)
+
+/** Recover an org-skill ref (name--author) from a path that loads a skill's SKILL.md, else null. */
+function skilloptRefFromPath(p: unknown): string | null {
+  if (typeof p !== "string") return null;
+  const m = p.match(/\/skills\/([^/]+)\/SKILL\.md$/);
+  if (!m) return null;
+  const ref = m[1];
+  // org shape only: name--author, no plugin namespace / path separators / traversal.
+  if (ref.includes(":") || ref.includes("/") || ref.includes("\\") || ref.includes("..")) return null;
+  const i = ref.lastIndexOf("--");
+  return i > 0 && i + 2 < ref.length ? ref : null;
+}
+
+function skilloptPendingFile(sessionId: string): string {
+  const safe = sessionId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 200);
+  return join(SKILLOPT_PENDING_DIR, `${safe}.json`);
+}
+
+/** tool_result: pi read an org skill's SKILL.md → open a K-message judgment window. */
+function skilloptArm(sessionId: string, toolName: unknown, toolInput: any, toolCallId: unknown): void {
+  try {
+    if (process.env.HIVEMIND_SKILLOPT_DISABLED === "1") return;
+    // Arm only on a READ of the SKILL.md — USING a skill is reading it. An edit/write of a
+    // SKILL.md (even one whose input carries a matching path) must NOT open a judgment window.
+    if (!/^read/i.test(String(toolName ?? ""))) return;
+    const ref = skilloptRefFromPath(toolInput?.path ?? toolInput?.file ?? toolInput?.filePath);
+    if (!ref) return;
+    mkdirSync(SKILLOPT_PENDING_DIR, { recursive: true });
+    const f = skilloptPendingFile(sessionId);
+    const tmp = `${f}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify({ skill: ref, budget: SKILLOPT_JUDGE_WINDOW, toolUseId: typeof toolCallId === "string" ? toolCallId : undefined }));
+    renameSync(tmp, f);
+    logHm(`skillopt: armed ${ref} for ${sessionId}`);
+  } catch (e: any) { logHm(`skillopt arm swallowed: ${e?.message ?? e}`); }
+}
+
+/** input: the user's reaction → spawn the detached worker to judge the pending skill; spend budget. */
+function skilloptReact(sessionId: string, reaction: string): void {
+  try {
+    if (process.env.HIVEMIND_SKILLOPT_DISABLED === "1" || process.env.HIVEMIND_WIKI_WORKER === "1") return;
+    if (!reaction.trim()) return;
+    const f = skilloptPendingFile(sessionId);
+    let p: { skill?: string; budget?: number; toolUseId?: string };
+    try { p = JSON.parse(readFileSync(f, "utf8")); } catch { return; } // no window open → no-op
+    if (!p?.skill || typeof p.budget !== "number") return;
+    if (!existsSync(PI_SKILLOPT_WORKER_PATH)) { logHm(`skillopt: worker bundle missing at ${PI_SKILLOPT_WORKER_PATH} — run 'hivemind pi install'`); return; }
+    // Spend one message of the budget; close the window when exhausted.
+    try {
+      if (p.budget - 1 <= 0) { unlinkSync(f); }
+      else { const tmp = `${f}.${process.pid}.tmp`; writeFileSync(tmp, JSON.stringify({ ...p, budget: p.budget - 1 })); renameSync(tmp, f); }
+    } catch { /* best-effort */ }
+    const child = spawn(process.execPath, [PI_SKILLOPT_WORKER_PATH], {
+      detached: true,
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        HIVEMIND_SKILLOPT_WORKER: "1", // recursion guard (worker won't re-fire the trigger)
+        HIVEMIND_SKILLOPT_SESSION: sessionId,
+        HIVEMIND_SKILLOPT_SKILL: p.skill,
+        HIVEMIND_SKILLOPT_REACTION: reaction.slice(0, 8000),
+        HIVEMIND_SKILLOPT_AGENT: "pi", // judge/proposer run on pi (the user's own agent)
+        ...(p.toolUseId ? { HIVEMIND_SKILLOPT_TOOL_USE_ID: p.toolUseId } : {}),
+      },
+    });
+    child.unref();
+    logHm(`skillopt: spawned worker for ${p.skill} in ${sessionId} (agent=pi)`);
+  } catch (e: any) { logHm(`skillopt react swallowed: ${e?.message ?? e}`); }
+}
+
 interface SummaryState {
   lastSummaryAt: number;
   lastSummaryCount: number;
@@ -1255,6 +1343,8 @@ export default function hivemindExtension(pi: ExtensionAPI): void {
     } catch (e: any) {
       logHm(`input: writeSessionRow swallowed: ${e?.message ?? e}`);
     }
+    // SkillOpt: this prompt is the user's reaction to a recently-used org skill. Swallowed.
+    skilloptReact(sessionId, text);
     maybeTriggerPeriodicSummary(creds, sessionId, cwd);
   });
 
@@ -1286,6 +1376,9 @@ export default function hivemindExtension(pi: ExtensionAPI): void {
     } catch (e: any) {
       logHm(`tool_result: writeSessionRow swallowed: ${e?.message ?? e}`);
     }
+    // SkillOpt: pi USES an org skill by reading its SKILL.md — arm the judgment window on
+    // a successful such read (skip errored reads). Swallowed.
+    if (event.isError !== true) skilloptArm(sessionId, event.toolName, event.input, event.toolCallId);
     maybeTriggerPeriodicSummary(creds, sessionId, cwd);
   });
 

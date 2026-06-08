@@ -57,6 +57,13 @@ describe("findInvocation", () => {
     expect((await findInvocation(two, "sessions", "s", "x", "a", "nope"))?.ts).toBe("t2"); // unknown id → latest fallback
     expect((await findInvocation(two, "sessions", "s", "x", "a"))?.ts).toBe("t2"); // no pin → latest
   });
+
+  it("skips rows whose recorded session_id differs from the queried one (path-LIKE collision guard)", async () => {
+    const q: QueryFn = async () => [
+      { message: { type: "tool_call", tool_name: "Skill", tool_input: JSON.stringify({ skill: "x--a" }), session_id: "OTHER", timestamp: "t1" } },
+    ] as Array<Record<string, unknown>>;
+    expect(await findInvocation(q, "sessions", "s1", "x", "a")).toBeNull(); // row.session_id !== s1 → skipped
+  });
 });
 
 describe("improveSkillIfFailed", () => {
@@ -75,6 +82,27 @@ describe("improveSkillIfFailed", () => {
     const { query, inserts } = makeQuery();
     const r = await improveSkillIfFailed(base(query, { judge: PASS_JUDGE }));
     expect(r).toMatchObject({ judged: true, failed: false, improved: false });
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("an empty reaction still judges + improves (no reaction appended to the window)", async () => {
+    const { query, inserts } = makeQuery();
+    const r = await improveSkillIfFailed(base(query, { reaction: "   " })); // whitespace → the append branch is skipped
+    expect(r).toMatchObject({ judged: true, failed: true, improved: true });
+    expect(inserts).toHaveLength(1);
+  });
+
+  it("failed + proposer makes no change → judged, not improved", async () => {
+    const { query, inserts } = makeQuery();
+    const r = await improveSkillIfFailed(base(query, { proposerModel: async () => "[]" })); // no edits
+    expect(r).toMatchObject({ judged: true, failed: true, improved: false, reason: "proposer made no change" });
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("failed + edit already proposed (dedup) → judged, not improved", async () => {
+    const { query, inserts } = makeQuery();
+    const r = await improveSkillIfFailed(base(query, { alreadyProposed: () => true }));
+    expect(r).toMatchObject({ judged: true, failed: true, improved: false, reason: "edit already proposed (dedup)" });
     expect(inserts).toHaveLength(0);
   });
 

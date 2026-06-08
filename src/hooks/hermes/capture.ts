@@ -38,6 +38,7 @@ import { bundleDirFromImportMeta, spawnHermesWikiWorker, wikiLog } from "./spawn
 import { tryStopCounterTrigger } from "../../skillify/triggers.js";
 import type { Config } from "../../config.js";
 import { getInstalledVersion } from "../../utils/version-check.js";
+import { reactSkillOpt } from "../shared/skillopt-hook.js";
 const log = (msg: string) => _log("hermes-capture", msg);
 
 function resolveEmbedDaemonPath(): string {
@@ -96,12 +97,14 @@ async function main(): Promise<void> {
   };
 
   let entry: Record<string, unknown> | null = null;
+  let reactPrompt: string | undefined; // the user's prompt = the SkillOpt reaction (fired after capture)
 
   if (event === "pre_llm_call") {
     const prompt = pickString(extra.prompt, extra.user_message, (extra.message as Record<string, unknown> | undefined)?.content);
     if (!prompt) { log(`pre_llm_call: no prompt found in extra`); return; }
     log(`user session=${sessionId}`);
     entry = { id: crypto.randomUUID(), ...meta, type: "user_message", content: prompt };
+    reactPrompt = prompt;
   } else if (event === "post_tool_call" && typeof input.tool_name === "string") {
     const toolResponse = extra.tool_result ?? extra.tool_output ?? extra.result ?? extra.output;
     log(`tool=${input.tool_name} session=${sessionId}`);
@@ -157,6 +160,10 @@ async function main(): Promise<void> {
   }
 
   log("capture ok → cloud");
+
+  // SkillOpt: a pre_llm_call prompt is the user's reaction to a recently-used org skill.
+  // Swallowed; no-op unless a judgment window is open for this session.
+  reactSkillOpt(sessionId, reactPrompt, "hermes");
 
   maybeTriggerPeriodicSummary(sessionId, cwd, config);
 

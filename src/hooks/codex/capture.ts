@@ -34,6 +34,7 @@ import {
 } from "../summary-state.js";
 import { bundleDirFromImportMeta, spawnCodexWikiWorker, wikiLog } from "./spawn-wiki-worker.js";
 import { getInstalledVersion } from "../../utils/version-check.js";
+import { reactSkillOpt } from "../shared/skillopt-hook.js";
 const log = (msg: string) => _log("codex-capture", msg);
 
 function resolveEmbedDaemonPath(): string {
@@ -150,6 +151,10 @@ async function main(): Promise<void> {
   }
 
   log("capture ok");
+
+  // SkillOpt: a UserPromptSubmit prompt is the user's reaction to a recently-used org skill.
+  // Swallowed; no-op unless a judgment window is open for this session.
+  reactSkillOpt(input.session_id, input.prompt, "codex");
 
   maybeTriggerPeriodicSummary(input.session_id, input.cwd ?? "", config);
 }

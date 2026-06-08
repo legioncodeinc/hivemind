@@ -5,17 +5,39 @@
  * whether a tool runs or a prompt is captured.
  */
 import { markSkillPending, runEventTrigger } from "../../skillify/skillopt-trigger.js";
+import { pathToSkillRef } from "../../skillify/skill-invocations.js";
 import { SKILLOPT_ENV } from "../../skillify/skillopt-env.js";
 
 /**
- * PreToolUse: if the agent invoked a `Skill` tool on an ORG skill (`name--author`),
- * open its K-message judgment window. Non-org skills (bare / plugin) are ignored.
+ * Recover an org-skill ref from a tool call that LOADS a skill's SKILL.md — how agents without
+ * a first-class `Skill` tool use skills: pi `read`s `.../skills/<dir>/SKILL.md` (structured
+ * `path`), codex/hermes SHELL a read of it (path inside `command`). The `<dir>` segment is the
+ * ref. Returns null when it isn't a SKILL.md load. markSkillPending still gates the ref
+ * (org-shape + manifest), so a bare/non-org dir is rejected there.
+ */
+export function skillRefFromSkillFileRead(toolName: string, toolInput: unknown): string | null {
+  // read tool with a structured path (pi)
+  if (/^read$/i.test(toolName)) return pathToSkillRef((toolInput as { path?: unknown })?.path);
+  // shell tool with the path inside the command (codex Bash, hermes terminal)
+  return pathToSkillRef((toolInput as { command?: unknown })?.command);
+}
+
+/**
+ * PreToolUse: open a skill's K-message judgment window when the agent USES an org skill —
+ * either via a first-class `Skill` tool (claude) or by reading its SKILL.md file (pi/codex).
+ * Org-skill gating (shape + pull manifest) happens in markSkillPending.
  */
 export function armSkillOptOnSkillUse(sessionId: string, toolName: string, toolInput: unknown, toolUseId?: string): void {
   try {
-    if (toolName !== "Skill" || process.env[SKILLOPT_ENV.DISABLED] === "1") return;
-    const ref = (toolInput as { skill?: unknown })?.skill;
-    if (typeof ref === "string") markSkillPending(sessionId, ref, toolUseId);
+    if (process.env[SKILLOPT_ENV.DISABLED] === "1") return;
+    let ref: string | null = null;
+    if (toolName === "Skill") {
+      const s = (toolInput as { skill?: unknown })?.skill;
+      ref = typeof s === "string" ? s : null;
+    } else {
+      ref = skillRefFromSkillFileRead(toolName, toolInput); // pi/codex: read of …/skills/<ref>/SKILL.md
+    }
+    if (ref) markSkillPending(sessionId, ref, toolUseId);
   } catch { /* never break PreToolUse */ }
 }
 

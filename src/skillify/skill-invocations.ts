@@ -44,13 +44,36 @@ export function parseMessage(m: unknown): ParsedMsg | null {
   return null;
 }
 
-/** The skill ref invoked by a tool_call message (e.g. "name--author"), else null. */
+/** Match a path that loads a skill's SKILL.md anywhere in `s` → the `<dir>` ref (name--author),
+ *  else null. Works on a bare path (pi `read` tool_input.path) or inside a shell command string
+ *  (codex/hermes `cat …/SKILL.md`). The dir class excludes whitespace/quotes so a command's
+ *  trailing args don't get swallowed into the ref. */
+export function pathToSkillRef(s: unknown): string | null {
+  if (typeof s !== "string") return null;
+  // `/skills/` then any intermediate dirs (codex nests org skills under `.system/`,
+  // e.g. …/skills/.system/<name--author>/SKILL.md), capturing the dir right before
+  // SKILL.md. markSkillPending still gates org-shape (name--author), so `.system` /
+  // bare system-skill dirs are rejected there.
+  const m = s.match(/\/skills\/(?:[^/\s"'`]+\/)*([^/\s"'`]+)\/SKILL\.md/);
+  return m ? m[1] : null;
+}
+
+/**
+ * The skill ref invoked by a tool_call message (e.g. "name--author"), else null. Recognises:
+ *   - claude's first-class `Skill` tool (tool_input.skill)
+ *   - pi/codex/hermes loading a skill by reading its SKILL.md — a `read` tool_input.path, or a
+ *     shell tool_input.command that cats it (the worker windows around whichever it finds).
+ */
 export function invokedSkillRef(msg: ParsedMsg): string | null {
-  if (msg.type !== "tool_call" || msg.tool_name !== "Skill") return null;
+  if (msg.type !== "tool_call") return null;
   let input: unknown = msg.tool_input;
-  if (typeof input === "string") { try { input = JSON.parse(input); } catch { return null; } }
-  const skill = (input as { skill?: unknown })?.skill;
-  return typeof skill === "string" && skill.length > 0 ? skill : null;
+  if (typeof input === "string") { try { input = JSON.parse(input); } catch { input = msg.tool_input; } }
+  if (msg.tool_name === "Skill") {
+    const skill = (input as { skill?: unknown })?.skill;
+    return typeof skill === "string" && skill.length > 0 ? skill : null;
+  }
+  const io = input as { path?: unknown; command?: unknown } | undefined;
+  return pathToSkillRef(io?.path) ?? pathToSkillRef(io?.command);
 }
 
 /** Split "<name>--<author>" → parts. null for plugin-namespaced / bare / malformed refs. */
@@ -66,16 +89,18 @@ export function splitOrgSkill(skill: string): { name: string; author: string } |
 }
 
 /**
- * Org-skill invocations across captured sessions, newest first. Coarse prefilter
- * on `"Skill"` (robust to JSONB colon-spacing) then a precise in-code check, so a
- * stray "Skill" in prose can't slip through as a real invocation.
+ * Org-skill invocations across captured sessions, newest first. Coarse prefilter then a precise
+ * in-code check (invokedSkillRef), so a stray match in prose can't slip through. The prefilter
+ * matches EITHER a first-class `Skill` tool_call OR a `SKILL.md` load (the read/shell path that
+ * pi/codex/hermes use) — otherwise those newly-supported invocations get dropped before
+ * invokedSkillRef can evaluate them.
  */
 export async function listSkillInvocations(
   query: QueryFn,
   sessionsTable: string,
   opts: { sinceIso?: string; untilIso?: string; limit?: number } = {},
 ): Promise<SkillInvocation[]> {
-  const where = [`CAST(message AS TEXT) LIKE '%"Skill"%'`];
+  const where = [`(CAST(message AS TEXT) LIKE '%"Skill"%' OR CAST(message AS TEXT) LIKE '%/SKILL.md%')`];
   if (opts.sinceIso) where.push(`last_update_date >= '${sqlStr(opts.sinceIso)}'`);
   if (opts.untilIso) where.push(`last_update_date < '${sqlStr(opts.untilIso)}'`);
   const limit = opts.limit && opts.limit > 0 ? ` LIMIT ${Math.floor(opts.limit)}` : "";

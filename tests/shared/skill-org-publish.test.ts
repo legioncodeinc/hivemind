@@ -37,6 +37,25 @@ describe("readCurrentSkillRow", () => {
     );
     expect(row).toMatchObject({ contributors: [], sourceSessions: [], version: 2, install: "project", scope: "me" });
   });
+
+  it("parses the column fallbacks: install/scope/version ternaries + array vs JSON-string vs non-JSON vs object", async () => {
+    // contributors as a JSON-array STRING → parsed; source_sessions as a real array → mapped;
+    // install != global → project; scope != team → me; version 0 → 1.
+    const r1 = await readCurrentSkillRow(
+      async () => [{ name: "x", author: "a", install: "local", scope: "weird", body: "b",
+        contributors: JSON.stringify(["u1", "u2"]), source_sessions: ["s1", "s2"], version: 0 }],
+      "skills", "x", "a",
+    );
+    expect(r1).toMatchObject({ install: "project", scope: "me", contributors: ["u1", "u2"], sourceSessions: ["s1", "s2"], version: 1 });
+
+    // contributors as a non-JSON string → []; a JSON OBJECT (not array) → []; install=global; scope=team; version 5 kept.
+    const r2 = await readCurrentSkillRow(
+      async () => [{ name: "x", author: "a", install: "global", scope: "team", body: "b",
+        contributors: "not json at all", source_sessions: JSON.stringify({ not: "array" }), version: 5 }],
+      "skills", "x", "a",
+    );
+    expect(r2).toMatchObject({ install: "global", scope: "team", contributors: [], sourceSessions: [], version: 5 });
+  });
 });
 
 describe("publishImprovedSkill", () => {

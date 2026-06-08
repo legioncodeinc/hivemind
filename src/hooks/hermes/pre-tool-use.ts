@@ -27,6 +27,7 @@ import { log as _log } from "../../utils/debug.js";
 import { parseBashGrep, handleGrepDirect } from "../grep-direct.js";
 import { touchesMemory, rewritePaths } from "../memory-path-utils.js";
 import { tryGraphRead } from "../../graph/graph-command.js";
+import { armSkillOptOnSkillUse } from "../shared/skillopt-hook.js";
 const log = (msg: string) => _log("hermes-pre-tool-use", msg);
 
 interface HermesPreToolUseInput {
@@ -40,6 +41,9 @@ interface HermesPreToolUseInput {
 
 async function main(): Promise<void> {
   const input = await readStdin<HermesPreToolUseInput>();
+  // SkillOpt: hermes USES an org skill by shelling a read of its SKILL.md (the path is in the
+  // terminal command). Arm the judgment window on it. Swallowed; never affects the decision below.
+  armSkillOptOnSkillUse(input.session_id ?? "", input.tool_name ?? "", input.tool_input);
   // Hermes' shell-hook tool name for terminal commands is "terminal".
   if (input.tool_name !== "terminal") return;
 

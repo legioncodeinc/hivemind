@@ -48,6 +48,10 @@ const SKILLIFY_WORKER_PATH = join(WIKI_WORKER_DIR, "skillify-worker.js");
 // shared autoPullSkills() codex/cursor/hermes call directly; pi can't
 // import the TS module so it routes through this child process.
 const AUTOPULL_WORKER_PATH = join(WIKI_WORKER_DIR, "autopull-worker.js");
+// SkillOpt worker bundle, spawned by the pi extension on a user reaction to judge a
+// recently-used org skill and publish an improvement. Same shared module CC ships; pi
+// can't import the raw-.ts trigger so it shells this bundle. Sibling of the others.
+const SKILLOPT_WORKER_PATH = join(WIKI_WORKER_DIR, "skillopt-worker.js");
 
 const HIVEMIND_BLOCK_START = "<!-- BEGIN hivemind-memory -->";
 const HIVEMIND_BLOCK_END = "<!-- END hivemind-memory -->";
@@ -148,6 +152,14 @@ export function installPi(): void {
     copyFileSync(srcAutopullWorker, AUTOPULL_WORKER_PATH);
   }
 
+  // 6. SkillOpt-worker bundle (spawned by extension on a user reaction to judge +
+  //    improve a recently-used org skill). Same dir, same cleanup.
+  const srcSkilloptWorker = join(pkgRoot(), "pi", "bundle", "skillopt-worker.js");
+  if (existsSync(srcSkilloptWorker)) {
+    ensureDir(WIKI_WORKER_DIR);
+    copyFileSync(srcSkilloptWorker, SKILLOPT_WORKER_PATH);
+  }
+
   ensureDir(VERSION_DIR);
   writeVersionStamp(VERSION_DIR, getVersion());
 
@@ -161,6 +173,9 @@ export function installPi(): void {
   }
   if (existsSync(AUTOPULL_WORKER_PATH)) {
     log(`  pi             autopull-worker installed -> ${AUTOPULL_WORKER_PATH}`);
+  }
+  if (existsSync(SKILLOPT_WORKER_PATH)) {
+    log(`  pi             skillopt-worker installed -> ${SKILLOPT_WORKER_PATH}`);
   }
 }
 

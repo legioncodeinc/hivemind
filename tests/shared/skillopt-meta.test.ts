@@ -31,6 +31,14 @@ describe("alreadyProposed / priorEditSummaries", () => {
     expect(prior.join(" ")).toContain("append");
     expect(priorEditSummaries(meta, "posthog", "kamo").join(" ")).not.toContain('append: z'); // other skill's edit
   });
+
+  it("summarizes a delete edit (target, NO content) and a targetless append (content, NO target)", () => {
+    const m = [metaEntryFor("p", "k", [{ op: "delete", target: "old rule" }, { op: "append", content: "x" }], "t")];
+    const prior = priorEditSummaries(m, "p", "k");
+    // delete → target anchor + no content preview; append → content preview + no anchor (both ternary halves)
+    expect(prior.join(" ")).toMatch(/delete @"old rule"/);
+    expect(prior.join(" ")).toMatch(/append: x/);
+  });
 });
 
 describe("loadMeta / appendMeta", () => {

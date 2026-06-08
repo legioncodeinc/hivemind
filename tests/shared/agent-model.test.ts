@@ -92,6 +92,13 @@ describe("agentModel — per-agent no-tools dispatch", () => {
     expect(argVal(calls[0].args, "-m")).toBe("us.anthropic.claude-haiku-4-5-20251001-v1:0");
   });
 
+  it("codex applies an explicit model override (-m) when one is configured", async () => {
+    const { spawnImpl, calls } = fakeSpawn("raw");
+    const env = { HIVEMIND_SKILLOPT_CODEX_JUDGE_MODEL: "o3" } as unknown as NodeJS.ProcessEnv;
+    await agentModel({ agent: "codex", role: "judge", bin: "/x/codex", spawnImpl, env })("S", "U");
+    expect(argVal(calls[0].args, "-m")).toBe("o3"); // the `model ? ["-m", model] : []` present-branch
+  });
+
   it("rejects a hermes/pi provider override with NO model (the default id wouldn't match)", async () => {
     const { spawnImpl } = fakeSpawn("x");
     const env = { HIVEMIND_SKILLOPT_HERMES_PROVIDER: "bedrock" } as unknown as NodeJS.ProcessEnv;

@@ -11,7 +11,7 @@
  * Inputs come via env: HIVEMIND_SKILLOPT_{SESSION,SKILL,REACTION,AGENT}.
  */
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { accessSync, constants as fsConstants } from "node:fs";
 import { log as _log } from "../utils/debug.js";
 import { loadConfig } from "../config.js";
 import { DeeplakeApi } from "../deeplake-api.js";
@@ -25,18 +25,26 @@ import { SKILLOPT_ENV } from "./skillopt-env.js";
 const log = (m: string) => _log("skillopt-worker", m);
 
 /**
- * Resolve an agent's CLI via `command -v` — finds nvm/volta/fnm installs that
- * gate-runner's static-path findAgentBin misses (it deliberately avoids PATH for
- * the openclaw bundle). undefined → agentModel falls back to findAgentBin. Mirrors
- * the wiki spawn helpers' findXBin pattern (this worker is a standalone detached
- * process, not the openclaw-scanned skillify-worker, so `command -v` is fine here).
+ * Resolve a known agent's CLI by walking $PATH — finds nvm/volta/fnm installs that
+ * gate-runner's static-path findAgentBin misses (it deliberately avoids PATH for the
+ * openclaw bundle). undefined → agentModel falls back to findAgentBin. Done in Node
+ * (no shell / subprocess) so an env-derived agent name can't reach a command line.
  */
 const AGENT_CMD: Record<string, string> = { claude_code: "claude", codex: "codex", cursor: "cursor-agent", hermes: "hermes", pi: "pi" };
 function resolveAgentBin(agent: string): string | undefined {
-  try {
-    const p = execSync(`command -v ${AGENT_CMD[agent] ?? agent}`, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-    return p || undefined;
-  } catch { return undefined; }
+  // Only resolve KNOWN agents — no `?? agent` fallback. `agent` traces back to the
+  // HIVEMIND_SKILLOPT_AGENT env var; feeding an arbitrary value to a command is a
+  // command-injection sink (CodeQL: indirect uncontrolled command line). Resolve the
+  // whitelisted binary by walking PATH ourselves — no shell, no subprocess — which still
+  // finds nvm/volta/fnm installs (they're on PATH), the reason the old `command -v` existed.
+  const cmd = AGENT_CMD[agent];
+  if (!cmd) return undefined;
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    const full = path.join(dir, cmd);
+    try { accessSync(full, fsConstants.X_OK); return full; } catch { /* not here or not executable */ }
+  }
+  return undefined;
 }
 
 async function main(): Promise<void> {
