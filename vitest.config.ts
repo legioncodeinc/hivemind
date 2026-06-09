@@ -475,6 +475,11 @@ export default defineConfig({
         // mock DeeplakeApi, bringing it to 97/91/97/99. Floor set at 90 to
         // catch regressions on these paths going forward.
         "src/shell/deeplake-fs.ts":          { statements: 90, branches: 90, functions: 90, lines: 90 },
+        // fix/wiki-worker-windows — cross-platform CLI resolution + spawn
+        // descriptor builders for the summary worker. Small, pure modules,
+        // fully exercised by tests/claude-code/wiki-worker-windows.test.ts.
+        "src/utils/resolve-cli-bin.ts":      { statements: 90, branches: 90, functions: 90, lines: 90 },
+        "src/hooks/wiki-worker-spawn.ts":    { statements: 90, branches: 90, functions: 90, lines: 90 },
         // feat(graph): multi-language support (PR #241) — 8 new language extractors
         // + shared helper module. Branches calibrated below statements: each
         // extractor has error/fallback branches (isError, isMissing, unknown node
