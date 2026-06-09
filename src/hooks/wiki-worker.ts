@@ -9,6 +9,7 @@
 
 import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { buildClaudeInvocation } from "./wiki-worker-spawn.js";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { utcTimestamp, log as _log } from "../utils/debug.js";
@@ -166,13 +167,9 @@ async function main(): Promise<void> {
 
     wlog("running claude -p");
     try {
-      execFileSync(cfg.claudeBin, [
-        "-p", prompt,
-        "--no-session-persistence",
-        "--model", "haiku",
-        "--permission-mode", "bypassPermissions",
-      ], {
-        stdio: ["ignore", "pipe", "pipe"],
+      const inv = buildClaudeInvocation(cfg.claudeBin, prompt);
+      execFileSync(inv.file, inv.args, {
+        ...inv.options,
         timeout: 120_000,
         env: { ...process.env, HIVEMIND_WIKI_WORKER: "1", HIVEMIND_CAPTURE: "false" },
       });

@@ -3,7 +3,6 @@
  * Called from session-end.ts (always) and capture.ts (periodic trigger).
  */
 
-import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -13,6 +12,7 @@ import { makeWikiLogger } from "../utils/wiki-log.js";
 import { getInstalledVersion } from "../utils/version-check.js";
 import { spawnDetachedNodeWorker } from "../utils/spawn-detached.js";
 import { projectNameFromCwd } from "../utils/project-name.js";
+import { resolveCliBin } from "../utils/resolve-cli-bin.js";
 
 const HOME = homedir();
 const wikiLogger = makeWikiLogger(join(HOME, ".claude", "hooks"));
@@ -77,11 +77,7 @@ LENGTH LIMIT: Keep the total summary under 4000 characters. Be dense and concise
 export const wikiLog = wikiLogger.log;
 
 export function findClaudeBin(): string {
-  try {
-    return execSync("which claude 2>/dev/null", { encoding: "utf-8" }).trim();
-  } catch {
-    return join(HOME, ".claude", "local", "claude");
-  }
+  return resolveCliBin("claude");
 }
 
 export interface SpawnOptions {

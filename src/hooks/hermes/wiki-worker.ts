@@ -171,6 +171,13 @@ async function main(): Promise<void> {
     try {
       // hermes -z (--oneshot) is the non-interactive mode. --yolo
       // auto-approves tool use within the spawned hermes process.
+      // TODO(windows): unlike claude/codex/cursor/pi this spawn is NOT yet
+      // cross-platform. The prompt rides as the value of `-z`, so the stdin
+      // workaround used by buildTrailingPromptInvocation can't be applied
+      // verbatim (dropping `-z`'s value would consume the next flag), and we
+      // haven't confirmed hermes reads the prompt from stdin. On Windows a
+      // `.cmd` hermes shim still can't be spawned here. Fix once hermes' stdin
+      // behavior is verified on a Windows box.
       execFileSync(cfg.hermesBin, [
         "-z", prompt,
         "--provider", cfg.hermesProvider,
