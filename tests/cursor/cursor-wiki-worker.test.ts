@@ -143,4 +143,23 @@ describe("cursor wiki-worker — behavior", () => {
     expect(uploadSummaryMock.mock.calls[0][1].agent).toBe("cursor");
     expect(releaseLockMock).toHaveBeenCalledWith("sid-cursor");
   });
+
+  it("logs the failure and skips upload when the cursor-agent spawn throws", async () => {
+    fetchMock.mockImplementation(async (_u: string, init: any) => {
+      const sql = JSON.parse(init.body).query as string;
+      if (sql.startsWith("SELECT message, creation_date")) {
+        return jsonResp({ columns: ["message", "creation_date"], rows: [[JSON.stringify({ type: "user_message", content: "hi cursor" }), "2026-04-20T00:00:00Z"]] });
+      }
+      if (sql.startsWith("SELECT DISTINCT path")) {
+        return jsonResp({ columns: ["path"], rows: [["/sessions/alice/alice_org_default_sid-cursor.jsonl"]] });
+      }
+      if (sql.startsWith("SELECT summary FROM")) return jsonResp({ columns: ["summary"], rows: [] });
+      throw new Error(`unexpected query: ${sql}`);
+    });
+    execFileSyncMock.mockImplementation(() => { throw new Error("spawn ENOENT"); });
+    await runWorker();
+    expect(execFileSyncMock).toHaveBeenCalledTimes(1);
+    expect(uploadSummaryMock).not.toHaveBeenCalled();
+    expect(releaseLockMock).toHaveBeenCalledWith("sid-cursor");
+  });
 });
