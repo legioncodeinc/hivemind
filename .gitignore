@@ -31,3 +31,5 @@ hermes/bundle/
 mcp/bundle/
 pi/bundle/
 evals/
+.cursor/
+cursor_hivemind_environment_variables_c.md
