@@ -313,7 +313,7 @@ describe("installHermes / uninstallHermes", () => {
 });
 
 // OpenClaw tests intentionally omitted from this end-to-end file:
-// `openclaw/dist/` is gitignored (esbuild output, see .gitignore: dist/),
+// `harnesses/openclaw/dist/` is gitignored (esbuild output, see .gitignore: dist/),
 // so it doesn't exist on a fresh CI checkout the way the committed
 // codex/cursor/hermes bundles do. The dedicated test file
 // `cli-install-openclaw.test.ts` covers OpenClaw via mock-pkgRoot →

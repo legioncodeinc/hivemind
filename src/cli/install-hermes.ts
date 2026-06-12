@@ -183,7 +183,7 @@ export function installHermes(): void {
   log(`  Hermes         skill installed -> ${SKILLS_DIR}`);
 
   // 2. Hook bundle — auto-capture via Hermes shell-hooks.
-  const srcBundle = join(pkgRoot(), "hermes", "bundle");
+  const srcBundle = join(pkgRoot(), "harnesses", "hermes", "bundle");
   if (!existsSync(srcBundle)) {
     throw new Error(`Hermes bundle missing at ${srcBundle}. Run 'npm run build' first.`);
   }

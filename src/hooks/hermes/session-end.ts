@@ -2,7 +2,7 @@
  * Hermes on_session_end hook (fire-and-forget).
  *
  * Spawns a final wiki-worker run via `hermes -z` so the session gets
- * an AI summary in the memory table. Mirrors the codex/CC flow.
+ * an AI summary in the memory table. Mirrors the harnesses/codex/CC flow.
  */
 
 import { readStdin } from "../../utils/stdin.js";

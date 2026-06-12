@@ -54,8 +54,8 @@ export function findHivemindInstalls(home: string = HOME): AgentInstall[] {
       const dir = join(ccCache, ver);
       try { if (!statSync(dir).isDirectory()) continue; } catch { continue; }
       // Bundle layout differs slightly: marketplace installs put it directly
-      // under <ver>/bundle, while local-clone-style layouts use <ver>/claude-code/bundle.
-      const candidates = [join(dir, "bundle"), join(dir, "claude-code", "bundle")];
+      // under <ver>/bundle, while local-clone-style layouts use <ver>/harnesses/claude-code/bundle.
+      const candidates = [join(dir, "bundle"), join(dir, "harnesses", "claude-code", "bundle")];
       if (candidates.some(p => existsSync(p))) {
         out.push({ id: `claude (${ver})`, pluginDir: dir });
       }

@@ -31,7 +31,7 @@ function buildHooksJson(): Record<string, unknown> {
       PostToolUse: [hookCmd("capture.js", 15)],
       // One Stop matcher-block with TWO commands — stop.js (capture) +
       // graph-on-stop.js (code-graph auto-build, G3). Single block (not two)
-      // mirrors the static codex/hooks/hooks.json and keeps one entry per
+      // mirrors the static harnesses/codex/hooks/hooks.json and keeps one entry per
       // event for the merge/dedupe logic.
       Stop: [stopBlockWithGraph(30)],
     },
@@ -228,8 +228,8 @@ function stripLegacyCodexHooksKey(): void {
 }
 
 export function installCodex(): void {
-  const srcBundle = join(pkgRoot(), "codex", "bundle");
-  const srcSkills = join(pkgRoot(), "codex", "skills");
+  const srcBundle = join(pkgRoot(), "harnesses", "codex", "bundle");
+  const srcSkills = join(pkgRoot(), "harnesses", "codex", "skills");
 
   if (!existsSync(srcBundle)) {
     throw new Error(`Codex bundle missing at ${srcBundle}. Run 'npm run build' first.`);

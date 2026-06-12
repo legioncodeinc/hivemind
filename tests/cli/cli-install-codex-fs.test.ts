@@ -37,11 +37,11 @@ beforeEach(() => {
   mkdirSync(join(tmpHome, ".codex"), { recursive: true });
 
   // Mock package layout: pkgRoot/codex/{bundle,skills}/<files>
-  mkdirSync(join(tmpPkg, "codex", "bundle"), { recursive: true });
-  writeFileSync(join(tmpPkg, "codex", "bundle", "session-start.js"), "// fake bundle file");
-  writeFileSync(join(tmpPkg, "codex", "bundle", "capture.js"), "// fake bundle file");
-  mkdirSync(join(tmpPkg, "codex", "skills", "deeplake-memory"), { recursive: true });
-  writeFileSync(join(tmpPkg, "codex", "skills", "deeplake-memory", "SKILL.md"), "fake skill body");
+  mkdirSync(join(tmpPkg, "harnesses", "codex", "bundle"), { recursive: true });
+  writeFileSync(join(tmpPkg, "harnesses", "codex", "bundle", "session-start.js"), "// fake bundle file");
+  writeFileSync(join(tmpPkg, "harnesses", "codex", "bundle", "capture.js"), "// fake bundle file");
+  mkdirSync(join(tmpPkg, "harnesses", "codex", "skills", "deeplake-memory"), { recursive: true });
+  writeFileSync(join(tmpPkg, "harnesses", "codex", "skills", "deeplake-memory", "SKILL.md"), "fake skill body");
   // Mock package.json so getVersion() resolves to a known value.
   writeFileSync(join(tmpPkg, "package.json"), JSON.stringify({ version: "1.2.3" }));
 
@@ -271,14 +271,14 @@ describe("installCodex — happy path", () => {
   });
 
   it("warns and skips the symlink (without throwing) when the skill source is missing", async () => {
-    rmSync(join(tmpPkg, "codex", "skills", "deeplake-memory"), { recursive: true, force: true });
+    rmSync(join(tmpPkg, "harnesses", "codex", "skills", "deeplake-memory"), { recursive: true, force: true });
     const { installCodex } = await importInstaller();
     expect(() => installCodex()).not.toThrow();
     expect(existsSync(join(tmpHome, ".agents", "skills", "hivemind-memory"))).toBe(false);
   });
 
   it("throws when the bundle source is missing (build hasn't run)", async () => {
-    rmSync(join(tmpPkg, "codex", "bundle"), { recursive: true, force: true });
+    rmSync(join(tmpPkg, "harnesses", "codex", "bundle"), { recursive: true, force: true });
     const { installCodex } = await importInstaller();
     expect(() => installCodex()).toThrow(/Codex bundle missing/);
   });

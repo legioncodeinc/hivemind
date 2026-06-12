@@ -53,7 +53,7 @@ External dependencies are intentionally few: Deeplake for storage, the host agen
 | MCP server | `src/mcp/` | Recall surface for Hermes and future MCP clients |
 | Skillify | `src/skillify/` | Trace-to-skill mining pipeline |
 | Graph | `src/graph/` | Live codebase graph extraction and recall |
-| Plugin build outputs | `claude-code/`, `codex/`, `cursor/`, `hermes/`, `openclaw/`, `pi/` | Distributable artifacts per assistant |
+| Plugin build outputs | `harnesses/claude-code/`, `harnesses/codex/`, `cursor/`, `harnesses/hermes/`, `harnesses/openclaw/`, `harnesses/pi/` | Distributable artifacts per assistant |
 
 ---
 

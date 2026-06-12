@@ -18,23 +18,23 @@ function loadSetupConfig(): Promise<SetupConfigModule> {
   return import("./setup-config.js");
 }
 // Network-only helpers stay as static imports — auth.js no longer touches fs
-// (its credential IO moved to ../../src/commands/auth-creds.js, which we load
+// (its credential IO moved to ../../../src/commands/auth-creds.js, which we load
 // lazily below so esbuild emits it as a separate chunk).
-import { requestDeviceCode, pollForToken, listOrgs, switchOrg, listWorkspaces, switchWorkspace, healDriftedOrgToken } from "../../src/commands/auth.js";
-import { DeeplakeApi } from "../../src/deeplake-api.js";
+import { requestDeviceCode, pollForToken, listOrgs, switchOrg, listWorkspaces, switchWorkspace, healDriftedOrgToken } from "../../../src/commands/auth.js";
+import { DeeplakeApi } from "../../../src/deeplake-api.js";
 
 // Lazy-loaders for the fs-touching shared modules. Each becomes its own
 // esbuild chunk; the main openclaw bundle stays free of fs imports.
-type CredsModule = typeof import("../../src/commands/auth-creds.js");
-type ConfigModule = typeof import("../../src/config.js");
+type CredsModule = typeof import("../../../src/commands/auth-creds.js");
+type ConfigModule = typeof import("../../../src/config.js");
 let credsModulePromise: Promise<CredsModule> | null = null;
 let configModulePromise: Promise<ConfigModule> | null = null;
 function loadCredsModule(): Promise<CredsModule> {
-  if (!credsModulePromise) credsModulePromise = import("../../src/commands/auth-creds.js");
+  if (!credsModulePromise) credsModulePromise = import("../../../src/commands/auth-creds.js");
   return credsModulePromise;
 }
 function loadConfigModule(): Promise<ConfigModule> {
-  if (!configModulePromise) configModulePromise = import("../../src/config.js");
+  if (!configModulePromise) configModulePromise = import("../../../src/config.js");
   return configModulePromise;
 }
 async function loadCredentials() {
@@ -50,23 +50,23 @@ async function loadConfig() {
   const m = await loadConfigModule();
   return m.loadConfig();
 }
-import { sqlStr } from "../../src/utils/sql.js";
-import { deeplakeClientHeader } from "../../src/utils/client-header.js";
+import { sqlStr } from "../../../src/utils/sql.js";
+import { deeplakeClientHeader } from "../../../src/utils/client-header.js";
 // Memory-access primitives reused directly from the CC/Codex hooks so the
 // openclaw agent gets the same search + read semantics (multi-word across
 // memory ∪ sessions, path filters, JSONB normalization, virtual /index.md).
-import { searchDeeplakeTables, buildGrepSearchOptions, compileGrepRegex, normalizeContent, type GrepMatchParams } from "../../src/shell/grep-core.js";
-import { readVirtualPathContent } from "../../src/hooks/virtual-table-query.js";
+import { searchDeeplakeTables, buildGrepSearchOptions, compileGrepRegex, normalizeContent, type GrepMatchParams } from "../../../src/shell/grep-core.js";
+import { readVirtualPathContent } from "../../../src/hooks/virtual-table-query.js";
 // Standalone embed client. Produces real document embeddings ONLY when the
 // canonical shared daemon at ~/.hivemind/embed-deps/embed-daemon.js is
 // present (deposited out-of-band by `hivemind embeddings install`). The
 // helper never installs transformers itself — that's explicit user opt-in
 // per src/user-config.ts. Returns null → caller writes NULL into
 // message_embedding (today's behavior, preserved on every failure mode).
-import { tryEmbedStandalone, _setSpawnImpl } from "../../src/embeddings/standalone-embed-client.js";
-import { embeddingSqlLiteral } from "../../src/embeddings/sql.js";
+import { tryEmbedStandalone, _setSpawnImpl } from "../../../src/embeddings/standalone-embed-client.js";
+import { embeddingSqlLiteral } from "../../../src/embeddings/sql.js";
 // Resolve sibling skillify-worker.js path at runtime via import.meta.url. The
-// openclaw plugin is bundled to openclaw/dist/index.js, then installed to
+// openclaw plugin is bundled to harnesses/openclaw/dist/index.js, then installed to
 // ~/.openclaw/extensions/hivemind/dist/index.js by install-openclaw.ts. The
 // worker bundle is its sibling at the same level.
 import { fileURLToPath } from "node:url";

@@ -14,7 +14,7 @@ export const HOME = homedir();
 //                                               → install dir
 // Without the walk-up, the source path resolved to `src/` (one dir up
 // from src/cli/util.ts), so unit tests importing the installers couldn't
-// find the per-agent bundles at project_root/<agent>/bundle/.
+// find the per-agent bundles at project_root/harnesses/<agent>/bundle/.
 export function pkgRoot(): string {
   let dir = fileURLToPath(new URL(".", import.meta.url));
   for (let i = 0; i < 8; i++) {

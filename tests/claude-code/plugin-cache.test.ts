@@ -51,7 +51,7 @@ describe("resolveVersionedPluginDir", () => {
   it("rejects a local --plugin-dir layout", () => {
     const root = mkRoot();
     try {
-      const bundle = join(root, "claude-code", "bundle");
+      const bundle = join(root, "harnesses", "claude-code", "bundle");
       mkdirSync(bundle, { recursive: true });
       expect(resolveVersionedPluginDir(bundle)).toBeNull();
     } finally {

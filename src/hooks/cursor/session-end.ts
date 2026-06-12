@@ -7,7 +7,7 @@
  *                 final_status, error_message? } + common payload.
  *
  * Spawns a final wiki-worker run via cursor-agent --print so the session
- * gets an AI summary in the memory table. Mirrors the codex/CC flow.
+ * gets an AI summary in the memory table. Mirrors the harnesses/codex/CC flow.
  */
 
 import { readStdin } from "../../utils/stdin.js";

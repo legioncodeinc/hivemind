@@ -165,14 +165,14 @@ Hivemind runs **alongside** OpenClaw's built-in `memory-core` plugin. It does **
 Tell Codex to fetch and follow the install instructions:
 
 ```
-Fetch and follow instructions from https://raw.githubusercontent.com/activeloopai/hivemind/main/codex/INSTALL.md
+Fetch and follow instructions from https://raw.githubusercontent.com/activeloopai/hivemind/main/harnesses/codex/INSTALL.md
 ```
 
 Or run the installer script directly:
 
 ```bash
 git clone https://github.com/activeloopai/hivemind.git ~/.codex/hivemind
-~/.codex/hivemind/codex/install.sh
+~/.codex/hivemind/harnesses/codex/install.sh
 ```
 
 Restart Codex to activate.
@@ -342,12 +342,12 @@ hivemind rules list                          # latest 10 active
 hivemind rules edit <rule-id> "<new text>"   # bumps version
 hivemind rules done <rule-id>                # mark closed
 
-# Cross-agent diagnostic / pi/openclaw fallback
+# Cross-agent diagnostic / harnesses/pi/openclaw fallback
 hivemind context                             # print the injection block on demand
 ```
 
 **What's injected at SessionStart** (claude-code, cursor, hermes. Codex is
-deliberately excluded to keep its user-visible TUI clean; pi/openclaw
+deliberately excluded to keep its user-visible TUI clean; harnesses/pi/openclaw
 fall back to `hivemind context`):
 
 ```text
@@ -435,7 +435,7 @@ Setup, BYOC, agent integrations, or workflow. Come ask in the community:
 git clone https://github.com/activeloopai/hivemind.git
 cd hivemind
 npm install
-npm run build     # tsc + esbuild → claude-code/bundle/ + codex/bundle/ + cursor/bundle/ + openclaw/dist/ + mcp/bundle/ + bundle/cli.js
+npm run build     # tsc + esbuild → harnesses/claude-code/bundle/ + harnesses/codex/bundle/ + cursor/bundle/ + harnesses/openclaw/dist/ + mcp/bundle/ + bundle/cli.js
 npm test          # vitest
 ```
 

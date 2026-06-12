@@ -730,7 +730,7 @@ describe("drainSessionStart resilience", () => {
 // ---------------------------------------------------------------------------
 
 describe("bundle/session-notifications.js (built artifact)", () => {
-  const bundlePath = join(process.cwd(), "claude-code", "bundle", "session-notifications.js");
+  const bundlePath = join(process.cwd(), "harnesses", "claude-code", "bundle", "session-notifications.js");
 
   // spawnSync (vs execFileSync) so we can capture stdout + stderr separately.
   // The banner is userVisibleOnly: it must appear in the top-level

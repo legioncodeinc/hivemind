@@ -7,7 +7,7 @@ import { join } from "node:path";
  * Functional pluginVersion threading test for the cursor / hermes / pi
  * wiki-worker variants.
  *
- * `claude-code/tests/wiki-worker.test.ts` already exhaustively tests the
+ * `harnesses/claude-code/tests/wiki-worker.test.ts` already exhaustively tests the
  * shared worker structure for the claude-code variant. This file is a
  * narrower guard: for each of the three sibling agents, the worker MUST
  * read `cfg.pluginVersion` from its spawn-config JSON and forward it to

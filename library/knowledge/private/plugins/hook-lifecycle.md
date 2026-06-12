@@ -65,7 +65,7 @@ src/hooks/
 ├── session-end.ts          ← reference
 ├── wiki-worker.ts          ← reference (shells claude -p)
 ├── spawn-wiki-worker.ts    ← reference
-├── codex/
+├── harnesses/codex/
 │   ├── session-start.ts        # minimal inject; async setup in session-start-setup.ts
 │   ├── session-start-setup.ts  # table DDL, placeholder, version check (detached)
 │   ├── capture.ts              # same logic, Codex payload shape
@@ -79,18 +79,18 @@ src/hooks/
 │   ├── session-end.ts          # sessionEnd event name
 │   ├── wiki-worker.ts          # shells `cursor-agent` or falls back to claude
 │   └── spawn-wiki-worker.ts    # Cursor config keys
-├── hermes/
+├── harnesses/hermes/
 │   ├── session-start.ts        # { context: "..." } output, MCP tools mention in inject
 │   ├── capture.ts              # same logic, Hermes payload shape
 │   ├── pre-tool-use.ts         # terminal tool intercept only
 │   ├── session-end.ts          # on_session_end event
 │   ├── wiki-worker.ts          # shells `hermes` in non-interactive mode
 │   └── spawn-wiki-worker.ts    # Hermes config keys
-└── pi/
+└── harnesses/pi/
     └── wiki-worker.ts          # shells `pi --print --provider <p> --model <m>`
 ```
 
-The pi extension itself lives at `pi/extension-source/hivemind.ts` (installed as `~/.pi/agent/hivemind/hivemind.ts`). It contains the pi-native session hooks and spawns the wiki worker. Only the wiki worker is in `src/hooks/pi/` because the extension entry point is pi-specific TypeScript that pi compiles directly.
+The pi extension itself lives at `harnesses/pi/extension-source/hivemind.ts` (installed as `~/.pi/agent/hivemind/hivemind.ts`). It contains the pi-native session hooks and spawns the wiki worker. Only the wiki worker is in `src/hooks/pi/` because the extension entry point is pi-specific TypeScript that pi compiles directly.
 
 ---
 

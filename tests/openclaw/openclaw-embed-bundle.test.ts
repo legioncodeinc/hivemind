@@ -7,8 +7,8 @@ import { resolve } from "node:path";
  *
  * The shipped openclaw bundle MUST produce real embeddings (not silent
  * NULL) when the canonical shared daemon is available. The source-level
- * wiring is verified at openclaw/src/index.ts, but the actually-shipped
- * surface is openclaw/dist/index.js — a slip in the esbuild config
+ * wiring is verified at harnesses/openclaw/src/index.ts, but the actually-shipped
+ * surface is harnesses/openclaw/dist/index.js — a slip in the esbuild config
  * (e.g. an over-aggressive stub-unused-child-process matcher, a
  * tree-shake of the spawn-impl injection, or a re-introduced INSERT
  * that omits the embedding column) would silently regress capture
@@ -16,7 +16,7 @@ import { resolve } from "node:path";
  * the load-bearing strings so the regression is caught at build time.
  */
 
-const BUNDLE_PATH = resolve(process.cwd(), "openclaw", "dist", "index.js");
+const BUNDLE_PATH = resolve(process.cwd(), "harnesses", "openclaw", "dist", "index.js");
 const SRC = readFileSync(BUNDLE_PATH, "utf-8");
 
 describe("openclaw dist bundle — embeddings wiring", () => {

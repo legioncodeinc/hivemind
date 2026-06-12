@@ -33,22 +33,22 @@ hivemind/
 │   ├── hooks/codex/        ← Codex hooks
 │   ├── hooks/cursor/       ← Cursor hooks
 │   ├── hooks/hermes/       ← Hermes shell hooks
-│   ├── hooks/pi/           ← pi wiki-worker (extension in pi/extension-source/)
+│   ├── hooks/pi/           ← pi wiki-worker (extension in harnesses/pi/extension-source/)
 │   ├── embeddings/         ← nomic embed-daemon + protocol + SQL helpers
 │   ├── mcp/                ← MCP server (Hermes today; any MCP-aware client later)
 │   ├── commands/           ← auth, auth-creds, auth-login, session-prune
 │   └── cli/                ← unified `hivemind install` CLI + per-agent installers
-├── claude-code/            ← Claude Code plugin source (marketplace-distributed)
-├── codex/                  ← Codex plugin build output (npm-distributed)
+├── harnesses/claude-code/            ← Claude Code plugin source (marketplace-distributed)
+├── harnesses/codex/                  ← Codex plugin build output (npm-distributed)
 ├── cursor/                 ← Cursor plugin build output (npm-distributed)
-├── hermes/                 ← Hermes plugin build output (npm-distributed)
+├── harnesses/hermes/                 ← Hermes plugin build output (npm-distributed)
 ├── mcp/                    ← MCP server build output
-├── openclaw/               ← OpenClaw plugin source + build output (ClawHub)
-├── pi/                     ← pi extension source (ships raw .ts; pi compiles at load)
+├── harnesses/openclaw/               ← OpenClaw plugin source + build output (ClawHub)
+├── harnesses/pi/                     ← pi extension source (ships raw .ts; pi compiles at load)
 └── bundle/                 ← unified `hivemind` CLI build output
 ```
 
-The Claude Code hooks under `src/hooks/` are the reference implementation. The per-agent subdirectories (`src/hooks/codex/`, `cursor/`, `hermes/`, `pi/`) re-express the same handlers against each assistant's event names and payload shapes, reusing the shared core for the actual work. The build step (`npm run build`) runs `tsc` plus `esbuild` and emits the per-agent bundles into `claude-code/bundle/`, `codex/bundle/`, `cursor/bundle/`, `openclaw/dist/`, `mcp/bundle/`, and `bundle/cli.js`.
+The Claude Code hooks under `src/hooks/` are the reference implementation. The per-agent subdirectories (`src/hooks/codex/`, `cursor/`, `hermes/`, `pi/`) re-express the same handlers against each assistant's event names and payload shapes, reusing the shared core for the actual work. The build step (`npm run build`) runs `tsc` plus `esbuild` and emits the per-agent bundles into `harnesses/claude-code/bundle/`, `harnesses/codex/bundle/`, `cursor/bundle/`, `harnesses/openclaw/dist/`, `mcp/bundle/`, and `bundle/cli.js`.
 
 ---
 

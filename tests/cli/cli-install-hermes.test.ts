@@ -24,11 +24,11 @@ beforeEach(() => {
   tmpPkg = join(tmpRoot, "pkg");
   mkdirSync(tmpHome, { recursive: true });
 
-  mkdirSync(join(tmpPkg, "hermes", "bundle"), { recursive: true });
-  writeFileSync(join(tmpPkg, "hermes", "bundle", "session-start.js"), "// fake bundle");
-  writeFileSync(join(tmpPkg, "hermes", "bundle", "capture.js"), "// fake bundle");
-  writeFileSync(join(tmpPkg, "hermes", "bundle", "pre-tool-use.js"), "// fake bundle");
-  writeFileSync(join(tmpPkg, "hermes", "bundle", "session-end.js"), "// fake bundle");
+  mkdirSync(join(tmpPkg, "harnesses", "hermes", "bundle"), { recursive: true });
+  writeFileSync(join(tmpPkg, "harnesses", "hermes", "bundle", "session-start.js"), "// fake bundle");
+  writeFileSync(join(tmpPkg, "harnesses", "hermes", "bundle", "capture.js"), "// fake bundle");
+  writeFileSync(join(tmpPkg, "harnesses", "hermes", "bundle", "pre-tool-use.js"), "// fake bundle");
+  writeFileSync(join(tmpPkg, "harnesses", "hermes", "bundle", "session-end.js"), "// fake bundle");
 
   mkdirSync(join(tmpPkg, "mcp", "bundle"), { recursive: true });
   writeFileSync(join(tmpPkg, "mcp", "bundle", "server.js"), "// fake mcp server");
@@ -136,7 +136,7 @@ describe("installHermes — cold install", () => {
   });
 
   it("throws when the hermes hook bundle source is missing (build hasn't run)", async () => {
-    rmSync(join(tmpPkg, "hermes", "bundle"), { recursive: true, force: true });
+    rmSync(join(tmpPkg, "harnesses", "hermes", "bundle"), { recursive: true, force: true });
     const { installHermes } = await importInstaller();
     expect(() => installHermes()).toThrow(/Hermes bundle missing/);
   });

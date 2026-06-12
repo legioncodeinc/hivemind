@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const codexRoot = join(process.cwd(), "codex");
+const codexRoot = join(process.cwd(), "harnesses", "codex");
 
 describe("codex hooks.json", () => {
   const hooks = JSON.parse(readFileSync(join(codexRoot, "hooks", "hooks.json"), "utf-8"));

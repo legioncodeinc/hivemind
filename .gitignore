@@ -24,12 +24,12 @@ deploy-to-cache.sh
 # marketplace.json sha-pinned source can resolve to a bundle-containing
 # commit; the very next commit untracks them so main HEAD stays clean.
 bundle/
-claude-code/bundle/
-codex/bundle/
+harnesses/claude-code/bundle/
+harnesses/codex/bundle/
 cursor/bundle/
-hermes/bundle/
+harnesses/hermes/bundle/
 mcp/bundle/
-pi/bundle/
+harnesses/pi/bundle/
 evals/
 .cursor/
 cursor_hivemind_environment_variables_c.md

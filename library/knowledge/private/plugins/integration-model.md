@@ -70,7 +70,7 @@ Second, Cursor's PreToolUse only intercepts Shell tool calls. It cannot intercep
 
 ## OpenClaw: native extension with contracted tools
 
-OpenClaw loads plugins from `~/.openclaw/extensions/hivemind/` as a native extension using a synchronous `register(pluginApi)` entry point defined in `openclaw/src/index.ts`. The `register` function must return synchronously; all async work executes inside a fire-and-forget IIFE.
+OpenClaw loads plugins from `~/.openclaw/extensions/hivemind/` as a native extension using a synchronous `register(pluginApi)` entry point defined in `harnesses/openclaw/src/index.ts`. The `register` function must return synchronously; all async work executes inside a fire-and-forget IIFE.
 
 The extension wires two hook events via `pluginApi.on(event, handler)`:
 
@@ -96,7 +96,7 @@ Hermes's PreToolUse intercepts only the `terminal` tool, not Write or Edit. Goal
 
 ## pi: TypeScript extension and AGENTS.md
 
-pi loads the Hivemind extension from `~/.pi/agent/hivemind/` as raw TypeScript files that pi compiles at load time. There is no pre-compiled bundle; the extension source ships in `pi/` under version control. A static `AGENTS.md` block at `~/.pi/agent/AGENTS.md` provides recall instructions that pi injects into every session's system context.
+pi loads the Hivemind extension from `~/.pi/agent/hivemind/` as raw TypeScript files that pi compiles at load time. There is no pre-compiled bundle; the extension source ships in `harnesses/pi/` under version control. A static `AGENTS.md` block at `~/.pi/agent/AGENTS.md` provides recall instructions that pi injects into every session's system context.
 
 pi has no PreToolUse hook. Recall happens via grep on `~/.deeplake/memory/`, as documented in the `AGENTS.md` block. The wiki worker (`src/hooks/pi/wiki-worker.ts`) is invoked by the extension and shells out to `pi --print --provider <p> --model <m>` for summary generation, using pi's non-interactive mode so it does not recurse back into the extension.
 

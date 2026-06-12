@@ -1,7 +1,7 @@
 /**
  * Auto-build hook for the codebase-graph feature (Phase 1.5).
  *
- * Registered in claude-code/hooks/hooks.json under BOTH "Stop" AND
+ * Registered in harnesses/claude-code/hooks/hooks.json under BOTH "Stop" AND
  * "SessionEnd" with async: true. Why both:
  *   - "Stop" fires after every model turn in INTERACTIVE Claude sessions.
  *     Rate-limit gate (10 min default) keeps the per-turn cost ~5ms in

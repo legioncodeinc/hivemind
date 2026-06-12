@@ -20,8 +20,8 @@ The three non-hook integration surfaces in Hivemind: the MCP server that exposes
 Hook-based capture and VFS recall cover Claude Code, Codex, Cursor, Hermes, and pi through their respective `hooks.json` or extension entry points. Three additional surfaces exist for agents or runtimes that cannot or should not use hooks for recall:
 
 1. The **MCP server** (`src/mcp/server.ts`) provides a standard Model Context Protocol interface to Hivemind memory, currently used by Hermes and available to any future MCP-capable client.
-2. The **OpenClaw extension** (`openclaw/src/index.ts`) is a native plugin that integrates through OpenClaw's gateway contract, registering tools, commands, and a memory-corpus supplement instead of hook events.
-3. The **distributable bundles** (`claude-code/`, `cursor/`) are the packaged artifacts that ship to their respective marketplaces and hook registries, built from the shared core sources.
+2. The **OpenClaw extension** (`harnesses/openclaw/src/index.ts`) is a native plugin that integrates through OpenClaw's gateway contract, registering tools, commands, and a memory-corpus supplement instead of hook events.
+3. The **distributable bundles** (`harnesses/claude-code/`, `cursor/`) are the packaged artifacts that ship to their respective marketplaces and hook registries, built from the shared core sources.
 
 ---
 
@@ -69,11 +69,11 @@ The server calls `loadCredentials` at the start of every tool invocation via `ge
 
 ## The OpenClaw extension
 
-OpenClaw loads plugins from `~/.openclaw/extensions/hivemind/dist/index.js`. The extension is built from `openclaw/src/index.ts` and installed by `src/cli/install-openclaw.ts`. It follows OpenClaw's `definePluginEntry` contract: a synchronous `register(pluginApi)` function that must complete registration before returning, with all async work in a fire-and-forget IIFE.
+OpenClaw loads plugins from `~/.openclaw/extensions/hivemind/dist/index.js`. The extension is built from `harnesses/openclaw/src/index.ts` and installed by `src/cli/install-openclaw.ts`. It follows OpenClaw's `definePluginEntry` contract: a synchronous `register(pluginApi)` function that must complete registration before returning, with all async work in a fire-and-forget IIFE.
 
 ### Plugin manifest
 
-The OpenClaw plugin manifest at `openclaw/openclaw.plugin.json` declares the extension's contract:
+The OpenClaw plugin manifest at `harnesses/openclaw/openclaw.plugin.json` declares the extension's contract:
 
 ```json
 {
@@ -141,7 +141,7 @@ The extension registers a `MemoryCorpusSupplement` object with `search` and `get
 
 ### Claude Code marketplace plugin
 
-The Claude Code integration ships as a marketplace plugin from the `claude-code/` directory. The build step (`npm run build`) runs `tsc` then `esbuild` and emits the bundle to `claude-code/bundle/`. The plugin is submitted to the Claude Code Marketplace and installed by users via `hivemind install` or by running the marketplace installer directly.
+The Claude Code integration ships as a marketplace plugin from the `harnesses/claude-code/` directory. The build step (`npm run build`) runs `tsc` then `esbuild` and emits the bundle to `harnesses/claude-code/bundle/`. The plugin is submitted to the Claude Code Marketplace and installed by users via `hivemind install` or by running the marketplace installer directly.
 
 The plugin manifest specifies the hook entry points and declares the Claude Code-specific capabilities (tool permissions, capabilities flags). The actual hook logic lives in `src/hooks/` and is bundled into the plugin output.
 
@@ -155,16 +155,16 @@ Cursor 1.7+ introduced a hooks mechanism that is semantically similar to Claude 
 
 ```mermaid
 flowchart LR
-    src["src/hooks/\nsrc/mcp/\nopenclaw/src/"] -- tsc + esbuild --> bundles
+    src["src/hooks/\nsrc/mcp/\nharnesses/openclaw/src/"] -- tsc + esbuild --> bundles
 
     subgraph bundles["Build outputs"]
-        ccBundle["claude-code/bundle/\n→ Claude Code Marketplace"]
-        codexBundle["codex/bundle/\n→ npm @deeplake/hivemind"]
+        ccBundle["harnesses/claude-code/bundle/\n→ Claude Code Marketplace"]
+        codexBundle["harnesses/codex/bundle/\n→ npm @deeplake/hivemind"]
         cursorBundle["cursor/bundle/\n→ npm + hooks.json"]
-        hermesBundle["hermes/bundle/\n→ npm"]
+        hermesBundle["harnesses/hermes/bundle/\n→ npm"]
         mcpBundle["mcp/bundle/\n→ npm (Hermes uses this)"]
-        openclawDist["openclaw/dist/\n→ ClawHub"]
-        piSource["pi/extension-source/\n→ npm (raw .ts, pi compiles)"]
+        openclawDist["harnesses/openclaw/dist/\n→ ClawHub"]
+        piSource["harnesses/pi/extension-source/\n→ npm (raw .ts, pi compiles)"]
         cliBundle["bundle/cli.js\n→ npm @deeplake/hivemind"]
     end
 ```

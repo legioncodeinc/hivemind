@@ -206,7 +206,7 @@ async function main(): Promise<void> {
   // `hivemind goal add/list/...` via terminal. End state in tables
   // is identical to the VFS-routed path.
   const baseWithGoals = creds?.token ? `${baseContext}\n\n${GOALS_INSTRUCTIONS_CLI}` : baseContext;
-  // Code-graph inject. Unlike claude-code/cursor this is user-visible in the
+  // Code-graph inject. Unlike harnesses/claude-code/cursor this is user-visible in the
   // Hermes TUI (Hermes has no model-only SessionStart channel), but an
   // always-present structural index is worth the extra lines. graphContextLine
   // returns null — and appends nothing — when no graph exists for this repo yet.

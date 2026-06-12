@@ -19,7 +19,7 @@ import { join } from "node:path";
  */
 
 const PI_SRC = readFileSync(
-  join(process.cwd(), "pi", "extension-source", "hivemind.ts"),
+  join(process.cwd(), "harnesses", "pi", "extension-source", "hivemind.ts"),
   "utf-8",
 );
 

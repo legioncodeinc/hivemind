@@ -61,10 +61,10 @@ const SOURCE = "package.json";
 // Scalar targets: each has a single top-level `version` field tracking package.json.
 export const SCALAR_TARGETS = [
   ".claude-plugin/plugin.json",
-  "claude-code/.claude-plugin/plugin.json",
-  "openclaw/openclaw.plugin.json",
-  "openclaw/package.json",
-  "codex/package.json",
+  "harnesses/claude-code/.claude-plugin/plugin.json",
+  "harnesses/openclaw/openclaw.plugin.json",
+  "harnesses/openclaw/package.json",
+  "harnesses/codex/package.json",
 ];
 ```
 
@@ -109,12 +109,12 @@ The core bundling engine is `esbuild.config.mjs`. It orchestrates compilation co
 
 Esbuild generates separate distribution bundles under the following directories:
 
-* **Claude Code:** Generated under `claude-code/bundle/`. It packs hooks like `session-start`, `session-end`, `pre-tool-use`, `capture`, and several specialized background workers.
-* **Codex:** Generated under `codex/bundle/`. It includes the Codex-specific lifecycle shims and background tasks.
+* **Claude Code:** Generated under `harnesses/claude-code/bundle/`. It packs hooks like `session-start`, `session-end`, `pre-tool-use`, `capture`, and several specialized background workers.
+* **Codex:** Generated under `harnesses/codex/bundle/`. It includes the Codex-specific lifecycle shims and background tasks.
 * **Cursor:** Generated under `cursor/bundle/`. It packages the `session-start`, `capture`, `pre-tool-use`, `session-end`, and `graph-on-stop` hooks.
-* **Hermes Agent:** Generated under `hermes/bundle/`. It bundles hooks following the NousResearch/hermes-agent shell hook protocol.
-* **pi:** Generated under `pi/bundle/`. It bundles background workers like the `wiki-worker` and `skillify-worker`. (The main pi extension runs raw TypeScript compiled by pi's runtime.)
-* **OpenClaw:** Generated under `openclaw/dist/`. It outputs the compiled HTTP/WebSocket plugin gateway, along with its async `skillify-worker`.
+* **Hermes Agent:** Generated under `harnesses/hermes/bundle/`. It bundles hooks following the NousResearch/hermes-agent shell hook protocol.
+* **pi:** Generated under `harnesses/pi/bundle/`. It bundles background workers like the `wiki-worker` and `skillify-worker`. (The main pi extension runs raw TypeScript compiled by pi's runtime.)
+* **OpenClaw:** Generated under `harnesses/openclaw/dist/`. It outputs the compiled HTTP/WebSocket plugin gateway, along with its async `skillify-worker`.
 * **MCP Server:** Generated under `mcp/bundle/`. It builds the standalone Model Context Protocol server that can be hooked into Cline, Roo, or Kilo.
 * **Unified CLI:** Generated under `bundle/`. It produces the primary `hivemind` executable binary.
 * **Embed Daemon:** Generated under `embeddings/`. It compiles the standalone semantic search background daemon.
@@ -131,7 +131,7 @@ await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  outdir: "claude-code/bundle",
+  outdir: "harnesses/claude-code/bundle",
   external: [
     "node:*",
     "node-liblzma",
@@ -174,7 +174,7 @@ To eliminate unreachable code that would trigger security warnings on the ClawHu
 ```404:426:esbuild.config.mjs
   plugins: [{
     // Dead-code elimination for transitively bundled CC/Codex-only features.
-    // openclaw/src/index.ts imports shared modules from ../../src/ (DeeplakeApi,
+    // harnesses/openclaw/src/index.ts imports shared modules from ../../src/ (DeeplakeApi,
     // grep-core, virtual-table-query, auth device-flow). Several of those
     // modules also host CC-specific helpers that shell out with execSync —
     // opening the browser for SSO, nudging claude-plugin-update, spawning the

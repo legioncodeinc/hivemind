@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 
 // Root vitest config. `npm test` runs `vitest run` from the repo root, so
-// this is the file that actually gets picked up. The one in claude-code/
+// this is the file that actually gets picked up. The one in harnesses/claude-code/
 // is a historical leftover and is not used by the root test script.
 //
 // Coverage thresholds are enforced per-file on the files touched by each

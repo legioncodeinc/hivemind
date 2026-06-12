@@ -26,7 +26,7 @@ import { WIKI_PROMPT_TEMPLATE as HERMES_TEMPLATE } from "../../src/hooks/hermes/
 // executed here, so lift the template literal from source — same approach as
 // tests/pi/pi-extension-source.test.ts.
 const PI_TEMPLATE = readFileSync(
-  join(process.cwd(), "pi", "extension-source", "hivemind.ts"),
+  join(process.cwd(), "harnesses", "pi", "extension-source", "hivemind.ts"),
   "utf-8",
 );
 

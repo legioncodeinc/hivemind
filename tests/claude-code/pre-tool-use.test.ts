@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
-const bundleDir = join(process.cwd(), "claude-code", "bundle");
+const bundleDir = join(process.cwd(), "harnesses", "claude-code", "bundle");
 
 /**
  * Pipe JSON into the CC pre-tool-use hook and return parsed output.

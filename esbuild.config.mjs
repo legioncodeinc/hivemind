@@ -3,8 +3,8 @@ import { chmodSync, writeFileSync, readFileSync } from "node:fs";
 
 const esmPackageJson = '{"type":"module"}\n';
 const hivemindVersion = JSON.parse(readFileSync("package.json", "utf-8")).version;
-const openclawVersion = JSON.parse(readFileSync("openclaw/package.json", "utf-8")).version;
-const openclawSkillBody = readFileSync("openclaw/skills/SKILL.md", "utf-8");
+const openclawVersion = JSON.parse(readFileSync("harnesses/openclaw/package.json", "utf-8")).version;
+const openclawSkillBody = readFileSync("harnesses/openclaw/skills/SKILL.md", "utf-8");
 
 // Claude Code plugin
 const ccHooks = [
@@ -54,7 +54,7 @@ await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  outdir: "claude-code/bundle",
+  outdir: "harnesses/claude-code/bundle",
   external: [
     "node:*",
     "node-liblzma",
@@ -82,9 +82,9 @@ await build({
 });
 
 for (const h of ccAll) {
-  chmodSync(`claude-code/bundle/${h.out}.js`, 0o755);
+  chmodSync(`harnesses/claude-code/bundle/${h.out}.js`, 0o755);
 }
-writeFileSync("claude-code/bundle/package.json", esmPackageJson);
+writeFileSync("harnesses/claude-code/bundle/package.json", esmPackageJson);
 
 // Codex plugin
 const codexHooks = [
@@ -122,7 +122,7 @@ await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  outdir: "codex/bundle",
+  outdir: "harnesses/codex/bundle",
   external: [
     "node:*",
     "node-liblzma",
@@ -149,9 +149,9 @@ await build({
 });
 
 for (const h of codexAll) {
-  chmodSync(`codex/bundle/${h.out}.js`, 0o755);
+  chmodSync(`harnesses/codex/bundle/${h.out}.js`, 0o755);
 }
-writeFileSync("codex/bundle/package.json", esmPackageJson);
+writeFileSync("harnesses/codex/bundle/package.json", esmPackageJson);
 
 // Cursor plugin (1.7+ hooks API). Same shell + commands as the other agents.
 const cursorHooks = [
@@ -253,7 +253,7 @@ await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  outdir: "hermes/bundle",
+  outdir: "harnesses/hermes/bundle",
   external: [
     "node:*",
     "node-liblzma",
@@ -280,12 +280,12 @@ await build({
 });
 
 for (const h of hermesAll) {
-  chmodSync(`hermes/bundle/${h.out}.js`, 0o755);
+  chmodSync(`harnesses/hermes/bundle/${h.out}.js`, 0o755);
 }
 
 // Pi (badlogic/pi-mono) — ships a wiki-worker bundle, a skillify-worker
 // bundle, and an autopull-worker bundle. The pi extension itself is raw .ts
-// at pi/extension-source/hivemind.ts; we don't bundle it because pi's
+// at harnesses/pi/extension-source/hivemind.ts; we don't bundle it because pi's
 // runtime compiles + loads the .ts file directly. Embed daemon reuses the
 // canonical ~/.hivemind/embed-deps/embed-daemon.js — no per-pi embed
 // bundle needed. Skillify worker is the same shared module used by
@@ -306,7 +306,7 @@ await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  outdir: "pi/bundle",
+  outdir: "harnesses/pi/bundle",
   external: [
     "node:*",
     "node-liblzma",
@@ -321,10 +321,10 @@ await build({
   },
 });
 for (const h of piWorker) {
-  chmodSync(`pi/bundle/${h.out}.js`, 0o755);
+  chmodSync(`harnesses/pi/bundle/${h.out}.js`, 0o755);
 }
-writeFileSync("pi/bundle/package.json", esmPackageJson);
-writeFileSync("hermes/bundle/package.json", esmPackageJson);
+writeFileSync("harnesses/pi/bundle/package.json", esmPackageJson);
+writeFileSync("harnesses/hermes/bundle/package.json", esmPackageJson);
 
 // OpenClaw plugin bundle. The shared CC/Codex source modules reference a
 // handful of HIVEMIND_* env vars for dev-only overrides. Those env paths are
@@ -333,13 +333,13 @@ writeFileSync("hermes/bundle/package.json", esmPackageJson);
 // with `undefined` at build time to avoid shipping dead env-read code in the
 // plugin bundle.
 await build({
-  entryPoints: { index: "openclaw/src/index.ts" },
+  entryPoints: { index: "harnesses/openclaw/src/index.ts" },
   bundle: true,
   splitting: true,
   chunkNames: "chunks/[name]-[hash]",
   platform: "node",
   format: "esm",
-  outdir: "openclaw/dist",
+  outdir: "harnesses/openclaw/dist",
   external: ["node:*"],
   // Guarantee `globalThis.__hivemind_tuning__` exists as an object before any
   // bundled module's lazy env reads execute. esbuild's `define` rewrites
@@ -403,7 +403,7 @@ await build({
   },
   plugins: [{
     // Dead-code elimination for transitively bundled CC/Codex-only features.
-    // openclaw/src/index.ts imports shared modules from ../../src/ (DeeplakeApi,
+    // harnesses/openclaw/src/index.ts imports shared modules from ../../../src/ (DeeplakeApi,
     // grep-core, virtual-table-query, auth device-flow). Several of those
     // modules also host CC-specific helpers that shell out with execSync —
     // opening the browser for SSO, nudging claude-plugin-update, spawning the
@@ -425,7 +425,7 @@ await build({
     },
   }],
 });
-writeFileSync("openclaw/dist/package.json", esmPackageJson);
+writeFileSync("harnesses/openclaw/dist/package.json", esmPackageJson);
 
 // OpenClaw skillify-worker bundle. Same shared module CC/Codex/Cursor/Hermes/Pi
 // use; openclaw spawns it from its agent_end hook to mine reusable skills out
@@ -436,7 +436,7 @@ writeFileSync("openclaw/dist/package.json", esmPackageJson);
 //      with no stubs.
 //   2. The main bundle uses code splitting (chunks/), and we don't want the
 //      worker's modules entangled with the gateway's chunk graph.
-// Lands at openclaw/dist/skillify-worker.js — install-openclaw.ts already
+// Lands at harnesses/openclaw/dist/skillify-worker.js — install-openclaw.ts already
 // copies the entire dist/ recursively, so it ships to
 // ~/.openclaw/extensions/hivemind/dist/skillify-worker.js with no other change.
 await build({
@@ -444,7 +444,7 @@ await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  outdir: "openclaw/dist",
+  outdir: "harnesses/openclaw/dist",
   external: ["node:*"],
   // Same banner as the main openclaw bundle — see the comment there for
   // the rationale. The worker entry itself overwrites this with the
@@ -500,7 +500,7 @@ await build({
     "process.env.HIVEMIND_STATE_DIR": "globalThis.__hivemind_tuning__.HIVEMIND_STATE_DIR",
   },
 });
-chmodSync("openclaw/dist/skillify-worker.js", 0o755);
+chmodSync("harnesses/openclaw/dist/skillify-worker.js", 0o755);
 
 // Hivemind MCP server (stdio). Reused by Cline / Roo / Kilo / any MCP-aware
 // agent. Lives at ~/.hivemind/mcp/server.js after install.

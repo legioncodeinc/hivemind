@@ -120,7 +120,7 @@ export function installPi(): void {
   writeFileSync(AGENTS_MD, next);
 
   // 2. Extension — autocapture + first-class hivemind tools.
-  const srcExtension = join(pkgRoot(), "pi", "extension-source", "hivemind.ts");
+  const srcExtension = join(pkgRoot(), "harnesses", "pi", "extension-source", "hivemind.ts");
   if (!existsSync(srcExtension)) {
     throw new Error(`pi extension source missing at ${srcExtension}. Reinstall the @deeplake/hivemind package.`);
   }
@@ -129,7 +129,7 @@ export function installPi(): void {
 
   // 3. Wiki-worker bundle (spawned by extension at periodic + session_shutdown
   //    triggers to generate AI summary via `pi --print`).
-  const srcWorker = join(pkgRoot(), "pi", "bundle", "wiki-worker.js");
+  const srcWorker = join(pkgRoot(), "harnesses", "pi", "bundle", "wiki-worker.js");
   if (existsSync(srcWorker)) {
     ensureDir(WIKI_WORKER_DIR);
     copyFileSync(srcWorker, WIKI_WORKER_PATH);
@@ -138,7 +138,7 @@ export function installPi(): void {
   // 4. Skillify-worker bundle (spawned by extension on session_shutdown to
   //    mine reusable skills from the finished session). Same dir as
   //    wiki-worker, same shared ensureDir.
-  const srcSkillifyWorker = join(pkgRoot(), "pi", "bundle", "skillify-worker.js");
+  const srcSkillifyWorker = join(pkgRoot(), "harnesses", "pi", "bundle", "skillify-worker.js");
   if (existsSync(srcSkillifyWorker)) {
     ensureDir(WIKI_WORKER_DIR);
     copyFileSync(srcSkillifyWorker, SKILLIFY_WORKER_PATH);
@@ -146,7 +146,7 @@ export function installPi(): void {
 
   // 5. Autopull-worker bundle (spawned synchronously by extension on
   //    session_start to pull all-author skills from the org). Same dir.
-  const srcAutopullWorker = join(pkgRoot(), "pi", "bundle", "autopull-worker.js");
+  const srcAutopullWorker = join(pkgRoot(), "harnesses", "pi", "bundle", "autopull-worker.js");
   if (existsSync(srcAutopullWorker)) {
     ensureDir(WIKI_WORKER_DIR);
     copyFileSync(srcAutopullWorker, AUTOPULL_WORKER_PATH);
@@ -154,7 +154,7 @@ export function installPi(): void {
 
   // 6. SkillOpt-worker bundle (spawned by extension on a user reaction to judge +
   //    improve a recently-used org skill). Same dir, same cleanup.
-  const srcSkilloptWorker = join(pkgRoot(), "pi", "bundle", "skillopt-worker.js");
+  const srcSkilloptWorker = join(pkgRoot(), "harnesses", "pi", "bundle", "skillopt-worker.js");
   if (existsSync(srcSkilloptWorker)) {
     ensureDir(WIKI_WORKER_DIR);
     copyFileSync(srcSkilloptWorker, SKILLOPT_WORKER_PATH);

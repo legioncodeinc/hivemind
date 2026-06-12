@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   const now = new Date().toISOString();
 
   // Score on the USER's own agent (cost lands on them), not hardcoded claude — a
-  // codex/hermes/cursor/pi user with no local `claude` still gets SkillOpt. The
+  // harnesses/codex/hermes/cursor/pi user with no local `claude` still gets SkillOpt. The
   // judge/proposer run no-tools (untrusted reaction/transcript text in the prompt).
   const agent = detectScorerAgent();
   const agentBin = resolveAgentBin(agent);

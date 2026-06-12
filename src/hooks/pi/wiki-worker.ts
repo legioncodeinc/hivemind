@@ -5,7 +5,7 @@
  * runs `pi --print` to generate a wiki summary, and uploads it to the
  * memory table.
  *
- * Invoked by pi/extension-source/hivemind.ts (periodic + session_shutdown
+ * Invoked by harnesses/pi/extension-source/hivemind.ts (periodic + session_shutdown
  * triggers) as: node wiki-worker.js <config.json>. The extension itself
  * is shipped as raw .ts and can't import this file directly — that's why
  * this lives as a standalone bundle deposited next to the extension at

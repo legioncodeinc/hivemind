@@ -413,7 +413,7 @@ async function tryEmbedOverSocket(text: string, kind: "document" | "query"): Pro
 // Mirror of src/hooks/summary-state.ts (same dir, same JSON shape, shared
 // across CC/codex/cursor/hermes — session ids are UUIDs so collisions are
 // impossible). The pi extension increments totalCount on every captured
-// event and spawns the bundled wiki-worker (see pi/bundle/wiki-worker.js)
+// event and spawns the bundled wiki-worker (see harnesses/pi/bundle/wiki-worker.js)
 // when the threshold is hit. The worker, after generating the summary,
 // calls finalizeSummary() / releaseLock() against this same dir. So the
 // extension and the worker share state.
@@ -754,7 +754,7 @@ function spawnWikiWorker(
 // ---------- skillify worker spawn ---------------------------------------------
 //
 // Mirror of src/skillify/spawn-skillify-worker.ts and src/skillify/triggers.ts —
-// inlined here because pi/extension-source/hivemind.ts is shipped as raw .ts
+// inlined here because harnesses/pi/extension-source/hivemind.ts is shipped as raw .ts
 // with zero non-builtin runtime dependencies (pi compiles + loads it at
 // extension-load time). The shared TypeScript modules under src/skillify/
 // can't be imported from this file.

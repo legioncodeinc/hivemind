@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
-const bundleDir = join(process.cwd(), "codex", "bundle");
+const bundleDir = join(process.cwd(), "harnesses", "codex", "bundle");
 
 /** Pipe JSON into a bundle and return parsed stdout. */
 function runHook(bundle: string, input: Record<string, unknown>, extraEnv: Record<string, string> = {}): string {
@@ -68,7 +68,7 @@ function parseOutput(raw: string): Record<string, unknown> | null {
 // pushes to both the user-visible entries vec AND the model context vec).
 // Because of this we deliberately keep `additionalContext` MINIMAL — only a
 // 1-line status. The full memory tier doc + CLI command list moved into the
-// `hivemind-memory` skill (codex/skills/deeplake-memory/SKILL.md), which the
+// `hivemind-memory` skill (harnesses/codex/skills/deeplake-memory/SKILL.md), which the
 // model loads on demand without spamming the terminal every session start.
 
 describe("codex integration: session-start", () => {

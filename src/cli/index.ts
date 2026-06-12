@@ -138,7 +138,7 @@ Team-wide rules:
 
 Cross-agent helpers:
   hivemind context                             Print the rules + open-goals block on demand.
-                                               Fallback for pi/openclaw agents (no SessionStart hook)
+                                               Fallback for harnesses/pi/openclaw agents (no SessionStart hook)
                                                and read-only diagnostic for any agent.
 
 Account / org / workspace:

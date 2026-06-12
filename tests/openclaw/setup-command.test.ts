@@ -50,7 +50,7 @@ type CommandRegistration = {
 
 async function loadSetupCommand(): Promise<CommandRegistration> {
   vi.resetModules();
-  const mod = await import("../../openclaw/src/index.js");
+  const mod = await import("../../harnesses/openclaw/src/index.js");
   const plugin = mod.default as { register: (api: any) => void };
   const commands: CommandRegistration[] = [];
   plugin.register({
@@ -294,7 +294,7 @@ describe("/hivemind_setup", () => {
         tools: { profile: "coding", alsoAllow: ["hivemind"] },
       });
       vi.resetModules();
-      const { detectAllowlistMissing } = await import("../../openclaw/src/setup-config.js");
+      const { detectAllowlistMissing } = await import("../../harnesses/openclaw/src/setup-config.js");
       expect(detectAllowlistMissing()).toBe(true);
     });
 
@@ -304,7 +304,7 @@ describe("/hivemind_setup", () => {
         tools: { profile: "coding", alsoAllow: ["hivemind"] },
       });
       vi.resetModules();
-      const { detectAllowlistMissing } = await import("../../openclaw/src/setup-config.js");
+      const { detectAllowlistMissing } = await import("../../harnesses/openclaw/src/setup-config.js");
       expect(detectAllowlistMissing()).toBe(false);
     });
 
@@ -313,7 +313,7 @@ describe("/hivemind_setup", () => {
         tools: { profile: "coding", alsoAllow: ["hivemind"] },
       });
       vi.resetModules();
-      const { detectAllowlistMissing } = await import("../../openclaw/src/setup-config.js");
+      const { detectAllowlistMissing } = await import("../../harnesses/openclaw/src/setup-config.js");
       expect(detectAllowlistMissing()).toBe(false);
     });
   });

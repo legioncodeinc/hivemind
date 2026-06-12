@@ -15,10 +15,10 @@ const SOURCE = "package.json";
 // Scalar targets: each has a single top-level `version` field tracking package.json.
 export const SCALAR_TARGETS = [
   ".claude-plugin/plugin.json",
-  "claude-code/.claude-plugin/plugin.json",
-  "openclaw/openclaw.plugin.json",
-  "openclaw/package.json",
-  "codex/package.json",
+  "harnesses/claude-code/.claude-plugin/plugin.json",
+  "harnesses/openclaw/openclaw.plugin.json",
+  "harnesses/openclaw/package.json",
+  "harnesses/codex/package.json",
 ];
 
 // Marketplace target: has BOTH metadata.version AND every plugins[].version.

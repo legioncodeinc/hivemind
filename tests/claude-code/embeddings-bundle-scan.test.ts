@@ -24,13 +24,13 @@ interface AgentBundle {
 const AGENTS: AgentBundle[] = [
   {
     agent: "claude-code",
-    embedDaemon: join(repoRoot, "claude-code", "bundle", "embeddings", "embed-daemon.js"),
-    captureHook: join(repoRoot, "claude-code", "bundle", "capture.js"),
+    embedDaemon: join(repoRoot, "harnesses", "claude-code", "bundle", "embeddings", "embed-daemon.js"),
+    captureHook: join(repoRoot, "harnesses", "claude-code", "bundle", "capture.js"),
   },
   {
     agent: "codex",
-    embedDaemon: join(repoRoot, "codex", "bundle", "embeddings", "embed-daemon.js"),
-    captureHook: join(repoRoot, "codex", "bundle", "capture.js"),
+    embedDaemon: join(repoRoot, "harnesses", "codex", "bundle", "embeddings", "embed-daemon.js"),
+    captureHook: join(repoRoot, "harnesses", "codex", "bundle", "capture.js"),
   },
   {
     agent: "cursor",
@@ -39,8 +39,8 @@ const AGENTS: AgentBundle[] = [
   },
   {
     agent: "hermes",
-    embedDaemon: join(repoRoot, "hermes", "bundle", "embeddings", "embed-daemon.js"),
-    captureHook: join(repoRoot, "hermes", "bundle", "capture.js"),
+    embedDaemon: join(repoRoot, "harnesses", "hermes", "bundle", "embeddings", "embed-daemon.js"),
+    captureHook: join(repoRoot, "harnesses", "hermes", "bundle", "capture.js"),
   },
 ];
 
@@ -105,11 +105,11 @@ describe("shipped shell/deeplake-shell.js — embed daemon path resolves to an e
   // bundled shell would look for it).
   const SHELL_BUNDLES: Array<[string, string, string]> = [
     ["claude-code",
-      join(repoRoot, "claude-code", "bundle", "shell", "deeplake-shell.js"),
-      join(repoRoot, "claude-code", "bundle", "embeddings", "embed-daemon.js")],
+      join(repoRoot, "harnesses", "claude-code", "bundle", "shell", "deeplake-shell.js"),
+      join(repoRoot, "harnesses", "claude-code", "bundle", "embeddings", "embed-daemon.js")],
     ["codex",
-      join(repoRoot, "codex", "bundle", "shell", "deeplake-shell.js"),
-      join(repoRoot, "codex", "bundle", "embeddings", "embed-daemon.js")],
+      join(repoRoot, "harnesses", "codex", "bundle", "shell", "deeplake-shell.js"),
+      join(repoRoot, "harnesses", "codex", "bundle", "embeddings", "embed-daemon.js")],
     ["cursor",
       join(repoRoot, "cursor", "bundle", "shell", "deeplake-shell.js"),
       join(repoRoot, "cursor", "bundle", "embeddings", "embed-daemon.js")],

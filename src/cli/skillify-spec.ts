@@ -5,7 +5,7 @@
  *
  *   1. `SKILLIFY_COMMANDS` — flat one-line-per-entry. Consumed by the four
  *      per-agent SessionStart inject blocks (claude-code/codex/cursor/hermes),
- *      the pi mirror in `pi/extension-source/hivemind.ts`, and the bundle-scan
+ *      the pi mirror in `harnesses/pi/extension-source/hivemind.ts`, and the bundle-scan
  *      tests that assert specific subcommand strings appear verbatim in the
  *      shipped JS. Kept as a literal array (not derived) so esbuild preserves
  *      every entry as a string literal in the bundle.

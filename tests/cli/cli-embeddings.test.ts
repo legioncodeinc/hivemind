@@ -76,9 +76,9 @@ describe("findHivemindInstalls", () => {
     expect(installs.map(i => i.id).sort()).toEqual(["claude (0.7.0)", "claude (0.7.1)"]);
   });
 
-  it("supports the alternate <version>/claude-code/bundle layout", () => {
+  it("supports the alternate <version>/harnesses/claude-code/bundle layout", () => {
     const cache = join(tmpHome, ".claude", "plugins", "cache", "hivemind", "hivemind");
-    fakeBundleAt(join(cache, "0.7.0", "claude-code"));
+    fakeBundleAt(join(cache, "0.7.0", "harnesses", "claude-code"));
     const installs = findHivemindInstalls(tmpHome);
     expect(installs).toHaveLength(1);
     expect(installs[0].id).toBe("claude (0.7.0)");

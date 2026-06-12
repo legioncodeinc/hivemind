@@ -2,15 +2,15 @@ import { existsSync, copyFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { HOME, pkgRoot, ensureDir, copyDir, writeVersionStamp, log, warn } from "./util.js";
 import { getVersion } from "./version.js";
-import { ensureHivemindAllowlisted } from "../../openclaw/src/setup-config.js";
+import { ensureHivemindAllowlisted } from "../../harnesses/openclaw/src/setup-config.js";
 
 const PLUGIN_DIR = join(HOME, ".openclaw", "extensions", "hivemind");
 
 export function installOpenclaw(): void {
-  const srcDist = join(pkgRoot(), "openclaw", "dist");
-  const srcManifest = join(pkgRoot(), "openclaw", "openclaw.plugin.json");
-  const srcPkg = join(pkgRoot(), "openclaw", "package.json");
-  const srcSkills = join(pkgRoot(), "openclaw", "skills");
+  const srcDist = join(pkgRoot(), "harnesses", "openclaw", "dist");
+  const srcManifest = join(pkgRoot(), "harnesses", "openclaw", "openclaw.plugin.json");
+  const srcPkg = join(pkgRoot(), "harnesses", "openclaw", "package.json");
+  const srcSkills = join(pkgRoot(), "harnesses", "openclaw", "skills");
 
   if (!existsSync(srcDist)) {
     throw new Error(`OpenClaw bundle missing at ${srcDist}. Run 'npm run build' first.`);
