@@ -264,7 +264,7 @@ describe("OpenClaw skillify worker (mining) wiring", () => {
     expect(cfg).toMatch(/"skillify-worker":\s*"dist\/src\/skillify\/skillify-worker\.js"/);
     // Window is generous to leave room for the bundle's comments + the
     // env-var → globalThis.__hivemind_tuning__ define dispatch table.
-    expect(cfg).toMatch(/outdir:\s*"openclaw\/dist"[\s\S]{0,2000}skillify-worker/);
+    expect(cfg).toMatch(/outdir:\s*"harnesses\/openclaw\/dist"[\s\S]{0,2000}skillify-worker/);
   });
 
   it("harnesses/openclaw/src/index.ts bypasses the child_process stub via createRequire", () => {
