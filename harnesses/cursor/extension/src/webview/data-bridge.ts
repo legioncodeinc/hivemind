@@ -61,7 +61,7 @@ function repoRootFromExtension(): string {
 }
 
 function loadDashboardScriptPath(): string {
-  return join(__dirname, "..", "..", "scripts", "load-dashboard.mjs");
+  return join(__dirname, "..", "scripts", "load-dashboard.mjs");
 }
 
 function statsFilePath(): string {
@@ -250,7 +250,7 @@ export function invalidateOrgStatsCache(): void {
 }
 
 export async function loadRecentSessions(_cwd: string): Promise<RecentSession[]> {
-  const scriptPath = join(__dirname, "..", "..", "scripts", "load-sessions.mjs");
+  const scriptPath = join(__dirname, "..", "scripts", "load-sessions.mjs");
   if (existsSync(scriptPath)) {
     return new Promise((resolve) => {
       const child = spawn(process.execPath, [scriptPath, _cwd], {
@@ -295,7 +295,7 @@ export interface RulesListResult {
 }
 
 export async function loadRulesList(status: string, limit = 10): Promise<RulesListResult> {
-  const scriptPath = join(__dirname, "..", "..", "scripts", "load-rules.mjs");
+  const scriptPath = join(__dirname, "..", "scripts", "load-rules.mjs");
   if (!existsSync(scriptPath)) {
     return { loggedOut: true, rules: [], message: "Rules loader unavailable." };
   }
@@ -321,7 +321,7 @@ export async function loadRulesList(status: string, limit = 10): Promise<RulesLi
 }
 
 export async function loadGoalsList(filter: "mine" | "all" = "mine"): Promise<GoalsListResult> {
-  const scriptPath = join(__dirname, "..", "..", "scripts", "load-goals.mjs");
+  const scriptPath = join(__dirname, "..", "scripts", "load-goals.mjs");
   if (!existsSync(scriptPath)) {
     return { loggedOut: true, goals: [], message: "Goals loader unavailable." };
   }
@@ -350,7 +350,7 @@ export async function loadGoalsList(filter: "mine" | "all" = "mine"): Promise<Go
 export async function loadSessionSummary(sessionId: string, cwd: string): Promise<SessionSummaryResult> {
   const creds = readJson<{ userName?: string }>(credentialsPath());
   const userName = creds?.userName ?? "";
-  const scriptPath = join(__dirname, "..", "..", "scripts", "load-session-summary.mjs");
+  const scriptPath = join(__dirname, "..", "scripts", "load-session-summary.mjs");
   if (!existsSync(scriptPath)) {
     const path = join(homedir(), ".deeplake", "memory", "summaries", userName, `${sessionId}.md`);
     if (userName && existsSync(path)) {

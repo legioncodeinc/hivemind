@@ -26,6 +26,7 @@
  *                          command alone for Cursor's own bash to run.
  */
 
+import { basename } from "node:path";
 import { readStdin } from "../../utils/stdin.js";
 import { loadConfig } from "../../config.js";
 import { DeeplakeApi } from "../../deeplake-api.js";
@@ -33,6 +34,7 @@ import { log as _log } from "../../utils/debug.js";
 import { parseBashGrep, handleGrepDirect } from "../grep-direct.js";
 import { touchesMemory, rewritePaths } from "../memory-path-utils.js";
 import { tryGraphRead } from "../../graph/graph-command.js";
+import { recordRecall } from "../../notifications/recall-tracker.js";
 const log = (msg: string) => _log("cursor-pre-tool-use", msg);
 
 interface CursorShellToolInput {
@@ -103,6 +105,13 @@ async function main(): Promise<void> {
       return;
     }
     log(`intercepted ${command.slice(0, 80)} → ${result.length} chars from SQL fast-path`);
+    // Record the recall (count + bytes delivered) for the dashboard's
+    // memory-search and tokens-saved KPIs. Fail-soft inside recordRecall.
+    recordRecall({
+      sessionId: input.conversation_id,
+      bytes: Buffer.byteLength(result, "utf-8"),
+      project: input.cwd ? basename(input.cwd) : null,
+    });
     // Replace the original Shell command with `echo <result>` so Cursor's
     // own bash runs a no-op-ish command and the agent sees our SQL answer.
     const echoCmd = `cat <<'__HIVEMIND_RESULT__'\n${result}\n__HIVEMIND_RESULT__`;

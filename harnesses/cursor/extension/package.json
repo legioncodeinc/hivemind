@@ -2,7 +2,7 @@
   "name": "hivemind-cursor-extension",
   "displayName": "Hivemind for Cursor",
   "description": "Shared memory, health checks, dashboard, and codebase graph inside Cursor",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "publisher": "deeplake",
   "engines": {
     "vscode": "^1.85.0"

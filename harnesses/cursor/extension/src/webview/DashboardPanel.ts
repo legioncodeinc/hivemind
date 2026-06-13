@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { join } from "node:path";
 import { backfillCursorLinks, listLocalSkillsForPromoter, skillDirLabel, syncSkillsToCursor } from "../bridge/skill-sync";
 import { detectAuthState, formatIdentity } from "../auth";
 import { runHealthCheck } from "../health/checker";
@@ -82,7 +83,10 @@ class DashboardController {
   ) {
     const stored = memento.get<string[]>(PROMOTED_STEPS_KEY, []);
     this.promotedSteps = new Set(stored);
-    webview.options = { enableScripts: true };
+    webview.options = {
+      enableScripts: true,
+      localResourceRoots: [vscode.Uri.file(join(__dirname, ".."))],
+    };
     webview.html = getDashboardHtml(webview, vscode.Uri.file(__dirname));
 
     disposables.push(

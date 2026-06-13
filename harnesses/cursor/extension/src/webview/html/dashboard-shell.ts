@@ -1,8 +1,6 @@
 import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 
-const D3_CDN = "https://d3js.org/d3.v7.min.js";
-
 function getNonce(): string {
   return randomBytes(16).toString("hex");
 }
@@ -15,12 +13,16 @@ function cspSource(webview: vscode.Webview): string {
 export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const nonce = getNonce();
   const csp = cspSource(webview);
+  // d3 is vendored under media/ and served via the webview resource scheme.
+  // Loading it from a remote CDN fails under the webview CSP/sandbox, which
+  // left the graph blank. extensionUri points at dist/, so media/ is one up.
+  const d3Uri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "..", "media", "d3.v7.min.js"));
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'nonce-${nonce}' ${csp} https://d3js.org; img-src ${csp} data:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src 'nonce-${nonce}' ${csp}; img-src ${csp} data:;" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Hivemind Dashboard</title>
   <style>
@@ -211,7 +213,7 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
       <p class="meta" id="skill-promote-result"></p>
     </section>
   </main>
-  <script nonce="${nonce}" src="${D3_CDN}"></script>
+  <script nonce="${nonce}" src="${d3Uri}"></script>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const state = { pane: "kpi", graph: null, graphMeta: null, impact: null, highlight: [], graphSearch: "", graphLayers: new Set(["source","test","config"]), promotedSteps: new Set(), refreshTimer: null };
@@ -230,6 +232,12 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
       document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.pane === name));
       document.querySelectorAll(".pane").forEach(p => p.classList.toggle("active", p.id === "pane-" + name));
       post("setPane", { pane: name });
+      if (name === "graph" && state.graph) {
+        // The canvas only has real dimensions once its pane is visible.
+        // Rebuilding here re-centers the force layout in the viewport,
+        // avoiding the collapsed top-left cluster from a hidden build.
+        requestAnimationFrame(() => rebuildGraphFromSnapshot());
+      }
     }
 
     document.querySelectorAll(".tab").forEach(btn => {
@@ -336,9 +344,9 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
       if (k.orgStatsOffline) freshness += " · offline (last known)";
       else if (k.orgStatsStale) freshness += " · stale cache";
       const sourceNote = k.tokensSource === "none"
-        ? "No sessions captured yet — token savings accumulate only when memory is recalled during a session."
+        ? "Token savings accumulate as memory is recalled during sessions."
         : k.tokensSource === "local"
-        ? "Showing local usage data. Token savings accumulate on active memory recalls."
+        ? "Showing memory recall tracked on this machine."
         : "";
       document.getElementById("kpi-cards").innerHTML = [
         { label: "Tokens saved", value: formatTokens(k.tokensSaved) },
@@ -450,10 +458,15 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
       root.innerHTML = skills.map(s => {
         const share = s.shareScope === "team" ? "team" : (s.shareScope === "me" ? "me" : "local");
         const shareClass = s.shareScope === "team" ? "team" : "me";
+        // Team-scope skills are already shared and live under the global
+        // skills dir, so the project-path promote flow cannot re-publish
+        // them. Show a status label instead of a button that always errors.
+        const action = s.shareScope === "team"
+          ? '<span class="meta">Shared with team</span>'
+          : '<button class="btn promote-btn" data-dir="' + esc(s.dirName || s.label) + '">Promote to team</button>';
         return '<div class="skill-row" data-dir="' + esc(s.dirName || s.label) + '">' +
         '<span>' + esc(s.label) + ' <span class="tag ' + shareClass + '">' + esc(share) + '</span></span>' +
-        '<button class="btn promote-btn" data-dir="' + esc(s.dirName || s.label) + '">' +
-        (s.shareScope === "team" ? "Re-publish" : "Promote to team") + '</button>' +
+        action +
         '</div>';
       }).join("");
       root.querySelectorAll(".promote-btn").forEach(btn => {
@@ -543,12 +556,20 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
   }
 
   function rebuildGraphFromSnapshot() {
+    if (typeof d3 === "undefined") {
+      const meta = document.getElementById("graph-meta");
+      if (meta) meta.textContent = "Graph library failed to load.";
+      return;
+    }
+    if (graphUi.simulation) graphUi.simulation.stop();
     const svg = d3.select("#graph-canvas");
     svg.selectAll("*").remove();
     graphUi = { simulation: null, nodeSel: null, linkSel: null, shapeSel: null, nodes: [], links: [], snapshotKey: "" };
 
-    const width = document.getElementById("graph-canvas").clientWidth || 600;
-    const height = 420;
+    const canvasEl = document.getElementById("graph-canvas");
+    const rect = canvasEl.getBoundingClientRect();
+    const width = Math.max(Math.round(rect.width) || canvasEl.clientWidth || 600, 240);
+    const height = Math.max(Math.round(rect.height) || 420, 240);
     svg.attr("viewBox", [0, 0, width, height]);
 
     const emptyBanner = document.getElementById("graph-empty-banner");
@@ -576,6 +597,15 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
     }
 
     const nodes = rawNodes.map(n => Object.assign({}, n));
+    // Seed positions around the viewport center so the graph reads as
+    // centered immediately, even before the force simulation settles
+    // (a hidden-tab build otherwise leaves nodes piled at the origin).
+    const cx = width / 2;
+    const cy = height / 2;
+    nodes.forEach((n) => {
+      n.x = cx + (Math.random() - 0.5) * Math.min(width, height) * 0.6;
+      n.y = cy + (Math.random() - 0.5) * Math.min(width, height) * 0.6;
+    });
     const links = rawLinks.map(l => ({ source: l.source, target: l.target, relation: l.relation }));
     graphUi.nodes = nodes;
     graphUi.links = links;
@@ -635,14 +665,45 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
       }
     }
 
-    svg.selectAll("circle, g").append("title").text(d => (d.label || d.id) + "\\n" + (d.source_file || "") + ":" + (d.source_location || ""));
+    const titleText = d => (d.label || d.id) + "\\n" + (d.source_file || "") + ":" + (d.source_location || "");
+    graphUi.nodeSel.append("title").text(titleText);
+    graphUi.shapeSel.append("title").text(titleText);
 
-    graphUi.simulation.on("tick", () => {
+    function applyPositions() {
       graphUi.linkSel.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
           .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
       graphUi.nodeSel.attr("cx", d => d.x).attr("cy", d => d.y);
       graphUi.shapeSel.attr("transform", d => "translate(" + d.x + "," + d.y + ")");
-    });
+    }
+    graphUi.simulation.on("tick", applyPositions);
+
+    // Settle the layout synchronously and paint final positions. Webview
+    // animation timers are throttled when the panel is backgrounded, which
+    // otherwise leaves every node stuck at the SVG origin (top-left pile).
+    // tick() advances state but does not dispatch the "tick" event, so we
+    // apply positions once by hand afterwards. Drag still restarts the timer.
+    graphUi.simulation.stop();
+    const settleTicks = Math.min(400, Math.max(120, Math.round(nodes.length * 1.5)));
+    for (let i = 0; i < settleTicks; i++) graphUi.simulation.tick();
+    applyPositions();
+
+    // Fit the viewBox to the settled node bounds so the whole graph is
+    // visible and centered, regardless of how far the force layout spread.
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      const r = nodeRadius(n);
+      if (n.x - r < minX) minX = n.x - r;
+      if (n.x + r > maxX) maxX = n.x + r;
+      if (n.y - r < minY) minY = n.y - r;
+      if (n.y + r > maxY) maxY = n.y + r;
+    }
+    if (Number.isFinite(minX) && Number.isFinite(maxX)) {
+      const pad = 24;
+      const boxW = Math.max(maxX - minX, 10) + pad * 2;
+      const boxH = Math.max(maxY - minY, 10) + pad * 2;
+      svg.attr("viewBox", [minX - pad, minY - pad, boxW, boxH]);
+      svg.attr("preserveAspectRatio", "xMidYMid meet");
+    }
 
     updateGraphStyles();
     const lodNote = total > GRAPH_NODE_CAP ? " · showing top " + nodes.length + " of " + total + " nodes" : "";
