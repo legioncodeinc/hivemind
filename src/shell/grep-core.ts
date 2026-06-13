@@ -633,10 +633,30 @@ export async function grepBothTables(
   queryEmbedding?: number[] | null,
 ): Promise<string[]> {
   const meta = { truncated: false };
-  const rows = await searchDeeplakeTables(api, memoryTable, sessionsTable, {
-    ...buildGrepSearchOptions(params, targetPath),
-    queryEmbedding,
-  }, meta);
+  const baseOptions = buildGrepSearchOptions(params, targetPath);
+  let usedEmbedding = queryEmbedding ?? null;
+  let rows: ContentRow[];
+  try {
+    rows = await searchDeeplakeTables(api, memoryTable, sessionsTable, {
+      ...baseOptions,
+      queryEmbedding,
+    }, meta);
+  } catch (e) {
+    // Semantic search can fail at the DB level (e.g. inconsistent
+    // summary_embedding dimensions in the memory table -> "Can't stack
+    // arrays with different dimensions"). Rather than give up on recall,
+    // retry once with lexical search so memory still resolves. Auto-recovers
+    // when the embedding column is re-indexed.
+    if (queryEmbedding && queryEmbedding.length > 0) {
+      usedEmbedding = null;
+      rows = await searchDeeplakeTables(api, memoryTable, sessionsTable, {
+        ...baseOptions,
+        queryEmbedding: null,
+      }, meta);
+    } else {
+      throw e;
+    }
+  }
   // Defensive path dedup — memory and sessions tables use disjoint path
   // prefixes in every schema we ship (/summaries/… vs /sessions/…), so the
   // overlap is theoretical, but we dedupe to match grep-interceptor.ts and
@@ -651,7 +671,7 @@ export async function grepBothTables(
   // pattern (the whole point of semantic). Return every non-empty normalized
   // line from the top-K rows, prefixed with the path so Claude can follow up
   // with Read. The downstream output-cap keeps the response bounded.
-  if (queryEmbedding && queryEmbedding.length > 0) {
+  if (usedEmbedding && usedEmbedding.length > 0) {
     const emitAllLines = process.env.HIVEMIND_SEMANTIC_EMIT_ALL !== "false";
     if (emitAllLines) {
       const lines: string[] = [];
