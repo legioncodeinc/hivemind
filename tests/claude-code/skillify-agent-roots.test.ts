@@ -20,6 +20,7 @@ const canonical = (home: string) => join(home, ".claude", "skills");
 function installCodex(home: string): void { mkdirSync(join(home, ".codex"), { recursive: true }); }
 function installHermes(home: string): void { mkdirSync(join(home, ".hermes"), { recursive: true }); }
 function installPi(home: string): void { mkdirSync(join(home, ".pi", "agent"), { recursive: true }); }
+function installCursor(home: string): void { mkdirSync(join(home, ".cursor"), { recursive: true }); }
 
 describe("detectAgentSkillsRoots", () => {
   it("returns empty when no agent config dirs exist", () => {
@@ -100,6 +101,23 @@ describe("detectAgentSkillsRoots", () => {
     // doesn't exist yet on a fresh hivemind-pi install.
     const result = detectAgentSkillsRoots(canonical(tmpHome), tmpHome);
     expect(result).toContain(join(tmpHome, ".pi", "agent", "skills"));
+  });
+
+  it("includes ~/.cursor/skills-cursor when cursor is installed", () => {
+    installCursor(tmpHome);
+    expect(detectAgentSkillsRoots(canonical(tmpHome), tmpHome)).toEqual([
+      join(tmpHome, ".cursor", "skills-cursor"),
+    ]);
+  });
+
+  it("includes project .cursor/skills when cursor is installed and projectRoot is passed", () => {
+    installCursor(tmpHome);
+    const project = join(tmpHome, "my-repo");
+    mkdirSync(project, { recursive: true });
+    expect(detectAgentSkillsRoots(canonical(tmpHome), tmpHome, project)).toEqual([
+      join(tmpHome, ".cursor", "skills-cursor"),
+      join(project, ".cursor", "skills"),
+    ]);
   });
 
   it("ignores a regular file at ~/.codex / ~/.hermes / ~/.pi/agent (parent must be a directory)", () => {

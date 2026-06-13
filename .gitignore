@@ -33,3 +33,5 @@ harnesses/pi/bundle/
 evals/
 .cursor/
 cursor_hivemind_environment_variables_c.md
+cursor-extension/node_modules/
+cursor-extension/dist/

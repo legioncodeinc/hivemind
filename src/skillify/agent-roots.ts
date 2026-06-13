@@ -24,8 +24,10 @@
  * canonical write location IS that path; symlinking a skill into itself
  * would be a no-op at best and a self-referential loop at worst.
  *
- * Cursor has no native skill discovery (only hooks/rules), so it is not
- * a candidate.
+ * Cursor discovers skills under `~/.cursor/skills-cursor/` (global) and
+ * `<project>/.cursor/skills/` (project). When `~/.cursor` exists, the
+ * global Cursor root is included; when `projectRoot` is passed, the
+ * project Cursor root is included as well.
  */
 
 import { existsSync } from "node:fs";
@@ -45,11 +47,12 @@ import { join } from "node:path";
  * `fanOutSymlinks` upstream calls `mkdirSync(dirname(link), { recursive })`
  * before each symlink, so the directory is created on first fan-out.
  */
-function resolveDetected(home: string): string[] {
+function resolveDetected(home: string, projectRoot?: string): string[] {
   const out: string[] = [];
   const codexInstalled = existsSync(join(home, ".codex"));
   const piInstalled = existsSync(join(home, ".pi", "agent"));
   const hermesInstalled = existsSync(join(home, ".hermes"));
+  const cursorInstalled = existsSync(join(home, ".cursor"));
 
   // agentskills.io shared root — codex creates it, pi co-consumes it.
   if (codexInstalled || piInstalled) {
@@ -62,6 +65,12 @@ function resolveDetected(home: string): string[] {
   // Pi's primary root (pi reads from this AND ~/.agents/skills/).
   if (piInstalled) {
     out.push(join(home, ".pi", "agent", "skills"));
+  }
+  if (cursorInstalled) {
+    out.push(join(home, ".cursor", "skills-cursor"));
+    if (projectRoot) {
+      out.push(join(projectRoot, ".cursor", "skills"));
+    }
   }
   return out;
 }
@@ -79,6 +88,7 @@ function resolveDetected(home: string): string[] {
 export function detectAgentSkillsRoots(
   canonicalRoot: string,
   home: string = homedir(),
+  projectRoot?: string,
 ): string[] {
-  return resolveDetected(home).filter(p => p !== canonicalRoot);
+  return resolveDetected(home, projectRoot).filter((p) => p !== canonicalRoot);
 }
