@@ -283,7 +283,7 @@ export function backfillSymlinks(installRoot: string): void {
   const manifest = loadManifest();
   const entries = entriesForRoot(manifest, "global", installRoot);
   if (entries.length === 0) return;
-  const detected = detectAgentSkillsRoots(installRoot);
+  const detected = detectAgentSkillsRoots(installRoot, homedir());
   for (const entry of entries) {
     const canonical = join(entry.installRoot, entry.dirName);
     if (!existsSync(canonical)) continue; // pruned/orphan, leave alone
@@ -581,7 +581,7 @@ export async function runPull(opts: PullOptions): Promise<PullSummary> {
       // <cwd>/.claude/skills and shouldn't leak into user-global agent
       // dirs — that would defeat the project-scoping intent.
       const symlinks = opts.install === "global"
-        ? fanOutSymlinks(skillDir, dirName, detectAgentSkillsRoots(root))
+        ? fanOutSymlinks(skillDir, dirName, detectAgentSkillsRoots(root, homedir(), undefined))
         : [];
       // Record in manifest so `unpull` can identify this entry as
       // pull-managed without relying on the `--<author>` dirname heuristic

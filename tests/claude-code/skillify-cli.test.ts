@@ -76,6 +76,16 @@ function expectExit(code: number, fn: () => void): void {
   expect(fn).toThrow(new RegExp(`__EXIT_${code}__`));
 }
 
+async function expectExitAsync(code: number, fn: () => void): Promise<void> {
+  expect(fn).not.toThrow();
+  await new Promise((r) => setImmediate(r));
+  expect(erred.join("\n") || logged.join("\n")).toBeTruthy();
+  // process.exit is mocked to throw; async promote surfaces it on the next tick
+  if (!exitSpy.mock.calls.some((c: [number?]) => c[0] === code)) {
+    throw new Error(`Expected process.exit(${code}) but was not called`);
+  }
+}
+
 // ── status (default) ──────────────────────────────────────────────────────
 
 describe("status (default subcommand)", () => {
@@ -213,12 +223,34 @@ describe("promote", () => {
     expectExit(1, () => runSkillifyCommand(["promote"]));
   });
 
-  it("errors when project skill is missing", () => {
+  it("errors when project skill is missing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "skillify-cli-"));
     process.chdir(dir);
-    expectExit(1, () => runSkillifyCommand(["promote", "nonexistent-skill"]));
+    runSkillifyCommand(["promote", "nonexistent-skill"]);
+    await new Promise((r) => setImmediate(r));
+    expect(exitSpy).toHaveBeenCalledWith(1);
     expect(erred.join("\n")).toMatch(/not found/);
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("moves project skill to global on disk", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "skillify-cli-promote-"));
+    const globalSkills = mkdtempSync(join(tmpdir(), "skillify-cli-global-"));
+    const originalHome = process.env.HOME;
+    process.env.HOME = globalSkills;
+    process.chdir(dir);
+    const skillDir = join(dir, ".claude", "skills", "my-skill");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: my-skill\ndescription: d\nauthor: alice\n---\n\nbody\n");
+    runSkillifyCommand(["promote", "my-skill"]);
+    await new Promise((r) => setImmediate(r));
+    expect(existsSync(join(globalSkills, ".claude", "skills", "my-skill", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(skillDir, "SKILL.md"))).toBe(false);
+    expect(logged.join("\n")).toMatch(/Promoted 'my-skill'/);
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(globalSkills, { recursive: true, force: true });
   });
 });
 

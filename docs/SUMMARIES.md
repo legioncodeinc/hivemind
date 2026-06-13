@@ -21,7 +21,7 @@ A per-session JSON sidecar at `~/.claude/hooks/summary-state/<sessionId>.json` t
 
 1. The wiki worker queries the `sessions` table for every event tied to that session.
 2. It builds a structured prompt asking the host agent's CLI to extract entities, decisions, files modified, open questions, etc.
-3. It shells out to that agent's CLI (`claude -p`, `codex exec`, `pi --print`, …) with the prompt — never a separate API key, the agent's existing credentials are used.
+3. It shells out to that agent's CLI (`claude -p`, `codex exec`, `cursor-agent --print`, `pi --print`, …) with the prompt — never a separate API key, the agent's existing credentials are used.
 4. The generated markdown is uploaded to the `memory` table at `/summaries/<user>/<sessionId>.md`. The shared embedding daemon produces the 768-dim `summary_embedding` so the summary is recallable via semantic search.
 
 A lock file at `~/.claude/hooks/summary-state/<sessionId>.lock` prevents two workers from running concurrently for the same session.
@@ -40,3 +40,7 @@ A lock file at `~/.claude/hooks/summary-state/<sessionId>.lock` prevents two wor
 | `HIVEMIND_CAPTURE=false`           | unset          | Disable both capture and summary generation         |
 
 For pi specifically, the wiki worker is bundled separately at `~/.pi/agent/hivemind/wiki-worker.js` (deposited by `hivemind pi install`). The other agents ship the wiki worker inside their per-agent plugin bundle.
+
+### Cursor notes
+
+Summaries on Cursor require **`cursor-agent`** on `PATH` and a logged-in Cursor CLI session. Failures are logged to `~/.deeplake/wiki-worker.log` and do not block the agent. The **Hivemind for Cursor** extension surfaces `cursor-agent` and login health in the status bar; see [harnesses/cursor/extension/README.md](../harnesses/cursor/extension/README.md).

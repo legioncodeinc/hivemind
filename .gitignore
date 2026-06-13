@@ -26,12 +26,12 @@ deploy-to-cache.sh
 bundle/
 harnesses/claude-code/bundle/
 harnesses/codex/bundle/
-cursor/bundle/
+harnesses/cursor/bundle/
 harnesses/hermes/bundle/
 mcp/bundle/
 harnesses/pi/bundle/
 evals/
 .cursor/
 cursor_hivemind_environment_variables_c.md
-cursor-extension/node_modules/
-cursor-extension/dist/
+harnesses/cursor/extension/node_modules/
+harnesses/cursor/extension/dist/

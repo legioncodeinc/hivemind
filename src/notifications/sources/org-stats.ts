@@ -56,6 +56,32 @@ export interface OrgStats {
   balanceCents: number | null;
 }
 
+/** Metadata about how org stats were resolved — used by the dashboard to
+ *  show freshness/offline labels without duplicating cache logic. */
+export interface OrgStatsFetchMeta {
+  /** ISO timestamp when the stats were last fetched from the server, or
+   *  when the cache entry was written. null when no org stats at all. */
+  fetchedAt: string | null;
+  /** True when the returned stats came from cache past the 1-hour TTL. */
+  stale: boolean;
+  /** True when a live fetch failed and stale cache was used as fallback. */
+  offline: boolean;
+  /** True when stats were served from cache without a successful refetch. */
+  fromCache: boolean;
+}
+
+export interface OrgStatsFetchResult {
+  stats: OrgStats | null;
+  meta: OrgStatsFetchMeta;
+}
+
+const EMPTY_META: OrgStatsFetchMeta = {
+  fetchedAt: null,
+  stale: false,
+  offline: false,
+  fromCache: false,
+};
+
 /** Response header carrying the org's current prepaid balance, in cents. */
 const BALANCE_HEADER = "X-Activeloop-Balance-Cents";
 
@@ -111,7 +137,11 @@ function scopeFromServer(s: ServerScope | undefined): OrgStatsScope {
   };
 }
 
-function readCache(scopeKey: string): { fresh?: OrgStats; stale?: OrgStats } {
+function readCache(scopeKey: string): {
+  fresh?: OrgStats;
+  stale?: OrgStats;
+  fetchedAt?: number;
+} {
   if (!existsSync(cacheFilePath())) return {};
   try {
     const parsed = JSON.parse(readFileSync(cacheFilePath(), "utf-8")) as CacheFileShape;
@@ -121,15 +151,25 @@ function readCache(scopeKey: string): { fresh?: OrgStats; stale?: OrgStats } {
     const age = Date.now() - parsed.fetchedAt;
     const data = parsed.data;
     if (!data || typeof data !== "object" || !data.org || !data.user) return {};
-    if (age >= 0 && age < CACHE_TTL_MS) return { fresh: data };
+    const fetchedAt = parsed.fetchedAt;
+    if (age >= 0 && age < CACHE_TTL_MS) return { fresh: data, fetchedAt };
     // Stale but possibly useful as a fallback if the fetch fails. We don't
     // return it as "fresh" since the user has paid for newer data via a
     // SessionStart-triggered fetch — only return it after the fetch error.
-    return { stale: data };
+    return { stale: data, fetchedAt };
   } catch (e: any) {
     log(`cache read failed: ${e?.message ?? String(e)}`);
     return {};
   }
+}
+
+function metaFromCache(fetchedAtMs: number, stale: boolean, offline: boolean): OrgStatsFetchMeta {
+  return {
+    fetchedAt: new Date(fetchedAtMs).toISOString(),
+    stale,
+    offline,
+    fromCache: true,
+  };
 }
 
 function writeCache(scopeKey: string, data: OrgStats): void {
@@ -160,14 +200,30 @@ function writeCache(scopeKey: string, data: OrgStats): void {
  *   4. On failure: return stale cache if any, else null
  */
 export async function fetchOrgStats(creds: Credentials | null): Promise<OrgStats | null> {
-  if (!creds?.token) return null;
+  const result = await fetchOrgStatsWithMeta(creds);
+  return result.stats;
+}
+
+/**
+ * Like fetchOrgStats but surfaces cache freshness metadata for dashboards.
+ * Never throws.
+ */
+export async function fetchOrgStatsWithMeta(
+  creds: Credentials | null,
+): Promise<OrgStatsFetchResult> {
+  if (!creds?.token) {
+    return { stats: null, meta: EMPTY_META };
+  }
 
   const apiUrl = creds.apiUrl ?? DEFAULT_API_URL;
   const scopeKey = cacheScopeKey(creds);
-  const { fresh, stale } = readCache(scopeKey);
+  const { fresh, stale, fetchedAt: cacheFetchedAt } = readCache(scopeKey);
   if (fresh) {
     log("cache hit — returning fresh org stats");
-    return fresh;
+    return {
+      stats: fresh,
+      meta: metaFromCache(cacheFetchedAt ?? Date.now(), false, false),
+    };
   }
 
   const url = `${apiUrl}/me/hivemind-stats`;
@@ -184,12 +240,24 @@ export async function fetchOrgStats(creds: Credentials | null): Promise<OrgStats
     });
     if (!resp.ok) {
       log(`fetch ${url} returned ${resp.status}`);
-      return stale ?? null;
+      if (stale && cacheFetchedAt != null) {
+        return {
+          stats: stale,
+          meta: metaFromCache(cacheFetchedAt, true, true),
+        };
+      }
+      return { stats: null, meta: EMPTY_META };
     }
     const body = (await resp.json()) as ServerResponse;
     if (!body || typeof body !== "object") {
       log(`fetch ${url} returned malformed body`);
-      return stale ?? null;
+      if (stale && cacheFetchedAt != null) {
+        return {
+          stats: stale,
+          meta: metaFromCache(cacheFetchedAt, true, true),
+        };
+      }
+      return { stats: null, meta: EMPTY_META };
     }
     const data: OrgStats = {
       org: scopeFromServer(body.org),
@@ -198,10 +266,24 @@ export async function fetchOrgStats(creds: Credentials | null): Promise<OrgStats
     };
     writeCache(scopeKey, data);
     log(`fetched org stats from ${apiUrl}`);
-    return data;
+    return {
+      stats: data,
+      meta: {
+        fetchedAt: new Date().toISOString(),
+        stale: false,
+        offline: false,
+        fromCache: false,
+      },
+    };
   } catch (e: any) {
     log(`fetch ${url} failed: ${e?.message ?? String(e)}`);
-    return stale ?? null;
+    if (stale && cacheFetchedAt != null) {
+      return {
+        stats: stale,
+        meta: metaFromCache(cacheFetchedAt, true, true),
+      };
+    }
+    return { stats: null, meta: EMPTY_META };
   } finally {
     clearTimeout(timeoutHandle);
   }

@@ -7,7 +7,7 @@
 | **Claude Code**   | Marketplace plugin                 | `SessionStart` · `UserPromptSubmit` · `PreToolUse` · `PostToolUse` · `Stop` · `SubagentStop` · `SessionEnd` |
 | **Codex**         | `~/.codex/hooks.json`              | `SessionStart` · `UserPromptSubmit` · `PreToolUse(Bash)` · `PostToolUse` · `Stop`        |
 | **OpenClaw**      | Native extension at `~/.openclaw/extensions/hivemind/` | `agent_end` capture · `before_agent_start` recall · contracted tools (`hivemind_search`/`read`/`index`) |
-| **Cursor (1.7+)** | `~/.cursor/hooks.json`             | `sessionStart` · `beforeSubmitPrompt` · `postToolUse` · `afterAgentResponse` · `stop` · `sessionEnd` |
+| **Cursor (1.7+)** | `~/.cursor/hooks.json` + optional `harnesses/cursor/extension/` | `sessionStart` · `beforeSubmitPrompt` · `preToolUse(Shell)` · `postToolUse` · `afterAgentResponse` · `stop` · `sessionEnd` |
 | **Hermes**        | Skill at `~/.hermes/skills/hivemind-memory/` | recall via grep on `~/.deeplake/memory/`                                                |
 | **pi**            | `~/.pi/agent/AGENTS.md` + skill    | recall via grep on `~/.deeplake/memory/`                                                |
 
@@ -27,7 +27,9 @@ hivemind/
 │   └── cli/                ← unified `hivemind install` CLI + per-agent installers
 ├── harnesses/claude-code/            ← Claude Code plugin source (marketplace-distributed)
 ├── harnesses/codex/                  ← Codex plugin build output (npm-distributed)
-├── cursor/                 ← Cursor plugin build output (npm-distributed)
+├── harnesses/cursor/                 ← Cursor hooks bundle + VS Code extension source
+│   ├── bundle/                       ← hook scripts (npm → ~/.cursor/hivemind/bundle/)
+│   └── extension/                    ← editor extension (status bar, dashboard, hook wiring UI)
 ├── harnesses/hermes/                 ← Hermes plugin build output (npm-distributed)
 ├── mcp/                    ← MCP server build output (shared by Hermes + future MCP clients)
 ├── harnesses/openclaw/               ← OpenClaw plugin source + build output (ClawHub-distributed)

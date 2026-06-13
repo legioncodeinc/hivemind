@@ -26,12 +26,16 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { loadScopeConfig, saveScopeConfig, type Scope, type InstallLocation } from "../skillify/scope-config.js";
 import { getStateDir } from "../skillify/state-dir.js";
+import { deriveProjectKey } from "../skillify/state.js";
 import { runPull, type PullSummary } from "../skillify/pull.js";
 import { runUnpull } from "../skillify/unpull.js";
 import { loadConfig } from "../config.js";
 import { DeeplakeApi } from "../deeplake-api.js";
 import { runMineLocal } from "./mine-local.js";
 import { renderSubcommandUsageBlock } from "../cli/skillify-spec.js";
+import { parseFrontmatter } from "../skillify/skill-writer.js";
+import { readCurrentSkillRow } from "../skillify/skill-org-publish.js";
+import { insertSkillRow } from "../skillify/skills-table.js";
 
 // Route through the shared `getStateDir()` so `HIVEMIND_STATE_DIR`
 // redirects (tests, alternate installs) land in the same dir as the
@@ -119,8 +123,7 @@ function setInstall(loc: string): void {
   console.log(`Install location set to '${loc}'. New skills will be written to ${path}/<name>/SKILL.md.`);
 }
 
-function promoteSkill(name: string, cwd: string): void {
-  if (!name) { console.error("Usage: hivemind skillify promote <skill-name>"); process.exit(1); }
+function moveProjectSkillToGlobal(name: string, cwd: string): { projectPath: string; globalPath: string } {
   const projectPath = join(cwd, ".claude", "skills", name);
   const globalPath = join(homedir(), ".claude", "skills", name);
   if (!existsSync(join(projectPath, "SKILL.md"))) {
@@ -133,7 +136,92 @@ function promoteSkill(name: string, cwd: string): void {
   }
   mkdirSync(dirname(globalPath), { recursive: true });
   renameSync(projectPath, globalPath);
+  return { projectPath, globalPath };
+}
+
+async function publishSkillToOrgTable(name: string, cwd: string, globalPath: string): Promise<number> {
+  const config = loadConfig();
+  if (!config) {
+    console.error("Not logged in. Run: hivemind login");
+    process.exit(1);
+  }
+
+  const skillMd = readFileSync(join(globalPath, "SKILL.md"), "utf-8");
+  const parsed = parseFrontmatter(skillMd);
+  if (!parsed) {
+    console.error(`Skill '${name}' has no valid SKILL.md frontmatter — cannot publish to org table.`);
+    process.exit(1);
+  }
+
+  const author = (typeof parsed.fm.author === "string" && parsed.fm.author.trim())
+    ? parsed.fm.author.trim()
+    : config.userName;
+  if (!author) {
+    console.error("Cannot determine skill author. Set frontmatter author or log in with a username.");
+    process.exit(1);
+  }
+
+  const description = typeof parsed.fm.description === "string" ? parsed.fm.description : "";
+  const trigger = typeof parsed.fm.trigger === "string" ? parsed.fm.trigger : "";
+  const body = parsed.body.trim();
+  const { key: projectKey, project } = deriveProjectKey(cwd);
+  const sourceSessions = Array.isArray(parsed.fm.source_sessions)
+    ? parsed.fm.source_sessions.map(String)
+    : [];
+  const sourceAgent = typeof parsed.fm.created_by_agent === "string"
+    ? parsed.fm.created_by_agent
+    : "cursor";
+
+  const api = new DeeplakeApi(
+    config.token, config.apiUrl, config.orgId, config.workspaceId, config.skillsTableName,
+  );
+  const query = (sql: string) => api.query(sql) as Promise<Record<string, unknown>[]>;
+
+  const current = await readCurrentSkillRow(query, config.skillsTableName, name, author);
+  const version = current ? current.version + 1 : 1;
+  const now = new Date().toISOString();
+
+  await insertSkillRow({
+    query,
+    tableName: config.skillsTableName,
+    workspaceId: config.workspaceId,
+    name,
+    author,
+    project,
+    projectKey,
+    localPath: join(globalPath, "SKILL.md"),
+    install: "global",
+    sourceSessions: current?.sourceSessions.length ? current.sourceSessions : sourceSessions,
+    sourceAgent: current?.sourceAgent || sourceAgent,
+    scope: "team",
+    contributors: current?.contributors.length
+      ? current.contributors
+      : [author],
+    description: current?.description || description,
+    trigger: current?.trigger || trigger,
+    body,
+    version,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return version;
+}
+
+async function promoteSkill(args: string[], cwd: string): Promise<void> {
+  const work = [...args];
+  const scopeRaw = takeFlagValue(work, "--scope");
+  const shareTeam = scopeRaw === "team";
+  const name = work[0] ?? "";
+  if (!name) { console.error("Usage: hivemind skillify promote <skill-name> [--scope team]"); process.exit(1); }
+
+  const { projectPath, globalPath } = moveProjectSkillToGlobal(name, cwd);
   console.log(`Promoted '${name}' from ${projectPath} → ${globalPath}.`);
+
+  if (shareTeam) {
+    const version = await publishSkillToOrgTable(name, cwd, globalPath);
+    console.log(`Published '${name}' to org skills table at team scope (v${version}). Teammates will pull it on next auto-pull.`);
+  }
 }
 
 function teamAdd(name: string): void {
@@ -346,7 +434,22 @@ export function runSkillifyCommand(args: string[]): void {
   if (!sub || sub === "status") { showStatus(); return; }
   if (sub === "scope")   { setScope(args[1] ?? ""); return; }
   if (sub === "install") { setInstall(args[1] ?? ""); return; }
-  if (sub === "promote") { promoteSkill(args[1] ?? "", process.cwd()); return; }
+  if (sub === "promote") {
+    const promoteArgs = args.slice(1);
+    const scopeIdx = promoteArgs.indexOf("--scope");
+    const nameArg = promoteArgs.find((a, i) => !a.startsWith("--") && !(i > 0 && promoteArgs[i - 1] === "--scope"));
+    if (!nameArg) {
+      console.error("Usage: hivemind skillify promote <skill-name> [--scope team]");
+      process.exit(1);
+    }
+    promoteSkill(promoteArgs, process.cwd())
+      .catch(e => {
+        console.error(`promote error: ${e?.message ?? e}`);
+        process.exit(1);
+      })
+      .catch(() => { /* test-only safety net when process.exit is mocked */ });
+    return;
+  }
   if (sub === "pull") {
     pullSkills(args.slice(1)).catch(e => {
       console.error(`pull error: ${e?.message ?? e}`);

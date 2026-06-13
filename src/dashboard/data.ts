@@ -40,7 +40,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { loadCredentials, type Credentials } from "../commands/auth-creds.js";
-import { fetchOrgStats, type OrgStats } from "../notifications/sources/org-stats.js";
+import {
+  fetchOrgStatsWithMeta,
+  type OrgStatsFetchMeta,
+} from "../notifications/sources/org-stats.js";
 import {
   countUserGeneratedSkills,
   readUsageRecords,
@@ -78,6 +81,13 @@ export interface DashboardKpis {
    *  tokensSaved (local stats ARE this user's contribution). null when
    *  source is "none". */
   userTokensSaved: number | null;
+  /** ISO timestamp of the org-stats cache or last successful fetch. null
+   *  when tokensSource is not "org". */
+  orgStatsFetchedAt: string | null;
+  /** True when org stats came from cache past the 1-hour TTL. */
+  orgStatsStale: boolean;
+  /** True when a live fetch failed and stale cache was used. */
+  orgStatsOffline: boolean;
 }
 
 export interface DashboardGraphSummary {
@@ -216,16 +226,22 @@ async function loadKpis(creds: Credentials | null): Promise<DashboardKpis> {
   const localBytes = sumMetric(records, "memorySearchBytes");
   const localCount = sumMetric(records, "memorySearchCount");
 
-  let orgStats: OrgStats | null = null;
+  const emptyOrgMeta: OrgStatsFetchMeta = {
+    fetchedAt: null,
+    stale: false,
+    offline: false,
+    fromCache: false,
+  };
+  let orgFetchMeta = emptyOrgMeta;
+  let orgStats = null as Awaited<ReturnType<typeof fetchOrgStatsWithMeta>>["stats"];
+
   if (creds?.token) {
     try {
-      orgStats = await fetchOrgStats(creds);
+      const result = await fetchOrgStatsWithMeta(creds);
+      orgStats = result.stats;
+      orgFetchMeta = result.meta;
     } catch (e: any) {
-      // fetchOrgStats already swallows network/parse failures and returns
-      // null, but a future regression that throws shouldn't take the
-      // dashboard down — surface the failure as "no org data" and let
-      // the local fallback do its job.
-      log(`fetchOrgStats threw: ${e?.message ?? String(e)}`);
+      log(`fetchOrgStatsWithMeta threw: ${e?.message ?? String(e)}`);
     }
   }
 
@@ -237,6 +253,9 @@ async function loadKpis(creds: Credentials | null): Promise<DashboardKpis> {
       memorySearches: orgStats.org.memoryRecallCount,
       sessionsCount: orgStats.org.sessionsCount,
       userTokensSaved: bytesToSavedTokens(orgStats.user.memorySearchBytes),
+      orgStatsFetchedAt: orgFetchMeta.fetchedAt,
+      orgStatsStale: orgFetchMeta.stale,
+      orgStatsOffline: orgFetchMeta.offline,
     };
   }
 
@@ -248,6 +267,9 @@ async function loadKpis(creds: Credentials | null): Promise<DashboardKpis> {
       memorySearches: localCount,
       sessionsCount: records.length,
       userTokensSaved: bytesToSavedTokens(localBytes),
+      orgStatsFetchedAt: null,
+      orgStatsStale: false,
+      orgStatsOffline: false,
     };
   }
 
@@ -258,6 +280,9 @@ async function loadKpis(creds: Credentials | null): Promise<DashboardKpis> {
     memorySearches: 0,
     sessionsCount: null,
     userTokensSaved: null,
+    orgStatsFetchedAt: null,
+    orgStatsStale: false,
+    orgStatsOffline: false,
   };
 }
 

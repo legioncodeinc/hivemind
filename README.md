@@ -101,7 +101,7 @@ hivemind status
 | **Claude Code**  | Marketplace plugin                               | ✅           | ✅          |
 | **OpenClaw**     | Native extension                                 | ✅           | ✅          |
 | **Codex**        | Hooks (`hooks.json`)                             | ✅           | ✅          |
-| **Cursor**       | Hooks (`hooks.json` 1.7+)                        | ✅           | ✅          |
+| **Cursor**       | Hooks (`hooks.json` 1.7+) + optional VS Code extension | ✅           | ✅          |
 | **Hermes Agent** | Shell hooks (`config.yaml`) + skill + MCP server | ✅           | ✅          |
 | **pi**           | Extension API (`pi.on(...)`) + skill + AGENTS.md | ✅           | ✅          |
 
@@ -195,13 +195,46 @@ Choose **`2. Trust all and continue`** — otherwise the hooks won't run and hiv
 <details>
   <summary><b>Cursor (1.7+)</b></summary>
 
-The unified installer wires six lifecycle events in `~/.cursor/hooks.json`: sessionStart, beforeSubmitPrompt, postToolUse, afterAgentResponse, stop, sessionEnd. Hooks fork a Node bundle at `~/.cursor/hivemind/bundle/` per event. Restart Cursor after install to load.
+Hivemind integrates with Cursor in two layers: **hooks** (required for capture/recall) and an optional **editor extension** (health, login, dashboard).
+
+#### Hooks (required)
+
+The unified installer wires seven lifecycle events in `~/.cursor/hooks.json`: `sessionStart`, `beforeSubmitPrompt`, `preToolUse` (Shell matcher), `postToolUse`, `afterAgentResponse`, `stop`, and `sessionEnd`. Each hook runs a Node script from `~/.cursor/hivemind/bundle/` (copied from the npm package's `harnesses/cursor/bundle/` at install time). Restart Cursor after install so it loads the new hooks.
 
 ```bash
 hivemind cursor install
+# or
+hivemind install --only cursor
 ```
 
-Auto-capture is enabled the same way as Claude Code / Codex / OpenClaw.
+Auto-capture, auto-recall, rules injection, skill auto-pull, codebase graph builds, and session summaries work the same way as Claude Code / Codex / OpenClaw. Session summaries call `cursor-agent --print`; install the Cursor CLI and sign in so wiki summaries are not empty placeholders.
+
+#### Editor extension (optional)
+
+The first-party **Hivemind for Cursor** extension adds a status bar health indicator, command-palette actions, and an in-editor dashboard (KPIs, settings, sessions, codebase graph, rules, skill sync). It can wire hooks and log in without leaving the editor.
+
+From a clone of this repo (after `npm run build` at the repo root):
+
+```bash
+cd harnesses/cursor/extension
+npm install
+npm run compile
+```
+
+Then open the `harnesses/cursor/extension/` folder in Cursor/VS Code and press **F5** to launch an Extension Development Host, or package a VSIX with `npx vsce package` and install it.
+
+| Command | What it does |
+|---------|----------------|
+| **Hivemind: Run Onboarding** | Wire hooks, prompt login, refresh status |
+| **Hivemind: Log In / Log Out** | Browser device flow or API key |
+| **Hivemind: Show Status** | Health detail (CLI, cursor-agent, hooks, login) |
+| **Hivemind: Wire / Refresh Hooks** | Copy bundle to `~/.cursor/hivemind/` and merge `hooks.json` |
+| **Hivemind: Open Dashboard** | Webview: KPIs, graph, rules, skills |
+| **Hivemind: Open Logs** | Output channel + wiki-worker log tail |
+
+Skillify auto-pull fans symlinks into `~/.cursor/skills-cursor/` (global) and `<project>/.cursor/skills/` (project). The extension keeps those links in sync with `~/.claude/skills/` when you open a workspace.
+
+Full extension docs: **[harnesses/cursor/extension/README.md](harnesses/cursor/extension/README.md)**.
 </details>
 
 <details>
@@ -435,9 +468,18 @@ Setup, BYOC, agent integrations, or workflow. Come ask in the community:
 git clone https://github.com/activeloopai/hivemind.git
 cd hivemind
 npm install
-npm run build     # tsc + esbuild → harnesses/claude-code/bundle/ + harnesses/codex/bundle/ + cursor/bundle/ + harnesses/openclaw/dist/ + mcp/bundle/ + bundle/cli.js
+npm run build     # tsc + esbuild → harnesses/claude-code/bundle/ + harnesses/codex/bundle/ + harnesses/cursor/bundle/ + harnesses/openclaw/dist/ + mcp/bundle/ + bundle/cli.js
 npm test          # vitest
 ```
+
+**Cursor extension** (optional; lives in `harnesses/cursor/extension/`):
+
+```bash
+npm run build                              # hooks bundle → harnesses/cursor/bundle/ (required before F5 or Wire Hooks from source)
+cd harnesses/cursor/extension && npm install && npm run compile
+```
+
+Press **F5** with the `harnesses/cursor/extension/` folder open to run the extension in a dev host. See **[harnesses/cursor/extension/README.md](harnesses/cursor/extension/README.md)**.
 
 Test locally with Claude Code:
 

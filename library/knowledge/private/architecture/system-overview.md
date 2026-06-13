@@ -48,7 +48,7 @@ hivemind/
 └── bundle/                 ← unified `hivemind` CLI build output
 ```
 
-The Claude Code hooks under `src/hooks/` are the reference implementation. The per-agent subdirectories (`src/hooks/codex/`, `cursor/`, `hermes/`, `pi/`) re-express the same handlers against each assistant's event names and payload shapes, reusing the shared core for the actual work. The build step (`npm run build`) runs `tsc` plus `esbuild` and emits the per-agent bundles into `harnesses/claude-code/bundle/`, `harnesses/codex/bundle/`, `cursor/bundle/`, `harnesses/openclaw/dist/`, `mcp/bundle/`, and `bundle/cli.js`.
+The Claude Code hooks under `src/hooks/` are the reference implementation. The per-agent subdirectories (`src/hooks/codex/`, `cursor/`, `hermes/`, `pi/`) re-express the same handlers against each assistant's event names and payload shapes, reusing the shared core for the actual work. The build step (`npm run build`) runs `tsc` plus `esbuild` and emits the per-agent bundles into `harnesses/claude-code/bundle/`, `harnesses/codex/bundle/`, `harnesses/cursor/bundle/`, `harnesses/openclaw/dist/`, `mcp/bundle/`, and `bundle/cli.js`.
 
 ---
 

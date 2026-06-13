@@ -29,6 +29,9 @@ function baseData(overrides: Partial<DashboardData> = {}): DashboardData {
       memorySearches: 42,
       sessionsCount: 5,
       userTokensSaved: 3500,
+      orgStatsFetchedAt: "2026-05-21T00:00:00Z",
+      orgStatsStale: false,
+      orgStatsOffline: false,
     },
     graph: {
       commitSha: "abc123def456789",
@@ -242,6 +245,9 @@ describe("renderDashboardHtml", () => {
         tokensSaved: null, tokensSource: "none",
         skillsCreated: 0, memorySearches: 0,
         sessionsCount: null, userTokensSaved: null,
+        orgStatsFetchedAt: null,
+        orgStatsStale: false,
+        orgStatsOffline: false,
       },
     }));
     expect(html).toContain("—");
@@ -259,6 +265,9 @@ describe("renderDashboardHtml", () => {
         memorySearches: 10,
         sessionsCount: 3,
         userTokensSaved: 5000,
+        orgStatsFetchedAt: null,
+        orgStatsStale: false,
+        orgStatsOffline: false,
       },
     }));
     expect(html).toContain("~5.0k");

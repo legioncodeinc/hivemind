@@ -12,7 +12,11 @@ import { join } from "node:path";
 
 const { orgStatsMock } = vi.hoisted(() => ({ orgStatsMock: vi.fn() }));
 vi.mock("../../src/notifications/sources/org-stats.js", () => ({
-  fetchOrgStats: orgStatsMock,
+  fetchOrgStats: vi.fn(async (creds: unknown) => {
+    const r = await orgStatsMock(creds);
+    return r?.stats ?? r ?? null;
+  }),
+  fetchOrgStatsWithMeta: orgStatsMock,
 }));
 
 import { loadDashboardData } from "../../src/dashboard/data.js";
@@ -139,8 +143,16 @@ describe("loadDashboardData", () => {
 
   it("uses org stats when fetchOrgStats returns data", async () => {
     orgStatsMock.mockResolvedValue({
-      org: { sessionsCount: 5, memoryRecallCount: 100, memorySearchBytes: 40_000 },
-      user: { sessionsCount: 2, memoryRecallCount: 50, memorySearchBytes: 20_000 },
+      stats: {
+        org: { sessionsCount: 5, memoryRecallCount: 100, memorySearchBytes: 40_000 },
+        user: { sessionsCount: 2, memoryRecallCount: 50, memorySearchBytes: 20_000 },
+      },
+      meta: {
+        fetchedAt: "2026-06-13T12:00:00.000Z",
+        stale: false,
+        offline: false,
+        fromCache: false,
+      },
     });
     const result = await loadDashboardData({
       cwd: "/tmp",
@@ -148,6 +160,9 @@ describe("loadDashboardData", () => {
       creds: { token: "t", orgId: "o", userName: "user", savedAt: "2026-01-01T00:00:00Z" },
     });
     expect(result.kpis.tokensSource).toBe("org");
+    expect(result.kpis.orgStatsFetchedAt).toBe("2026-06-13T12:00:00.000Z");
+    expect(result.kpis.orgStatsStale).toBe(false);
+    expect(result.kpis.orgStatsOffline).toBe(false);
     // 40000 / 4 = 10000 delivered; 0.7 * 10000 = 7000 saved
     expect(result.kpis.tokensSaved).toBe(7000);
     expect(result.kpis.memorySearches).toBe(100);
@@ -157,7 +172,7 @@ describe("loadDashboardData", () => {
   });
 
   it("falls back to local stats when fetchOrgStats returns null", async () => {
-    orgStatsMock.mockResolvedValue(null);
+    orgStatsMock.mockResolvedValue({ stats: null, meta: { fetchedAt: null, stale: false, offline: false, fromCache: false } });
     mkdirSync(join(homeDir, ".deeplake"), { recursive: true });
     const records = [
       { endedAt: "2026-01-01T00:00:00Z", sessionId: "a", memorySearchBytes: 8_000, memorySearchCount: 4 },
