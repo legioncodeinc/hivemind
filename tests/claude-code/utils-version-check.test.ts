@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -42,7 +42,7 @@ describe("getInstalledVersion — plugin-manifest branch", () => {
   let root: string;
 
   beforeEach(() => {
-    root = join(tmpdir(), `hm-uvc-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    root = mkdtempSync(join(tmpdir(), "hm-uvc-"));
   });
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
@@ -72,7 +72,7 @@ describe("getInstalledVersion — plugin-manifest branch", () => {
 describe("getInstalledVersion — .hivemind_version stamp branch", () => {
   let root: string;
   beforeEach(() => {
-    root = join(tmpdir(), `hm-uvc-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    root = mkdtempSync(join(tmpdir(), "hm-uvc-"));
   });
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 

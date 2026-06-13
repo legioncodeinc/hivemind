@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, statSync, utimesSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, statSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -29,7 +29,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 beforeEach(() => {
-  tmpRoot = join(tmpdir(), `hm-codex-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  tmpRoot = mkdtempSync(join(tmpdir(), "hm-codex-"));
   tmpHome = join(tmpRoot, "home");
   tmpPkg = join(tmpRoot, "pkg");
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -23,8 +23,7 @@ describe("getInstalledVersion", () => {
   let root: string;
 
   beforeEach(() => {
-    root = join(tmpdir(), `hivemind-version-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    mkdirSync(root, { recursive: true });
+    root = mkdtempSync(join(tmpdir(), "hivemind-version-"));
   });
 
   afterEach(() => {
