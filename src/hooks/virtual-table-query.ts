@@ -128,12 +128,21 @@ async function queryUnionRows(
   const unionQuery = buildUnionQuery(memoryQuery, sessionsQuery);
   try {
     return await api.query(unionQuery);
-  } catch {
-    const [memoryRows, sessionRows] = await Promise.all([
-      api.query(memoryQuery).catch(() => []),
-      api.query(sessionsQuery).catch(() => []),
+  } catch (unionErr) {
+    // The dual-table UNION can fail on SQL-compat grounds while the simpler
+    // single-table queries succeed — that is a legitimate fallback. But if
+    // BOTH fallbacks also fail, the backend genuinely could not be queried;
+    // swallowing that to [] would make a backend error look like an empty
+    // result (and "No such file or directory" to the agent). Surface it.
+    const settled = await Promise.allSettled([
+      api.query(memoryQuery),
+      api.query(sessionsQuery),
     ]);
-    return [...memoryRows, ...sessionRows];
+    const fulfilled = settled.filter(
+      (r): r is PromiseFulfilledResult<Row[]> => r.status === "fulfilled",
+    );
+    if (fulfilled.length === 0) throw unionErr;
+    return fulfilled.flatMap((r) => r.value);
   }
 }
 

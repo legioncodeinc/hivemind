@@ -728,6 +728,39 @@ describe("searchDeeplakeTables", () => {
     const sql = api.query.mock.calls[0][0] as string;
     expect(sql).toContain("LIMIT 100");
   });
+
+  it("flags meta.truncated when the lexical branch fills a per-source cap", async () => {
+    const rows = Array.from({ length: 5 }, (_, i) => ({ path: `/summaries/s${i}`, content: "x", source_order: 0 }));
+    const api = { query: vi.fn().mockResolvedValue(rows) } as any;
+    const meta = { truncated: false };
+    await searchDeeplakeTables(api, "m", "s", {
+      pathFilter: "", contentScanOnly: false, likeOp: "ILIKE", escapedPattern: "x", limit: 5,
+    }, meta);
+    expect(meta.truncated).toBe(true);
+  });
+
+  it("flags meta.truncated when the semantic branch hits the outer cap", async () => {
+    // outerLimit = semanticLimit + lexicalLimit = 20 + 20 = 40 by default.
+    const rows = Array.from({ length: 40 }, (_, i) => ({ path: `/s${i}`, content: "x", score: 0.5 }));
+    const api = { query: vi.fn().mockResolvedValue(rows) } as any;
+    const meta = { truncated: false };
+    await searchDeeplakeTables(api, "m", "s", {
+      pathFilter: "", contentScanOnly: false, likeOp: "ILIKE", escapedPattern: "x",
+      queryEmbedding: [0.1, 0.2, 0.3],
+    }, meta);
+    expect(meta.truncated).toBe(true);
+  });
+
+  it("does NOT flag meta.truncated when the semantic branch is under the cap", async () => {
+    const rows = Array.from({ length: 3 }, (_, i) => ({ path: `/s${i}`, content: "x", score: 0.5 }));
+    const api = { query: vi.fn().mockResolvedValue(rows) } as any;
+    const meta = { truncated: false };
+    await searchDeeplakeTables(api, "m", "s", {
+      pathFilter: "", contentScanOnly: false, likeOp: "ILIKE", escapedPattern: "x",
+      queryEmbedding: [0.1, 0.2, 0.3],
+    }, meta);
+    expect(meta.truncated).toBe(false);
+  });
 });
 
 // ── grepBothTables (end-to-end convenience wrapper) ─────────────────────────

@@ -457,6 +457,13 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
         // `readVirtualPathContents` (fix #1). Other paths fall back to the
         // same helper which returns null when neither table has a row, at
         // which point we let the shell bundle handle the miss below.
+        //
+        // A genuine backend failure now THROWS out of readVirtualPathContent
+        // (it no longer collapses to null → a misleading "No such file"). We
+        // deliberately let that throw propagate to the outer catch, which
+        // falls through to the sandboxed VFS shell (deeplake-shell.js) whose
+        // readFileBuffer re-attempts and surfaces a real error — preserving
+        // the retry instead of short-circuiting it here.
         content = await readVirtualPathContentFn(api, table, sessionsTable, virtualPath);
       }
       if (content !== null) {
@@ -504,6 +511,8 @@ export async function processPreToolUse(input: PreToolUseInput, deps: ClaudePreT
     if (lsDir) {
       const dir = lsDir.replace(/\/+$/, "") || "/";
       logFn(`direct ls: ${dir}`);
+      // A backend failure throws here; like the read path, we let it propagate
+      // to the outer catch → VFS shell fallback rather than masking it.
       const rows = await listVirtualPathRowsFn(api, table, sessionsTable, dir);
       const entries = new Map<string, { isDir: boolean; size: number }>();
       const prefix = dir === "/" ? "/" : dir + "/";

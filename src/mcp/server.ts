@@ -21,7 +21,7 @@ import { loadConfig } from "../config.js";
 import { DeeplakeApi } from "../deeplake-api.js";
 import { isMissingTableError } from "../deeplake-schema.js";
 import { sqlStr, sqlLike } from "../utils/sql.js";
-import { searchDeeplakeTables, buildGrepSearchOptions, normalizeContent, type GrepMatchParams } from "../shell/grep-core.js";
+import { searchDeeplakeTables, buildGrepSearchOptions, normalizeContent, TRUNCATION_NOTICE, type GrepMatchParams } from "../shell/grep-core.js";
 import { getVersion } from "../cli/version.js";
 
 interface ServerContext {
@@ -89,12 +89,16 @@ server.registerTool(
     opts.limit = limit ?? 10;
 
     try {
-      const rows = await searchDeeplakeTables(ctx.api, ctx.memoryTable, ctx.sessionsTable, opts);
+      const meta = { truncated: false };
+      const rows = await searchDeeplakeTables(ctx.api, ctx.memoryTable, ctx.sessionsTable, opts, meta);
       if (rows.length === 0) return errorResult(`No matches for "${query}".`);
       const lines = rows.map(r => {
         const body = normalizeContent(r.path, r.content);
         return `[${r.path}]\n${body.slice(0, 600)}`;
       });
+      // Tell the caller when the row cap was hit so it doesn't treat a capped
+      // page as the complete set (consistent with the grep path).
+      if (meta.truncated) lines.push(TRUNCATION_NOTICE);
       return { content: [{ type: "text", text: lines.join("\n\n---\n\n") }] };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

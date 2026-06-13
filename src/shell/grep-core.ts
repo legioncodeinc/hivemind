@@ -288,6 +288,13 @@ export async function searchDeeplakeTables(
   memoryTable: string,
   sessionsTable: string,
   opts: SearchOptions,
+  /**
+   * Optional out-param. Set `truncated` to true when a per-source row cap was
+   * hit, so callers can warn the agent that matches were dropped (the result
+   * is incomplete, not the full set). Especially important for the regex-only
+   * content scan, which inspects only the first `limit` unordered rows.
+   */
+  meta?: { truncated: boolean },
 ): Promise<ContentRow[]> {
   const { pathFilter, contentScanOnly, likeOp, escapedPattern, prefilterPattern, prefilterPatterns, queryEmbedding, multiWordPatterns } = opts;
   const limit = opts.limit ?? 100;
@@ -371,6 +378,8 @@ export async function searchDeeplakeTables(
       `) AS combined ORDER BY score DESC LIMIT ${outerLimit}`
     );
 
+    if (meta && rows.length >= outerLimit) meta.truncated = true;
+
     const seen = new Set<string>();
     const unique: ContentRow[] = [];
     for (const row of rows) {
@@ -397,6 +406,19 @@ export async function searchDeeplakeTables(
     `(${memQuery}) UNION ALL (${sessQuery})` +
     `) AS combined ORDER BY path, source_order, creation_date`
   );
+
+  // Each subquery is capped at `limit`. If a source returned exactly `limit`
+  // rows it (almost certainly) had more — flag the result as truncated so the
+  // caller can tell the agent it is incomplete.
+  if (meta) {
+    let memCount = 0;
+    let sessCount = 0;
+    for (const row of rows) {
+      if (Number(row["source_order"]) === 0) memCount++;
+      else sessCount++;
+    }
+    if (memCount >= limit || sessCount >= limit) meta.truncated = true;
+  }
 
   return rows.map(row => ({
     path: String(row["path"]),
@@ -610,10 +632,11 @@ export async function grepBothTables(
   targetPath: string,
   queryEmbedding?: number[] | null,
 ): Promise<string[]> {
+  const meta = { truncated: false };
   const rows = await searchDeeplakeTables(api, memoryTable, sessionsTable, {
     ...buildGrepSearchOptions(params, targetPath),
     queryEmbedding,
-  });
+  }, meta);
   // Defensive path dedup — memory and sessions tables use disjoint path
   // prefixes in every schema we ship (/summaries/… vs /sessions/…), so the
   // overlap is theoretical, but we dedupe to match grep-interceptor.ts and
@@ -638,9 +661,26 @@ export async function grepBothTables(
           if (trimmed) lines.push(`${r.path}:${line}`);
         }
       }
-      return lines;
+      return withTruncationNotice(lines, meta.truncated);
     }
   }
 
-  return refineGrepMatches(normalized, params);
+  return withTruncationNotice(refineGrepMatches(normalized, params), meta.truncated);
+}
+
+/**
+ * Append an explicit incomplete-results notice when a per-source row cap was
+ * hit. Emitted even when no lines matched: in regex content-scan mode only the
+ * first `limit` rows are fetched, so an empty refined result on a truncated
+ * fetch means "your match may be in the rows we didn't scan" — NOT a confirmed
+ * zero. Collapsing that back to "(no matches)" would reintroduce the exact
+ * silent failure this change exists to remove.
+ */
+export const TRUNCATION_NOTICE =
+  "[hivemind: results incomplete — a per-source row cap was hit, so more matches " +
+  "likely exist. Narrow the path or use a more specific pattern to see them.]";
+
+export function withTruncationNotice(lines: string[], truncated: boolean): string[] {
+  if (!truncated) return lines;
+  return lines.length > 0 ? [...lines, TRUNCATION_NOTICE] : [TRUNCATION_NOTICE];
 }

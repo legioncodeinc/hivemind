@@ -40,6 +40,7 @@ vi.mock("../../src/shell/grep-core.js", () => ({
   searchDeeplakeTables: (...a: unknown[]) => searchDeeplakeTablesMock(...a),
   buildGrepSearchOptions: (...a: unknown[]) => buildGrepSearchOptionsMock(...a),
   normalizeContent: (...a: unknown[]) => normalizeContentMock(...a),
+  TRUNCATION_NOTICE: "[hivemind: results incomplete — a per-source row cap was hit, so more matches likely exist. Narrow the path or use a more specific pattern to see them.]",
 }));
 vi.mock("../../src/cli/version.js", () => ({
   getVersion: (...a: unknown[]) => getVersionMock(...a),
@@ -157,6 +158,19 @@ describe("hivemind_search", () => {
     await importServer();
     const out = await registeredTools.get("hivemind_search")!.handler({ query: "x" });
     expect(JSON.stringify(out)).toContain("Search failed: api 500");
+  });
+
+  it("appends an incomplete-results notice when the search reports truncation", async () => {
+    searchDeeplakeTablesMock.mockImplementation(async (_a: unknown, _m: unknown, _s: unknown, _o: unknown, meta?: { truncated: boolean }) => {
+      if (meta) meta.truncated = true;
+      return [{ path: "/summaries/alice/a.md", content: "hit" }];
+    });
+    await importServer();
+    const out = await registeredTools.get("hivemind_search")!.handler({ query: "x" }) as { content: { text: string }[] };
+    expect(out.content[0].text).toContain("/summaries/alice/a.md");
+    expect(out.content[0].text).toContain(
+      "[hivemind: results incomplete — a per-source row cap was hit, so more matches likely exist. Narrow the path or use a more specific pattern to see them.]",
+    );
   });
 });
 
