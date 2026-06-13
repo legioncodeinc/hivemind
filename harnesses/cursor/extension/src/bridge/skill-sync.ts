@@ -309,6 +309,7 @@ export function listLocalSkillsForPromoter(): Array<{
   const workspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const globalRoot = canonicalSkillsRoot();
 
+  const seen = new Set<string>();
   for (const name of listMinedSkillNames(workspace)) {
     const projectPath = workspace ? join(workspace, ".claude", "skills", name) : "";
     const globalPath = join(globalRoot, name);
@@ -319,6 +320,7 @@ export function listLocalSkillsForPromoter(): Array<{
         path: projectPath,
         shareScope: readSkillShareScope(projectPath),
       });
+      seen.add(name);
     } else if (existsSync(join(globalPath, "SKILL.md"))) {
       out.push({
         dirName: name,
@@ -326,7 +328,26 @@ export function listLocalSkillsForPromoter(): Array<{
         path: globalPath,
         shareScope: readSkillShareScope(globalPath),
       });
+      seen.add(name);
     }
+  }
+
+  // Reconcile with what the settings "skills synced" count reports: pulled
+  // skills (`<name>--<author>` dirs under the canonical root) are real,
+  // installed skills too. Surfacing them here keeps the Skills tab from
+  // claiming "no skills" while settings shows a non-zero synced count.
+  for (const dirName of listPulledSkillDirs(globalRoot)) {
+    if (seen.has(dirName)) continue;
+    const pulledPath = join(globalRoot, dirName);
+    if (!existsSync(join(pulledPath, "SKILL.md"))) continue;
+    const declared = readSkillShareScope(pulledPath);
+    out.push({
+      dirName,
+      scope: "global",
+      path: pulledPath,
+      shareScope: declared === "unknown" ? "team" : declared,
+    });
+    seen.add(dirName);
   }
   return out;
 }

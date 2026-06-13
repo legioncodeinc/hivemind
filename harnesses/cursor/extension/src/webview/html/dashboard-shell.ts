@@ -106,6 +106,7 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
     <button class="tab" data-pane="sessions" role="tab">Sessions</button>
     <button class="tab" data-pane="graph" role="tab">Graph</button>
     <button class="tab" data-pane="rules" role="tab">Rules</button>
+    <button class="tab" data-pane="goals" role="tab">Goals</button>
     <button class="tab" data-pane="skills" role="tab">Skills</button>
   </nav>
   <main>
@@ -191,6 +192,19 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
       <p class="inline-error" id="rule-add-error" hidden></p>
       <ul class="list" id="rules-list"></ul>
     </section>
+    <section id="pane-goals" class="pane" role="tabpanel">
+      <div class="row">
+        <select id="goals-filter">
+          <option value="mine">Mine</option>
+          <option value="all">All</option>
+        </select>
+        <input type="text" id="goal-text" placeholder="New goal text" />
+        <button id="btn-goal-add">Add goal</button>
+      </div>
+      <p class="inline-error" id="goal-add-error" hidden></p>
+      <ul class="list" id="goals-list"></ul>
+      <p class="meta" id="goal-add-result"></p>
+    </section>
     <section id="pane-skills" class="pane" role="tabpanel">
       <p class="meta">Local skills available under Claude/Cursor skill directories. Use "Promote to team" to share a skill so teammates pull it on their next session.</p>
       <div id="skills-list"></div>
@@ -255,6 +269,27 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
     });
     document.getElementById("rules-status-filter").addEventListener("change", (e) => {
       post("rulesList", { rulesStatus: e.target.value });
+    });
+    document.getElementById("goals-filter").addEventListener("change", (e) => {
+      post("goalsList", { goalsFilter: e.target.value });
+    });
+    document.getElementById("btn-goal-add").addEventListener("click", () => {
+      const text = document.getElementById("goal-text").value.trim();
+      const errEl = document.getElementById("goal-add-error");
+      if (!text) return;
+      if (text.includes("\\n") || text.includes("\\r")) {
+        errEl.hidden = false;
+        errEl.textContent = "Goal text must be a single line (no newlines).";
+        return;
+      }
+      if (text.length > 2000) {
+        errEl.hidden = false;
+        errEl.textContent = "Goal text exceeds 2000 characters.";
+        return;
+      }
+      errEl.hidden = true;
+      post("goalAdd", { text });
+      document.getElementById("goal-text").value = "";
     });
     document.getElementById("btn-org-switch").addEventListener("click", () => {
       const orgName = document.getElementById("org-switch-input").value.trim();
@@ -337,8 +372,9 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
       ul.innerHTML = sessions.map(s => {
         const recall = s.hadRecall ? "recalled" : "no recalls";
         const proj = s.project ? " · " + s.project : "";
+        const events = s.eventCount != null ? s.eventCount : s.memorySearchCount;
         return '<li data-session="' + esc(s.sessionId) + '"><strong>' + esc(s.sessionId.slice(0, 8)) + '…</strong> · ' +
-        esc(s.endedAt) + proj + ' · <span class="tag">' + esc(recall) + '</span> · searches: ' + esc(s.memorySearchCount) + '</li>';
+        esc(s.endedAt) + proj + ' · <span class="tag">' + esc(recall) + '</span> · events: ' + esc(events) + '</li>';
       }).join("");
       ul.querySelectorAll("li[data-session]").forEach(li => {
         li.addEventListener("click", () => post("openSession", { sessionId: li.dataset.session }));
@@ -388,6 +424,21 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
           form.querySelector(".cancel-btn").addEventListener("click", () => form.remove());
         });
       });
+    }
+
+    function renderGoals(goals) {
+      const ul = document.getElementById("goals-list");
+      if (!goals || goals.length === 0) {
+        ul.innerHTML = '<li class="empty">No goals yet.</li>';
+        return;
+      }
+      ul.innerHTML = goals.map(g =>
+        '<li>' +
+        '<span class="tag">' + esc(g.status || "open") + '</span> ' +
+        '<span class="goal-text">' + esc(g.text || g.goalId) + '</span>' +
+        (g.owner ? ' <span class="meta">· ' + esc(g.owner) + '</span>' : '') +
+        '</li>'
+      ).join("");
     }
 
     function renderSkills(skills) {
@@ -705,6 +756,13 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
             renderSkills(msg.skills);
           }
           break;
+        case "goals":
+          if (msg.loggedOut) {
+            document.getElementById("goals-list").innerHTML = '<li class="empty">' + esc(msg.message || "Log in required.") + '</li>';
+          } else {
+            renderGoals(msg.goals);
+          }
+          break;
         case "impact":
           state.impact = msg.impact;
           const caveat = document.getElementById("impact-caveat");
@@ -733,6 +791,20 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
             const btn = document.getElementById("btn-graph-build");
             if (btn) btn.disabled = !!msg.inProgress;
             document.getElementById("graph-build-result").textContent = msg.message || "";
+            const inlineBtn = document.getElementById("btn-graph-build-inline");
+            if (inlineBtn) {
+              inlineBtn.disabled = !!msg.inProgress;
+              inlineBtn.textContent = msg.inProgress ? "Building graph…" : "Build graph now";
+            }
+            const emptyBanner = document.getElementById("graph-empty-banner");
+            if (emptyBanner && (msg.inProgress || !msg.ok)) {
+              emptyBanner.hidden = false;
+              emptyBanner.textContent = msg.message || "";
+            }
+          }
+          if (msg.target === "goals") {
+            const el = document.getElementById("goal-add-result");
+            if (el) el.textContent = msg.message || "";
           }
           if (msg.target === "skillSync") {
             document.getElementById("skill-sync-result").textContent = msg.message || "";

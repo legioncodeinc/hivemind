@@ -8,9 +8,9 @@ import { loadGraphSnapshotFromEnvelope, parseGraphSnapshot } from "../graph/snap
 import type { GraphSnapshot } from "../graph/types";
 import { logError } from "../utils/output";
 import { getDashboardHtml } from "./html/dashboard-shell";
-import { loadDashboardData, loadRecentSessions, loadRulesList, loadSessionSummary, runHivemindCli, runHivemindCliAsync, invalidateOrgStatsCache } from "./data-bridge";
+import { loadDashboardData, loadGoalsList, loadRecentSessions, loadRulesList, loadSessionSummary, runHivemindCli, runHivemindCliAsync, invalidateOrgStatsCache } from "./data-bridge";
 
-type DashboardPane = "kpi" | "settings" | "sessions" | "graph" | "rules" | "skills";
+type DashboardPane = "kpi" | "settings" | "sessions" | "graph" | "rules" | "skills" | "goals";
 
 const NEXT_STEPS_SECTION_RE = /^##\s+Next Steps\s*$/im;
 
@@ -25,6 +25,7 @@ interface WebviewInboundMessage {
   orgName?: string;
   workspaceName?: string;
   rulesStatus?: string;
+  goalsFilter?: string;
 }
 
 interface ParsedRule {
@@ -67,6 +68,7 @@ class DashboardController {
   private editorSync: EditorGraphSyncHandle | undefined;
   private snapshot: GraphSnapshot | null = null;
   private rulesStatusFilter = "active";
+  private goalsFilter: "mine" | "all" = "mine";
   private promotedSteps: Set<string>;
   private refreshInFlight = false;
   private lastDashboardEnvelope: Awaited<ReturnType<typeof loadDashboardData>> | null = null;
@@ -106,6 +108,7 @@ class DashboardController {
     await this.pushSessions();
     await this.pushRules();
     await this.pushSkills();
+    await this.pushGoals();
   }
 
   private post(message: Record<string, unknown>): void {
@@ -203,6 +206,22 @@ class DashboardController {
           if (msg.rulesStatus) this.rulesStatusFilter = msg.rulesStatus;
           await this.pushRules();
           break;
+        case "goalsList":
+          if (msg.goalsFilter === "all" || msg.goalsFilter === "mine") this.goalsFilter = msg.goalsFilter;
+          await this.pushGoals();
+          break;
+        case "goalAdd":
+          if (msg.text) {
+            const result = await runHivemindCli(["goal", "add", msg.text], workspaceRoot());
+            this.post({
+              type: "actionResult",
+              target: "goals",
+              ok: result.ok,
+              message: result.ok ? "Goal added." : result.stderr || "Failed to add goal.",
+            });
+            if (result.ok) await this.pushGoals();
+          }
+          break;
         case "rulesAdd":
           if (msg.text) {
             const result = await runHivemindCli(["rules", "add", msg.text, "--scope", "team"], workspaceRoot());
@@ -277,6 +296,7 @@ class DashboardController {
               ok: result.ok,
               message: result.ok ? `Goal created: "${msg.text}"` : result.stderr || "Failed to create goal.",
             });
+            if (result.ok) await this.pushGoals();
           }
           break;
         case "switchWorkspace":
@@ -425,6 +445,20 @@ class DashboardController {
       return;
     }
     this.post({ type: "rules", rules: result.rules, loggedOut: false });
+  }
+
+  private async pushGoals(): Promise<void> {
+    const result = await loadGoalsList(this.goalsFilter);
+    if (result.loggedOut) {
+      this.post({
+        type: "goals",
+        goals: [],
+        loggedOut: true,
+        message: result.message ?? "Log in with `hivemind login` to track goals.",
+      });
+      return;
+    }
+    this.post({ type: "goals", goals: result.goals, loggedOut: false });
   }
 
   private async pushSkills(): Promise<void> {

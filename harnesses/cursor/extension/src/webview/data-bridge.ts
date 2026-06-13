@@ -1,4 +1,5 @@
 import { spawn, execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -44,8 +45,15 @@ export interface RecentSession {
   sessionId: string;
   endedAt: string;
   memorySearchCount: number;
+  eventCount?: number;
   project?: string | null;
   hadRecall?: boolean;
+}
+
+export interface GoalsListResult {
+  loggedOut: boolean;
+  goals: Array<{ goalId: string; owner: string; status: string; text: string }>;
+  message?: string;
 }
 
 function repoRootFromExtension(): string {
@@ -86,15 +94,48 @@ function readUsageRecords(): Array<{ endedAt: string; sessionId: string; memoryS
   }
 }
 
-function deriveProjectKey(cwd: string): { key: string; project: string } {
-  try {
-    const out = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf-8" }).trim();
-    const key = Buffer.from(out).toString("hex").slice(0, 16);
-    return { key, project: basename(out) };
-  } catch {
-    const key = Buffer.from(cwd).toString("hex").slice(0, 16);
-    return { key, project: basename(cwd) };
+/** Collapse the surface forms of a git remote URL. Mirrors core src/utils/repo-identity.ts. */
+function normalizeGitRemoteUrl(url: string): string {
+  let s = url.trim();
+  const schemeMatch = s.match(/^([a-z][a-z0-9+.-]*):\/\//i);
+  const scheme = schemeMatch ? schemeMatch[1].toLowerCase() : null;
+  if (schemeMatch) s = s.slice(schemeMatch[0].length);
+  if (!scheme) {
+    const scp = s.match(/^(?:[^@/\s]+@)?([^:/\s]+):(.+)$/);
+    if (scp) s = `${scp[1]}/${scp[2]}`;
   }
+  s = s.replace(/^[^@/]+@/, "");
+  const defaultPorts: Record<string, string> = { http: "80", https: "443", ssh: "22", git: "9418" };
+  if (scheme && defaultPorts[scheme]) {
+    s = s.replace(new RegExp(`^([^/]+):${defaultPorts[scheme]}(/|$)`), "$1$2");
+  }
+  s = s.replace(/\.git\/?$/i, "");
+  s = s.replace(/\/+$/, "");
+  return s.toLowerCase();
+}
+
+/**
+ * Stable per-repo key: sha1 of the normalized git remote (fallback to cwd),
+ * first 16 hex chars. Mirrors core deriveProjectKey so the fallback resolves
+ * the SAME ~/.hivemind/graphs/<key> dir that `hivemind graph build` writes.
+ */
+function deriveProjectKey(cwd: string): { key: string; project: string } {
+  let project = basename(cwd);
+  let signature: string | null = null;
+  try {
+    const top = execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd, encoding: "utf-8" }).trim();
+    if (top) project = basename(top);
+  } catch {
+    /* not a git repo */
+  }
+  try {
+    const raw = execFileSync("git", ["config", "--get", "remote.origin.url"], { cwd, encoding: "utf-8" }).trim();
+    signature = raw ? normalizeGitRemoteUrl(raw) : null;
+  } catch {
+    signature = null;
+  }
+  const key = createHash("sha1").update(signature ?? cwd).digest("hex").slice(0, 16);
+  return { key, project };
 }
 
 function resolveSnapshot(repoDir: string): DashboardGraphSummary | null {
@@ -212,7 +253,7 @@ export async function loadRecentSessions(_cwd: string): Promise<RecentSession[]>
   const scriptPath = join(__dirname, "..", "..", "scripts", "load-sessions.mjs");
   if (existsSync(scriptPath)) {
     return new Promise((resolve) => {
-      const child = spawn(process.execPath, [scriptPath], {
+      const child = spawn(process.execPath, [scriptPath, _cwd], {
         cwd: repoRootFromExtension(),
         env: { ...process.env, NODE_OPTIONS: "" },
         stdio: ["ignore", "pipe", "pipe"],
@@ -276,6 +317,32 @@ export async function loadRulesList(status: string, limit = 10): Promise<RulesLi
       }
     });
     child.on("error", () => resolve({ loggedOut: true, rules: [], message: "Failed to load rules." }));
+  });
+}
+
+export async function loadGoalsList(filter: "mine" | "all" = "mine"): Promise<GoalsListResult> {
+  const scriptPath = join(__dirname, "..", "..", "scripts", "load-goals.mjs");
+  if (!existsSync(scriptPath)) {
+    return { loggedOut: true, goals: [], message: "Goals loader unavailable." };
+  }
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [scriptPath, filter], {
+      cwd: repoRootFromExtension(),
+      env: { ...process.env, NODE_OPTIONS: "" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.on("close", () => {
+      try {
+        resolve(JSON.parse(stdout) as GoalsListResult);
+      } catch {
+        resolve({ loggedOut: false, goals: [], message: "Failed to parse goals." });
+      }
+    });
+    child.on("error", () => resolve({ loggedOut: false, goals: [], message: "Failed to load goals." }));
   });
 }
 
