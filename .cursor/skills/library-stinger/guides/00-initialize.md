@@ -1,6 +1,6 @@
-# Guide 00 — Initialize Command
+# Guide 00 - Initialize Command
 
-Scaffolds or migrates a repository's `library/` folder to schema v2. The canonical tool is `scripts/standardize-library.ts` — do not manually create folders.
+Scaffolds or migrates a repository's `library/` folder to schema v2.
 
 ## Trigger phrases
 
@@ -9,22 +9,13 @@ Scaffolds or migrates a repository's `library/` folder to schema v2. The canonic
 - "scaffold documentation"
 - "set up library-worker-bee"
 
-## The right tool
+## How to scaffold
 
-Always use the standardize-library script. It handles both fresh scaffolds (no existing library/) and v1→v2 migrations (existing library/ with old paths).
+This repo has no `standardize-library` script. Create the v2 tree manually using the folder README seeds in `templates/`. Each `templates/*-README.md` is the canonical seed for the matching folder - copy it in, do not invent new frontmatter.
 
-```bash
-# From legion-suite root:
-pnpm standardize-library --repository <name>
+If a future deployment ships an idempotent scaffold script, prefer running it over hand-creating folders (it guarantees consistent README seeding). Absent that, the manual procedure below is authoritative.
 
-# Preview first:
-pnpm standardize-library --repository <name> --dry-run
-
-# All repos at once:
-pnpm standardize-library --all
-```
-
-## What the script creates (v2 target tree)
+## What to create (v2 target tree)
 
 ```
 library/
@@ -56,9 +47,9 @@ library/
     README.md
 ```
 
-Every folder gets a seeded `README.md` with YAML frontmatter (`ai_description`, `human_description`) explaining the folder's invariants.
+Every folder gets a seeded `README.md` with YAML frontmatter (`ai_description`, `human_description`) explaining the folder's invariants. The seeds live in this skill's `templates/` folder.
 
-## v1 → v2 migration map
+## v1 -> v2 migration map
 
 | v1 path | v2 path |
 |---|---|
@@ -73,14 +64,14 @@ Every folder gets a seeded `README.md` with YAML frontmatter (`ai_description`, 
 
 ## Post-flight
 
-After the script runs:
+After scaffolding:
 
-1. Check `pnpm standardize-library --repository <name> --dry-run` shows "Already up to date."
-2. Run `pnpm legion-sync --status` to confirm the wiki is current.
-3. Tell the user: what was created/migrated, that notes/ was not touched, next steps for creating content.
+1. Confirm every folder in the target tree exists and has its seeded `README.md`.
+2. Confirm `notes/` was created but otherwise left untouched.
+3. Tell the user: what was created/migrated, that `notes/` is human-only, and the next steps for creating content.
 
 ## Error handling
 
-- **Script not found**: run `pnpm install` from legion-suite root first.
-- **Conflict warning**: the script prints "[WARN] Skipping move — destination exists with different content" for files where the v2 destination already has content. Report these to the user for manual resolution.
-- **Not in a recognized repo**: make sure --repository matches one of the ALL_REPOS list in the script (`legion-suite`, `legion-marketing`, `legion-secure`, `legion-code`, `legion-website`, `legion-cloud`, `legion-shim`, `legion-harness`, `legion-shared`).
+- **Conflict on migration**: if a v2 destination already exists with different content, do NOT overwrite. Report the collision to the user for manual resolution.
+- **Partial v1 tree**: migrate only the paths that exist; do not fabricate empty v1 folders to "complete" the map.
+- **Not actually a repo root**: confirm you are at the repository root (where `library/` should live) before creating anything.

@@ -1,4 +1,4 @@
-# 07 — .gitignore Coverage Audit
+# 07 - .gitignore Coverage Audit
 
 *Research basis: `research/external/07-gitignore-canonical.md` (github/gitignore canonical templates)*
 
@@ -43,7 +43,7 @@ serviceAccount*.json
 
 | Stack | Should be ignored |
 |---|---|
-| Node.js | `node_modules/`, `.next/`, `dist/`, `build/`, `.cache/` |
+| TypeScript/Node (Hivemind) | `node_modules/`, `dist/`, `build/`, `coverage/`, `*.tsbuildinfo`, `.cache/` |
 | Python | `__pycache__/`, `*.pyc`, `.venv/`, `dist/`, `*.egg-info/` |
 | Go | vendor/ (optional), binary outputs |
 | Java | `target/`, `*.class`, `*.jar` |
@@ -64,7 +64,7 @@ serviceAccount*.json
 
 ```bash
 # Files that should be ignored but are tracked
-git ls-files | grep -E '(\.env$|node_modules|__pycache__|\.DS_Store|\.idea|dist/|build/)'
+git ls-files | grep -E '(\.env$|node_modules|\.DS_Store|\.idea|dist/|build/|coverage/|\.tsbuildinfo)'
 ```
 
 ## Report section template
@@ -72,15 +72,15 @@ git ls-files | grep -E '(\.env$|node_modules|__pycache__|\.DS_Store|\.idea|dist/
 ```markdown
 ### .gitignore Coverage (Score: X/10)
 
-**Detected stack:** Node.js (Next.js), Python (scripts)
+**Detected stack:** TypeScript/Node (ESM), esbuild + tsc build
 **Secret patterns:** ✅ `.env`, `.env.*` covered; `!.env.example` correctly excluded
-**Build artifacts:** ✅ `node_modules/`, `.next/`, `dist/` covered; Python `__pycache__/` ⚠️ missing
+**Build artifacts:** ✅ `node_modules/`, `dist/` covered; `coverage/` and `*.tsbuildinfo` ⚠️ missing
 **Accidentally tracked files:** None found
 
 **Findings:**
-- RECOMMEND: Add Python `.gitignore` patterns (`__pycache__/`, `*.pyc`, `.venv/`) — repo contains Python scripts in `scripts/`.
+- RECOMMEND: Add `coverage/`, `*.tsbuildinfo`, and `.vitest/` to `.gitignore` - the build and Vitest runs emit these locally.
 ```
 
 ## Handoff
 
-Secret-in-git-history incidents or secret scanning results → `security-worker-bee`.
+Secret-in-git-history incidents o

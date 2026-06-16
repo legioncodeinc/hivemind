@@ -2,7 +2,7 @@
 
 > Category: Standards | Version: 1.0 | Date: (fill in on init) | Status: Canonical
 
-The single source of truth for how documentation is written in this repository. Every document — feature PRDs, issue PRDs, QA reports, architecture docs, API references, guides — must conform to the standards defined here. If a document type is not covered, add a new section to this file rather than inventing a local convention.
+The single source of truth for how documentation is written in this repository. Every document - feature PRDs, issue PRDs, QA reports, architecture docs, API references, guides - must conform to the standards defined here. If a document type is not covered, add a new section to this file rather than inventing a local convention.
 
 ---
 
@@ -18,7 +18,7 @@ The single source of truth for how documentation is written in this repository. 
 | **API Reference** | Endpoint-by-endpoint documentation with schemas | `library/knowledge-base/api/` | Frontend devs, API consumers |
 | **How-to Guide** | Runbooks for setup, testing, deploying, adding features | `library/knowledge-base/how-to-guides/` | New engineers, DevOps |
 | **Integration Doc** | Third-party service configuration and error handling | `library/knowledge-base/integrations/` | DevOps, engineers wiring services |
-| **UX/UI Standard** | Visual design language — tokens, components, patterns | `library/knowledge-base/design/` | Designers, frontend devs |
+| **UX/UI Standard** | Visual design language - tokens, components, patterns | `library/knowledge-base/design/` | Designers, frontend devs |
 | **Feature Doc** | Completed feature reference (post-ship) | `library/knowledge-base/features/` | Any engineer joining the project |
 | **Spec** | Feature-level handoff spec for a UI flow | `library/knowledge-base/specs/` | Frontend engineers |
 | **Product Brief** | Product vision, scope, roadmap | `library/knowledge-base/product/` | Team, stakeholders |
@@ -43,13 +43,13 @@ Every markdown file under `library/knowledge-base/` starts with:
 - [Link to source code: `src/path/to/file.ts`]
 ```
 
-- **Version** — starts at `1.0`; patch bumps (`1.0` → `1.1`) for additions, minor bumps (`1.x` → `2.0`) for reorganizations.
-- **Date** — current month/year on the last meaningful edit.
+- **Version** - starts at `1.0`; patch bumps (`1.0` → `1.1`) for additions, minor bumps (`1.x` → `2.0`) for reorganizations.
+- **Date** - current month/year on the last meaningful edit.
 - **Status** values:
-  - `Active` — current, should be kept up to date
-  - `Draft` — work in progress, not authoritative
-  - `Archived` — historical, no longer maintained
-  - `Canonical` — (for standards docs only) highest authority; overrides ad-hoc conventions
+  - `Active` - current, should be kept up to date
+  - `Draft` - work in progress, not authoritative
+  - `Archived` - historical, no longer maintained
+  - `Canonical` - (for standards docs only) highest authority; overrides ad-hoc conventions
 
 Requirements-type docs (issue IRDs, feature PRDs, QA reports) use a different header format documented in their respective guides.
 
@@ -84,7 +84,7 @@ Requirements-type docs (issue IRDs, feature PRDs, QA reports) use a different he
 | `library/requirements/issues/issue-<###>-<title>/` | Issue work in progress (GitHub issue OPEN). |
 | `library/requirements/issues/completed/issue-<###>-<title>/` | Issue has been resolved (GitHub issue CLOSED). Move the entire folder (IRD + `reports/`). Symmetric to features. |
 | `<plan-folder>/reports/` | QA reports tied to that specific feature/issue. Travel with the folder when it moves. |
-| `library/qa/<domain>/` | Standalone QA reports — broad audits not tied to a single plan. |
+| `library/qa/<domain>/` | Standalone QA reports - broad audits not tied to a single plan. |
 
 Move folders when status changes. Never edit lifecycle state in frontmatter alone.
 
@@ -133,22 +133,22 @@ Move folders when status changes. Never edit lifecycle state in frontmatter alon
 ## 9. Ownership
 
 - Requirements docs (issue IRDs, feature PRDs) are owned by the implementation author. QA reports are owned by `quality-worker-bee`.
-- Knowledge-base docs are owned by the team collectively — anyone may edit with a PR.
+- Knowledge-base docs are owned by the team collectively - anyone may edit with a PR.
 - Standards docs (this file included) require team consensus before changing.
 
 ---
 
-## 10. Bootstrap — After `initialize`
+## 10. Bootstrap - After `initialize`
 
 When `library-worker-bee initialize` seeds a repo:
 
 1. Replace the placeholder "(fill in on init)" in the header above with the current month/year.
 2. Replace any project-name placeholders in the seeded README files with your repo's actual name.
-3. Edit any section of this framework that doesn't match your team's conventions — then commit.
+3. Edit any section of this framework that doesn't match your team's conventions - then commit.
 4. Start using the agent: ingest issues, plan features, document architecture.
 
 ---
 
 ## Changelog
 
-- v1.0 — Initial template seeded by `library-worker-bee`. Customize per repo.
+- v1.0 - Initial template seeded by `library-worker-bee`. Customize per repo.

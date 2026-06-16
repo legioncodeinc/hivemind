@@ -1,8 +1,8 @@
 # {tool-name}
 
-{2–3 sentences: what problem this solves, why it exists here (not a pitch — assume the reader knows the domain).}
+{2-3 sentences: what problem this solves, why it exists here (not a pitch, assume the reader knows the domain).}
 
-**Owner:** {team name} — `#{slack-channel}` on Slack  
+**Owner:** {team name}, `#{slack-channel}` on Slack  
 **On-call:** {PagerDuty rotation name | @person | "file an issue in this repo"}
 
 ---
@@ -52,7 +52,7 @@ cp .env.example .env
 
 ## Known failure modes
 
-<!-- Document the top 3–5 failure modes that have actually happened. This is the most valuable section. -->
+<!-- Document the top 3-5 failure modes that have actually happened. This is the most valuable section. -->
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
@@ -65,7 +65,7 @@ cp .env.example .env
 
 <!-- Delete this section for simple tools. Keep for anything with unusual design decisions. -->
 
-{1–3 paragraphs explaining non-obvious design choices. Why this approach vs alternatives. What to know before making changes.}
+{1-3 paragraphs explaining non-obvious design choices. Why this approach vs alternatives. What to know before making changes.}
 
 ---
 

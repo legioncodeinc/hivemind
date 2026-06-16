@@ -1,4 +1,4 @@
-# Bash Scripting Patterns — Research Note
+# Bash Scripting Patterns - Research Note
 
 **Source type:** community synthesis
 **Authority:** high
@@ -28,7 +28,7 @@ set -euo pipefail
 - Quote every variable: `"$var"` not `$var`.
 - Quote command substitutions: `"$(command)"`.
 - Use arrays when passing variable argument lists: `"${arr[@]}"`.
-- **Exception:** arithmetic: `$(( $a + $b ))` — no quoting needed inside `$((...))`.
+- **Exception:** arithmetic: `$(( $a + $b ))` - no quoting needed inside `$((...))`.
 
 ## Signal trapping
 

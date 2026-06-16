@@ -34,7 +34,7 @@ A documented `.gitattributes` file for projects using Git LFS, line-ending norma
 *.tar.bz2 binary
 
 # =============================================================================
-# Git LFS — large file storage
+# Git LFS - large file storage
 # Add patterns for files that should be stored in LFS
 # =============================================================================
 *.psd filter=lfs diff=lfs merge=lfs -text

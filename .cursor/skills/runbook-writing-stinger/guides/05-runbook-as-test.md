@@ -130,7 +130,7 @@ Every runbook must include this header near the top (after the summary, before t
 ## Debrief capture template
 
 ```markdown
-# Game Day Debrief — [Date] — [Scenario Name]
+# Game Day Debrief, [Date], [Scenario Name]
 
 **Participants:** [names/handles]
 **Facilitator:** [name]
@@ -144,7 +144,7 @@ Every runbook must include this header near the top (after the summary, before t
 
 ## Top 3 systemic findings
 
-1. [Finding 1 — affects multiple runbooks]
+1. [Finding 1, affects multiple runbooks]
 2. [Finding 2]
 3. [Finding 3]
 

@@ -1,123 +1,88 @@
-# How to run migrations locally
+# How to log in with the device flow
 
-> Category: How-to Guide | Version: 1.0 | Date: May 2026 | Status: Active
+> Category: How-to Guide | Version: 1.0 | Date: June 2026 | Status: Active
 
-Step-by-step runbook for creating, previewing, applying, and rolling back database migrations during local development. Covers the 80% case; see [migrations-production.md](migrations-production.md) for prod procedures.
+Step-by-step runbook for authenticating the Hivemind CLI against the Deep Lake API using the browser device flow, switching orgs and workspaces, and verifying your session. Covers the common case; see `src/commands/auth.ts` for the full implementation.
 
 **Related:**
-- [kb-database-schema.md](../architecture/database-schema.md) — schema overview
-- `prisma/schema.prisma`
-- `db/migrations/`
+- `src/commands/auth.ts` - device flow + credential persistence
+- `src/commands/auth-login.ts` - CLI dispatch
+- `src/commands/install-id.ts` - machine-stable install ID
 
 ---
 
 ## Prerequisites
 
-- Node 20+ and the repo's `npm install` has completed.
-- A running local Postgres (see [how-to-start-local-stack.md](how-to-start-local-stack.md)).
-- `.env` file at repo root with `DATABASE_URL` pointing at the local DB.
+- Node installed and the Hivemind CLI built (`npm run build`) or installed.
+- Network access to `https://api.deeplake.ai`.
+- A browser on the same machine (the flow opens one automatically; you can also copy the URL).
 
-## Create a new migration
+## Log in
 
-### Step 1 — Edit the schema
-
-Edit `prisma/schema.prisma`. Add your model, field, enum, or index.
-
-```diff
- model User {
-   id        String   @id @default(uuid())
-   email     String   @unique
-+  exportedAt DateTime?
- }
-```
-
-### Step 2 — Generate the migration
+### Step 1 - Start the device flow
 
 ```bash
-npx prisma migrate dev --name add_user_exported_at
+hivemind login
 ```
 
-This does three things:
+This calls `deviceFlowLogin`, which requests a device code from the API and either opens your browser to `verification_uri_complete` or prints:
 
-1. Diffs `prisma/schema.prisma` against the current DB state.
-2. Writes a new SQL file to `prisma/migrations/<timestamp>_add_user_exported_at/migration.sql`.
-3. Applies the SQL to your local DB.
-4. Regenerates the Prisma client.
+```
+Open this URL: https://api.deeplake.ai/device?code=ABCD-1234
+Or visit https://api.deeplake.ai/device and enter code: ABCD-1234
+```
 
-### Step 3 — Review the generated SQL
+### Step 2 - Approve in the browser
 
-Open `prisma/migrations/<timestamp>_add_user_exported_at/migration.sql` and confirm:
+Approve the request in the browser. The CLI polls `pollForToken(device_code)` until the API returns a token. The polling key is derived from a machine-stable install ID (see `src/commands/install-id.ts`), not the per-attempt `device_code`, so a retry never breaks the flow.
 
-- The change matches your intent.
-- No destructive operations on existing data (no `DROP`, no `NOT NULL` on an existing column without `DEFAULT`).
-- Index additions use `CONCURRENTLY` if they target a large table.
+### Step 3 - Credentials are persisted
 
-If the SQL looks wrong, edit it directly and re-run `npx prisma migrate dev` with `--create-only` next time to skip auto-apply.
+On success the CLI exchanges the device grant for a long-lived API token and saves it via `saveCredentials`. Subsequent commands read it through `loadCredentials`; the stored `apiUrl` defaults to `https://api.deeplake.ai`.
 
-## Preview without applying
+## Verify your session
 
 ```bash
-npx prisma migrate dev --create-only
+hivemind whoami
 ```
 
-Writes the SQL file but does not apply it. Useful when you want to hand-edit the SQL before running.
+Prints the current user, org, and workspace. If you see `Not logged in. Run: hivemind login`, the credentials file is missing or unreadable.
 
-## Apply a pending migration
+## Switch org or workspace
 
 ```bash
-npx prisma migrate dev
+hivemind org list
+hivemind org switch <id>
+
+hivemind workspace list
+hivemind workspace switch <id>
 ```
 
-Applies any unapplied migrations to the local DB.
+Org/workspace selection is bound into the saved credentials, so it persists across commands until you switch again.
 
-## Roll back
-
-Prisma does not support automatic rollbacks. Two options:
-
-### Option A — Reset to a clean state (destroys all local data)
+## Log out
 
 ```bash
-npx prisma migrate reset
+hivemind logout
 ```
 
-Drops the schema, re-runs every migration, runs the seed script if configured. Use this when your local DB is scratch.
-
-### Option B — Hand-rollback
-
-1. Write a new migration that reverses the bad one.
-2. Apply it.
-3. Mark the original as "rolled back" in a comment in its SQL file.
-
-Never edit an already-applied migration's SQL. Create a new one.
-
-## Seed data
-
-```bash
-npx prisma db seed
-```
-
-Runs the seed script defined in `package.json` under `prisma.seed`. See `prisma/seed.ts` for what it populates.
+Removes the stored credentials via `deleteCredentials`. The next command will require a fresh `hivemind login`.
 
 ## Common pitfalls
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `Error: P1001` | DB not running | Start local stack |
-| `Error: P3006` (failed migration) | SQL error in the generated file | Read the error, fix the SQL, reset |
-| Prisma client out of date after pull | Someone else added a migration | `npx prisma generate && npx prisma migrate dev` |
-| Migration applies locally but fails in CI | CI uses `migrate deploy`, which is stricter | Ensure the migration is committed and the CI DB is empty |
+| `Device flow unavailable: HTTP <code>` | API unreachable or device endpoint down | Check network and `apiUrl`; retry |
+| Browser does not open | No default browser or headless host | Copy the printed `verification_uri` and `user_code` manually |
+| `whoami` shows wrong org | Stale org binding | `hivemind org switch <id>` |
+| Polling never completes | Approval not finished in the browser | Re-approve, or re-run `hivemind login` |
 
 ## Related code
 
-- `prisma/schema.prisma` — source of truth for the schema.
-- `prisma/migrations/` — generated SQL files.
-- `prisma/seed.ts` — seed script.
-
-## Related docs
-
-- [migrations-production.md](migrations-production.md) — how prod migrations work.
-- [kb-database-schema.md](../architecture/database-schema.md) — schema overview.
+- `src/commands/auth.ts` - `deviceFlowLogin`, `pollForToken`, credential helpers.
+- `src/commands/auth-login.ts` - subcommand dispatch shared with the unified CLI.
+- `src/commands/install-id.ts` - install ID used as the polling key.
 
 ## Changelog
 
-- v1.0 (2026-05) — Initial version.
+- v1.0 (2026-06) - Initial version.

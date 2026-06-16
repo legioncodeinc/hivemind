@@ -18,9 +18,9 @@ These six principles are the non-negotiables. Every guide in this stinger derive
 **Corrected:**
 > "Run:
 > ```
-> kubectl logs -n payments deploy/checkout-api --tail=200 | grep -E 'ERROR|FATAL|connection refused'
+> npm run embeddings:logs -- --tail=200 | grep -E 'ERROR|FATAL|rate.?limit|401'
 > ```
-> If you see `connection refused` or `max connections reached`, proceed to Step 4 (Connection Pool Reset). If you see `OOMKilled`, proceed to Step 7 (Memory Scale-Up). If neither pattern appears, escalate per Step 10."
+> If you see `rate limit` or `429`, proceed to Step 6 (Throttle and Resume). If you see `401`, proceed to Step 5 (Restart with Fresh Key). If neither pattern appears, escalate per Step 10."
 
 **Source:** Incident Copilot (2026-03-08) provides this exact anti-pattern/correction pair verbatim. See `research/external/2026-03-08-incop-oncall-runbook-best-practices.md`.
 
@@ -28,21 +28,21 @@ These six principles are the non-negotiables. Every guide in this stinger derive
 
 ## Principle 2: Exact-Command Discipline
 
-**Law:** No approximations. No "something like". No "the usual". Every shell command, kubectl invocation, SQL query, and API call is exact: correct flags, correct namespaces, correct service names, correct environment.
+**Law:** No approximations. No "something like". No "the usual". Every shell command, npm script, dataset query, and API call is exact: correct flags, correct dataset paths, correct daemon names, correct environment.
 
-**Failure mode when violated:** Two on-call engineers execute different interpretations of the same step. One scales down the right service. One scales down the wrong one. Post-incident review cannot determine which step caused the second failure.
+**Failure mode when violated:** Two on-call engineers execute different interpretations of the same step. One restarts the right daemon. One restarts the wrong one. Post-incident review cannot determine which step caused the second failure.
 
 **Implementation rule:** If a command differs between environments (staging vs. production), use a variable (`$ENV`) and define it in the Prerequisites section. Never write two versions of the same command inline.
 
 **Template for parameterized commands:**
 ```
 Prerequisites:
-  ENV=production          # or: staging, dev
-  NAMESPACE=payments      # kubectl namespace for this service
-  SERVICE=checkout-api    # deployment name
+  ENV=production              # or: staging, dev
+  DATASET=ds_hivemind_prod    # Deep Lake dataset for this environment
+  DAEMON=embeddings-daemon    # process name
 
-Step 3: Scale up the deployment
-  kubectl scale -n $NAMESPACE deploy/$SERVICE --replicas=5
+Step 3: Lower embed concurrency
+  npm run embeddings:config -- --set concurrency=2
 ```
 
 **Source:** SRE School (2026-02-15) confirms exact commands are one of 9 quality attributes for production-ready runbooks. See `research/external/2026-02-15-sreschool-runbook-definition-maturity.md`.
@@ -59,7 +59,7 @@ Step 3: Scale up the deployment
 ```
 ## Escalation Path
 - **Tier 1 (this runbook):** On-call engineer (you)
-- **Tier 2 (15 min, no progress):** Payments team on-call — #payments-oncall Slack (PagerDuty: "Payments Team")
+- **Tier 2 (15 min, no progress):** Hivemind Platform team on-call, #hivemind-oncall Slack (PagerDuty: "Hivemind Platform")
   Expected response: within 10 minutes
 - **Tier 3 (30 min, still no progress or SEV-1):** Engineering Manager on-call
   Page via: PagerDuty "EM Escalation" policy
@@ -121,7 +121,7 @@ Step 3: Scale up the deployment
 
 **Implementation:**
 - Every alert definition (in PagerDuty, Grafana, Datadog, etc.) must include a `runbook_url` field pointing to the canonical runbook URL.
-- Runbooks must live at stable, predictable URLs. Git-backed runbooks should be served via a docs site (Backstage, GitBook, Notion public link) — not browsed via GitHub raw.
+- Runbooks must live at stable, predictable URLs. Git-backed runbooks should be served via a docs site (Backstage, GitBook, Notion public link), not browsed via GitHub raw.
 - If a runbook is split into sub-runbooks, the alert links to the parent runbook which routes to sub-runbooks within its decision tree.
 
 **Source:** The Good Shell (2026-04-22) names this as a storage requirement: "Your alert should link directly to the specific runbook." See `research/external/2026-04-22-thegoodshell-incident-runbook-template.md`.

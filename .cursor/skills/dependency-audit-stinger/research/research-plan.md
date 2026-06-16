@@ -1,42 +1,28 @@
-# Research Plan: dependency-audit-stinger
+# Research Plan: dependency-audit-stinger (retargeted to @deeplake/hivemind)
 
+- **Retargeted:** 2026-06-16
+- **Scope:** npm supply-chain hygiene for the `@deeplake/hivemind` package only (npm + package-lock.json, Node >=22, ESM). Cross-ecosystem breadth (PyPI, Cargo, Java/Maven) is out of scope; references to other ecosystems are kept only as "we use npm, not X" context.
 - **Depth tier:** normal
-- **Time window:** 2025-11-01 back to 2026-05-20 (approximately 6 months)
-- **Page budget target:** 8-12 quality sources
+- **Time window:** roughly 6 months (2025-12 to 2026-06-16)
 - **Source breadth target:** official docs, practitioner blogs, GitHub READMEs, changelogs, security advisories
 
-## Initial queries (from command brief)
+## Core questions (npm-scoped)
 
-1. "Renovate vs Dependabot 2026"
-2. "socket.dev supply chain 2026"
-3. "SBOM CycloneDX SPDX 2026"
-4. "npm provenance Sigstore 2026"
-5. "pip-audit poetry safety 2026"
+1. Renovate vs Dependabot for a single npm package with a large native-dependency tree
+2. socket.dev npm behavioral coverage and the install-script / postinstall threat class
+3. SBOM (Syft / CycloneDX) for a published npm tarball
+4. npm provenance (`npm publish --provenance`) and `npm audit signatures`
+5. `npm audit` noise vs real signal; gating on high/critical only
 
-## Additional context questions
+## Hivemind-specific questions
 
-- Does socket.dev's 2026 real-time threat feed now cover PyPI and Cargo, or is it still primarily npm?
-- What is the current state of `pnpm audit` vs `npm audit` feature parity in 2026?
-- What is the state of PyPI attestations (PEP 740) adoption in 2026?
+- How dangerous is the tree-sitter + `@huggingface/transformers` `optionalDependencies` surface, given the `scripts/ensure-tree-sitter.mjs` postinstall and the `overrides` pins?
+- What controls catch a malicious native-grammar release before it auto-merges? (Answer: `minimumReleaseAge` + socket.dev `install-scripts`.)
+- What guards the published tarball? (Answer: the `files` allowlist, `scripts/pack-check.mjs`, `npm run audit:openclaw`, CodeQL.)
 
-## Expansion queries (authored by scripture-historian)
+## Out of scope (dropped on retarget)
 
-### Branch from "Renovate vs Dependabot 2026"
-- "Renovate automerge grouping monorepo 2026"
-- "Dependabot security updates limitations 2026"
-
-### Branch from "socket.dev supply chain 2026"
-- "socket.dev PyPI Cargo coverage 2026"
-- "supply chain attack npm malicious packages 2026"
-
-### Branch from "SBOM CycloneDX SPDX 2026"
-- "Syft anchore SBOM generation GitHub Actions 2026"
-- "SBOM Dependency-Track enterprise management 2026"
-
-### Branch from "npm provenance Sigstore 2026"
-- "npm audit signatures provenance verification 2026"
-- "Sigstore Cosign attestation 2026"
-
-### Branch from "pip-audit poetry safety 2026"
-- "PyPI PEP 740 attestations adoption 2026"
-- "pnpm audit npm audit feature parity 2026"
+- PyPI / PEP 740 attestations, pip-audit, uv/poetry lockfiles
+- Cargo / crates.io provenance, cargo audit vs cargo-deny
+- OWASP Dependency-Check (Java/.NET), Maven/Gradle SBOM plugins
+- pnpm / yarn (this package uses npm)

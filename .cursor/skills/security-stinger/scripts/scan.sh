@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# scripts/scan.sh — Phase 1 deterministic security scans for security-worker-bee.
+# scripts/scan.sh - Phase 1 deterministic security scans for security-worker-bee,
+# tuned for the Hivemind codebase (TypeScript CLI + MCP server + Deep Lake API).
 #
-# Runs the checks a human or a grep can do — so the Bee spends its reasoning
-# on the judgment calls (IDOR, business logic, PCI architecture).
+# Runs the checks a human or a grep can do - so the Bee spends its reasoning
+# on the judgment calls (missing sqlIdent, gate path weakness, scope coercion).
 #
-# Outputs land in reports/scan-output/. The Bee reads them, dedupes with its
-# own observations, and promotes findings into the audit report.
+# Outputs land in .scan-output/ (ephemeral, gitignored - regenerate per audit).
+# The Bee reads them, dedupes with its own observations, and promotes findings
+# into the audit report.
 #
-# Usage (from repo root being audited):
+# Usage (from the Hivemind repo root):
 #   bash .cursor/skills/security-stinger/scripts/scan.sh
 #
-# Exit code is always 0 — the Bee decides what's fatal.
+# Exit code is always 0 - the Bee decides what's fatal.
 
 set -u
-OUT_DIR="reports/scan-output"
+OUT_DIR=".scan-output"
 mkdir -p "$OUT_DIR"
 
 hr() { printf '\n============================================================\n%s\n============================================================\n' "$*"; }
@@ -22,42 +24,26 @@ hr() { printf '\n============================================================\n%
 # 1. npm audit
 # ----------------------------------------------------------------------------
 hr "1. npm audit (high+)"
-if command -v pnpm >/dev/null 2>&1 && [ -f pnpm-lock.yaml ]; then
-  pnpm audit --prod --audit-level=high --json > "$OUT_DIR/npm-audit.json" 2>/dev/null || true
-elif [ -f package-lock.json ]; then
+if [ -f package-lock.json ]; then
   npm audit --audit-level=high --json > "$OUT_DIR/npm-audit.json" 2>/dev/null || true
-elif [ -f yarn.lock ]; then
-  yarn npm audit --severity=high --recursive --json > "$OUT_DIR/npm-audit.json" 2>/dev/null || true
 else
-  echo "no lockfile found" > "$OUT_DIR/npm-audit.json"
+  echo "no package-lock.json found" > "$OUT_DIR/npm-audit.json"
 fi
 echo "  -> $OUT_DIR/npm-audit.json"
 
 # ----------------------------------------------------------------------------
-# 2. CVE version gate — Next.js + React
+# 2. OpenClaw bundle static scan (ClawHub parity)
 # ----------------------------------------------------------------------------
-hr "2. CVE version gate"
-: > "$OUT_DIR/cve-version-check.txt"
-{
-  echo "CVE-2025-29927 (Next.js middleware bypass) — patched: 14.2.25 / 15.2.3"
-  echo "CVE-2025-55182 (React2Shell RCE) — patched: react 19.0.1 / 19.1.2 / 19.2.1"
-  echo ""
-  if [ -f package.json ]; then
-    echo "--- package.json (declared) ---"
-    grep -E '"(next|react|react-dom)":' package.json || echo "(no next/react declared)"
-  fi
-  echo ""
-  for lock in package-lock.json pnpm-lock.yaml yarn.lock; do
-    if [ -f "$lock" ]; then
-      echo "--- $lock (resolved) ---"
-      grep -E '(next|react|react-dom)@?[0-9]+\.[0-9]+\.[0-9]+' "$lock" 2>/dev/null | head -40 || true
-    fi
-  done
-} >> "$OUT_DIR/cve-version-check.txt"
-echo "  -> $OUT_DIR/cve-version-check.txt"
+hr "2. OpenClaw bundle scan (npm run audit:openclaw)"
+if grep -q '"audit:openclaw"' package.json 2>/dev/null; then
+  npm run audit:openclaw > "$OUT_DIR/openclaw-audit.txt" 2>&1 || true
+else
+  echo "audit:openclaw script not found in package.json" > "$OUT_DIR/openclaw-audit.txt"
+fi
+echo "  -> $OUT_DIR/openclaw-audit.txt"
 
 # ----------------------------------------------------------------------------
-# 3. Rules File Backdoor — hidden Unicode in AI rules files
+# 3. Rules File Backdoor - hidden Unicode in AI rules files
 # ----------------------------------------------------------------------------
 hr "3. Unicode scan (.cursor/rules, .cursorrules, AGENTS.md, CLAUDE.md, copilot-instructions)"
 : > "$OUT_DIR/unicode-scan.txt"
@@ -71,7 +57,6 @@ SCAN_GLOBS=(
 )
 for target in "${SCAN_GLOBS[@]}"; do
   if [ -e "$target" ]; then
-    # use rg if available — faster, fewer false positives
     if command -v rg >/dev/null 2>&1; then
       rg -n -P "$UNICODE_RE" "$target" >> "$OUT_DIR/unicode-scan.txt" 2>/dev/null || true
     else
@@ -80,12 +65,12 @@ for target in "${SCAN_GLOBS[@]}"; do
   fi
 done
 if [ ! -s "$OUT_DIR/unicode-scan.txt" ]; then
-  echo "clean — no zero-width or bidirectional Unicode detected" > "$OUT_DIR/unicode-scan.txt"
+  echo "clean - no zero-width or bidirectional Unicode detected" > "$OUT_DIR/unicode-scan.txt"
 fi
 echo "  -> $OUT_DIR/unicode-scan.txt"
 
 # ----------------------------------------------------------------------------
-# 4. Pattern sweeps — known vulnerable patterns
+# 4. Pattern sweeps - Hivemind-specific vulnerable patterns
 # ----------------------------------------------------------------------------
 hr "4. Vulnerable-pattern regex sweep"
 : > "$OUT_DIR/grep-findings.txt"
@@ -97,59 +82,43 @@ RG_OR_GREP() {
   local pattern="$1"; shift
   local paths="$*"
   if command -v rg >/dev/null 2>&1; then
-    rg -n --no-heading -g '!node_modules' -g '!.next' -g '!dist' -g '!build' "$pattern" $paths 2>/dev/null || true
+    rg -n --no-heading -g '!node_modules' -g '!dist' -g '!build' "$pattern" $paths 2>/dev/null || true
   else
-    grep -rnE --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' \
-      --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist \
+    grep -rnE --include='*.ts' --include='*.mjs' --include='*.js' \
+      --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build \
       "$pattern" $paths 2>/dev/null || true
   fi
 }
 
-section "NEXT_PUBLIC_ leaks (secrets in client bundle)"
-RG_OR_GREP 'NEXT_PUBLIC_.*(sk_live_|sk_test_|SECRET|PRIVATE|TOKEN|PASSWORD)' . >> "$OUT_DIR/grep-findings.txt"
+section "Interpolated SQL identifiers (must be sqlIdent-wrapped)"
+RG_OR_GREP 'FROM\s+"\$\{|INTO\s+"\$\{|UPDATE\s+"\$\{|TABLE\s+"\$\{' src/ >> "$OUT_DIR/grep-findings.txt"
 
-section "Hardcoded secrets (stripe/openai/aws/JWT-shaped)"
-RG_OR_GREP '(sk_live_[A-Za-z0-9]{10,}|sk_test_[A-Za-z0-9]{10,}|-----BEGIN\s+(RSA|OPENSSH|PRIVATE)|AIza[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16})' . >> "$OUT_DIR/grep-findings.txt"
+section "Query building outside src/deeplake-api.ts (should be centralized)"
+RG_OR_GREP '\.query\(\s*`' src/ >> "$OUT_DIR/grep-findings.txt"
 
-section "dangerouslySetInnerHTML usage (XSS vector)"
-RG_OR_GREP 'dangerouslySetInnerHTML' . >> "$OUT_DIR/grep-findings.txt"
+section "Token / Bearer / JWT in source"
+RG_OR_GREP '(Bearer\s+\$\{|eyJ[A-Za-z0-9._-]{10,}|sk_(live|test)_[A-Za-z0-9]{10,}|-----BEGIN)' src/ >> "$OUT_DIR/grep-findings.txt"
 
-section "localStorage / sessionStorage writes"
-RG_OR_GREP '(localStorage|sessionStorage)\.setItem\(' . >> "$OUT_DIR/grep-findings.txt"
+section "console.* near auth / api / hooks (token-in-logs risk)"
+RG_OR_GREP 'console\.(log|error|info|warn)\(' src/deeplake-api.ts src/cli src/commands src/hooks >> "$OUT_DIR/grep-findings.txt"
 
-section "Raw card fields (PCI DSS)"
-RG_OR_GREP '(cardNumber|card_number|\bcvv\b|\bcvc\b|exp_month|exp_year)' . >> "$OUT_DIR/grep-findings.txt"
+section "Credential file writes (check explicit 0600/0700 mode)"
+RG_OR_GREP '(credentials\.json|\.deeplake)' src/ >> "$OUT_DIR/grep-findings.txt"
 
-section "Stripe webhooks without constructEvent"
-RG_OR_GREP 'stripe.*webhook' . >> "$OUT_DIR/grep-findings.txt"
+section "Capture sites (must honor HIVEMIND_CAPTURE=false)"
+RG_OR_GREP 'HIVEMIND_CAPTURE' src/ >> "$OUT_DIR/grep-findings.txt"
 
-section "JWT verify without pinned algorithm"
-RG_OR_GREP 'jwt\.(verify|decode)\(' . >> "$OUT_DIR/grep-findings.txt"
+section "Org id / scope sourced from input (scope coercion risk)"
+RG_OR_GREP '(orgId|org_id|scope)\s*[:=]\s*(toolArgs|args|req|input|params)\.' src/ >> "$OUT_DIR/grep-findings.txt"
+
+section "Runtime-computed paths near the gate (gate bypass risk)"
+RG_OR_GREP '(os\.homedir\(\)|process\.env\.HOME)\s*[+,]' src/hooks src/shell >> "$OUT_DIR/grep-findings.txt"
+
+section "Child-process / spawn outside the documented gate-runner bypass"
+RG_OR_GREP '(child_process|execFileSync|execSync|spawn\(|exec\(\s*`)' src/ >> "$OUT_DIR/grep-findings.txt"
 
 section "Prototype pollution sinks"
-RG_OR_GREP '(Object\.assign\(.*JSON\.parse|_\.merge\(|_\.defaultsDeep\(|_\.mergeWith\()' . >> "$OUT_DIR/grep-findings.txt"
-
-section "SQL injection shape (template literals in db.query)"
-RG_OR_GREP '(db|pool|connection|client)\.query\(\s*`' . >> "$OUT_DIR/grep-findings.txt"
-
-section "Command injection shape (exec with template literal)"
-RG_OR_GREP '(child_process\.)?exec\(\s*`' . >> "$OUT_DIR/grep-findings.txt"
-
-section "Wildcard CORS with credentials"
-RG_OR_GREP "Access-Control-Allow-Origin.*['\"]\\*['\"]" . >> "$OUT_DIR/grep-findings.txt"
-
-section "console.log / Sentry.captureException around users/payments"
-RG_OR_GREP '(console\.(log|error|info)|Sentry\.captureException|LogRocket)' \
-  "app/api" "app/actions" "pages/api" "src/lib" "src/server" >> "$OUT_DIR/grep-findings.txt" 2>/dev/null || true
-
-section "Server Actions missing auth (heuristic: 'use server' without auth() nearby)"
-if command -v rg >/dev/null 2>&1; then
-  rg -l "'use server'" -g '*.ts' -g '*.tsx' --iglob '!node_modules' 2>/dev/null | while read -r f; do
-    if ! grep -qE '\b(auth|verifySession|getServerSession)\s*\(' "$f"; then
-      echo "$f — 'use server' present but no auth()/verifySession()/getServerSession() call" >> "$OUT_DIR/grep-findings.txt"
-    fi
-  done
-fi
+RG_OR_GREP '(Object\.assign\(.*JSON\.parse|_\.merge\(|_\.defaultsDeep\(|_\.mergeWith\()' src/ >> "$OUT_DIR/grep-findings.txt"
 
 echo "  -> $OUT_DIR/grep-findings.txt"
 
@@ -173,23 +142,22 @@ fi
 echo "  -> $OUT_DIR/env-summary.txt"
 
 # ----------------------------------------------------------------------------
-# 6. Security headers check in next.config.*
+# 6. SQL guard integrity (src/utils/sql.ts)
 # ----------------------------------------------------------------------------
-hr "6. next.config headers check"
-: > "$OUT_DIR/next-config-headers.txt"
-for cfg in next.config.js next.config.mjs next.config.ts; do
-  if [ -f "$cfg" ]; then
-    echo "--- $cfg ---" >> "$OUT_DIR/next-config-headers.txt"
-    for header in 'Strict-Transport-Security' 'X-Content-Type-Options' 'X-Frame-Options' 'Referrer-Policy' 'Content-Security-Policy' 'Permissions-Policy'; do
-      if grep -q "$header" "$cfg"; then
-        echo "  PRESENT: $header"
-      else
-        echo "  MISSING: $header"
-      fi
-    done >> "$OUT_DIR/next-config-headers.txt"
+hr "6. SQL guard integrity check"
+: > "$OUT_DIR/sql-guards.txt"
+if [ -f src/utils/sql.ts ]; then
+  echo "--- src/utils/sql.ts guard signatures ---" >> "$OUT_DIR/sql-guards.txt"
+  grep -nE 'export function (sqlStr|sqlLike|sqlIdent)|A-Za-z_' src/utils/sql.ts >> "$OUT_DIR/sql-guards.txt" 2>/dev/null || true
+  if grep -q 'A-Za-z_\]\[a-zA-Z0-9_' src/utils/sql.ts 2>/dev/null || grep -q '\[a-zA-Z_\]\[a-zA-Z0-9_\]' src/utils/sql.ts 2>/dev/null; then
+    echo "  sqlIdent regex looks intact" >> "$OUT_DIR/sql-guards.txt"
+  else
+    echo "  WARNING: confirm sqlIdent regex still rejects anything outside [A-Za-z_][A-Za-z0-9_]*" >> "$OUT_DIR/sql-guards.txt"
   fi
-done
-echo "  -> $OUT_DIR/next-config-headers.txt"
+else
+  echo "src/utils/sql.ts not found - confirm escaping layer location" >> "$OUT_DIR/sql-guards.txt"
+fi
+echo "  -> $OUT_DIR/sql-guards.txt"
 
-hr "scan.sh complete — outputs in $OUT_DIR/"
+hr "scan.sh complete - outputs in $OUT_DIR/"
 exit 0

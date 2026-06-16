@@ -1,4 +1,4 @@
-# 05 — Severity Classification
+# 05, Severity Classification
 
 The Command Brief uses three tiers: Critical / Warning / Suggestion. This guide turns that into a decision tree so classification is reproducible across audits.
 
@@ -8,16 +8,16 @@ Anchoring source: industry bug-severity norms (`research/2026-04-24-bug-severity
 
 ## The three tiers
 
-### 🔴 Critical (must fix — blocks ship)
+### 🔴 Critical (must fix, blocks ship)
 
 Use when **any one** of the following is true:
 
 1. **Plan-required behavior is missing or broken.** A user story, acceptance criterion, or explicit requirement from the plan is not met and the feature cannot function as specified.
-2. **User-visible breakage.** A core user flow (signup, checkout, login, primary feature) does not work under normal input.
-3. **Data-integrity risk.** Code path can corrupt, lose, or expose data — e.g., missing authz on a write endpoint, tenant-leak, unvalidated user input reaching a DB query.
-4. **Security smell (obvious).** Hardcoded secret, `dangerouslySetInnerHTML` on user input, eval of user-supplied code, missing auth on a protected route.
+2. **User-visible breakage.** A core flow (search, embed, retrieval, MCP tool dispatch, the primary feature) does not work under normal input.
+3. **Data-integrity risk.** Code path can corrupt, lose, or expose data, e.g., a missing gate on a state-changing tool call, a partition/scope leak, unvalidated input reaching a dataset write.
+4. **Security smell (obvious).** Hardcoded secret or API key, `eval` of user-supplied code, `child_process` exec on unescaped input, a tool call that bypasses the pre-tool-use gate.
 5. **Production regression.** Modified function's callers (visible in grep, unmodified in diff) now break against the new contract.
-6. **Build breakage.** Type errors, missing imports, `"use client"` missing where a hook is used, server-only module imported by client code.
+6. **Build breakage.** Type errors, missing imports, `tsc --noEmit` failures, a CommonJS `require` in an ESM module, a leaked `src/internal/*` import in the published surface.
 
 Do **not** inflate to Critical for:
 - Missing tests (unless the plan explicitly required them for ship).
@@ -36,7 +36,7 @@ Use when **any one** of the following is true:
 5. **Alignment drift.** Naming doesn't match the plan's vocabulary. File in the wrong directory per repo convention.
 6. **Test gap the plan specified.** Plan said "include tests"; no tests shipped.
 
-Warnings typically do not block merge on their own. But ≥5 Warnings on a single PR is a ship-readiness signal — note it in the report Summary.
+Warnings typically do not block merge on their own. But ≥5 Warnings on a single PR is a ship-readiness signal, note it in the report Summary.
 
 ### 🔵 Suggestion (consider improving)
 
@@ -107,13 +107,13 @@ Usually Suggestion. Elevate to Warning only if the style violation is codified i
 
 Not your call. The plan is the source of truth. Note the divergence in the Notes column of the traceability table and escalate to `library-worker-bee` in the Summary. Do not silently re-classify.
 
-### "Security issue — but `security-worker-bee` should have caught this"
+### "Security issue, but `security-worker-bee` should have caught this"
 
 If `security-worker-bee` ran and missed it, flag as Critical under Detrimental Patterns and note in the Summary that `security-worker-bee` should be re-run. Do not bury it.
 
 ### "Two findings on the same line"
 
-Record separately. Different severities are fine. Example: line 28 has both a missing null check (Warning) and an N+1 (Critical) — two entries.
+Record separately. Different severities are fine. Example: line 28 has both a missing null check (Warning) and an N+1 (Critical), two entries.
 
 ---
 
@@ -121,7 +121,7 @@ Record separately. Different severities are fine. Example: line 28 has both a mi
 
 **Inflation** (Warning → Critical because you want the author to care) is how severity systems degrade. If everything is Critical, the invoker stops reading. Discipline: use the decision tree, and if the finding doesn't match a Critical bullet above, it's not Critical.
 
-**Deflation** (Critical → Warning because you don't want to block ship) is also damaging — it trains the author to expect you to soften hard calls. Don't. If it's Critical by the tree, say so. The author can decide to merge anyway; that's their call, not yours.
+**Deflation** (Critical → Warning because you don't want to block ship) is also damaging, it trains the author to expect you to soften hard calls. Don't. If it's Critical by the tree, say so. The author can decide to merge anyway; that's their call, not yours.
 
 ---
 

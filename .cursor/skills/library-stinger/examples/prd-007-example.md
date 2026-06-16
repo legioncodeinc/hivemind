@@ -23,7 +23,7 @@ Lifecycle moves:
 > **Status:** Backlog
 > **Priority:** P2
 > **Effort:** M (3-8h)
-> **Schema changes:** Additive — one new table, one new column
+> **Schema changes:** Additive - one new table, one new column
 > **ClickUp:** [86b9cwdef](https://app.clickup.com/t/86b9cwdef) *(if applicable)*
 
 ---
@@ -43,8 +43,8 @@ Let authenticated users export all of their personal data (profile fields, prefe
 
 ## Non-Goals
 
-- Selective export (specific data types only) — full export only in v1.
-- Admin-initiated export on behalf of a user — separate compliance tooling.
+- Selective export (specific data types only) - full export only in v1.
+- Admin-initiated export on behalf of a user - separate compliance tooling.
 - Real-time streaming delivery.
 
 ---
@@ -87,6 +87,6 @@ New table `export_requests`:
 
 ## Related
 
-- [`library/knowledge/private/data/data-retention-policy.md`](../../knowledge/private/data/data-retention-policy.md) — defines which fields are included.
-- [`library/knowledge/private/architecture/ADR-019-audit-logging.md`](../../knowledge/private/architecture/ADR-019-audit-logging.md) — export events must be audit-logged.
-- [`ird-038-gdpr-right-to-access`](../../issues/completed/ird-038-gdpr-right-to-access/ird-038-gdpr-right-to-access-index.md) — the issue that drove this feature.
+- [`library/knowledge/private/data/data-retention-policy.md`](../../knowledge/private/data/data-retention-policy.md) - defines which fields are included.
+- [`library/knowledge/private/architecture/ADR-019-audit-logging.md`](../../knowledge/private/architecture/ADR-019-audit-logging.md) - export events must be audit-logged.
+- [`ird-038-gdpr-right-to-access`](../../issues/completed/ird-038-gdpr-right-to-access/ird-038-gdpr-right-to-access-index.md) - the issue that drove this feature.

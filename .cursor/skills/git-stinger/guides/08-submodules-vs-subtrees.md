@@ -1,4 +1,4 @@
-# Submodules vs Subtrees — git-stinger
+# Submodules vs Subtrees - git-stinger
 
 Decision matrix and lifecycle commands for embedding one repo inside another.
 
@@ -90,7 +90,7 @@ just setup  # or make setup
 
 ## Git subtrees
 
-A subtree merges another repo's history into a subdirectory of the parent repo. The embedded code is just regular commits in the parent — no special Git knowledge required to clone and work.
+A subtree merges another repo's history into a subdirectory of the parent repo. The embedded code is just regular commits in the parent - no special Git knowledge required to clone and work.
 
 ### Adding a subtree
 

@@ -13,7 +13,7 @@ human_description: |
   Move to in-work/ when fix work begins.
 ---
 
-# Issues — Backlog
+# Issues - Backlog
 
 Tracked issues with a fix plan, not yet in active resolution.
 
@@ -21,6 +21,6 @@ Tracked issues with a fix plan, not yet in active resolution.
 
 1. Confirm the GitHub issue number (e.g., #42).
 2. Create `ird-042-<kebab-slug>/`.
-3. Create `ird-042-<slug>-index.md` — the single-scope fix plan.
+3. Create `ird-042-<slug>-index.md` - the single-scope fix plan.
 4. Create `qa/` subfolder (empty; `quality-worker-bee` writes here).
-5. No sub-IRDs — keep scope to one issue.
+5. No sub-IRDs - keep scope to one issue.

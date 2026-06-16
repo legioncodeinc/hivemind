@@ -1,4 +1,4 @@
-# Rules File Backdoor — Hidden-Unicode Prompt Injection in Cursor / Copilot
+# Rules File Backdoor - Hidden-Unicode Prompt Injection in Cursor / Copilot
 
 **Sources:**
 - https://www.pillar.security/blog/new-vulnerability-in-github-copilot-and-cursor-how-hackers-can-weaponize-code-agents
@@ -13,7 +13,7 @@
 
 ## Summary
 
-Pillar Security disclosed (March 2025) that attackers can plant invisible Unicode characters inside `.cursor/rules/**` and `.cursorrules` files. The AI reads the hidden payload (zero-width joiners, bidirectional markers) and silently injects malicious instructions into code generation — e.g., exfiltrate env vars, add a backdoor endpoint — while humans and normal linters see a benign rules file. Once committed, the malicious rules file survives forks and affects every future generation.
+Pillar Security disclosed (March 2025) that attackers can plant invisible Unicode characters inside `.cursor/rules/**` and `.cursorrules` files. The AI reads the hidden payload (zero-width joiners, bidirectional markers) and silently injects malicious instructions into code generation - e.g., exfiltrate env vars, add a backdoor endpoint - while humans and normal linters see a benign rules file. Once committed, the malicious rules file survives forks and affects every future generation.
 
 ## Unicode characters to scan for
 
@@ -24,8 +24,8 @@ Pillar Security disclosed (March 2025) that attackers can plant invisible Unicod
 | `U+200D` | Zero-width joiner |
 | `U+2060` | Word joiner |
 | `U+FEFF` | Zero-width no-break space / BOM |
-| `U+202A`–`U+202E` | LTR/RTL embedding & override (bidi) |
-| `U+2066`–`U+2069` | LTR/RTL isolate |
+| `U+202A`-`U+202E` | LTR/RTL embedding & override (bidi) |
+| `U+2066`-`U+2069` | LTR/RTL isolate |
 
 ## Key quotations
 
@@ -35,6 +35,6 @@ Pillar Security disclosed (March 2025) that attackers can plant invisible Unicod
 
 ## Relevance to this stinger
 
-- `guides/02-vibe-coding-patterns.md` Rule A4 (Rules File Backdoor) — scan `.cursor/rules/**`, `.cursorrules`, and any `AGENTS.md`/`CLAUDE.md`/`.github/copilot-instructions.md` for the codepoints above.
+- `guides/02-vibe-coding-patterns.md` Rule A4 (Rules File Backdoor) - scan `.cursor/rules/**`, `.cursorrules`, and any `AGENTS.md`/`CLAUDE.md`/`.github/copilot-instructions.md` for the codepoints above.
 - `scripts/scan.sh` bundles a deterministic Unicode scan: `grep -P '[\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2069}\x{FEFF}]'`.
-- Any hit is automatically **Critical** — silent supply-chain backdoor.
+- Any hit is automatically **Critical** - silent supply-chain backdoor.

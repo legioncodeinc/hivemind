@@ -8,7 +8,7 @@ topic: runbook-as-test
 stinger: runbook-writing-stinger
 ---
 
-# How to Create Game Day Exercises — OneUptime
+# How to Create Game Day Exercises - OneUptime
 
 Published: 2026-01-30
 

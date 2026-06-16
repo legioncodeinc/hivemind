@@ -1,4 +1,4 @@
-# research/ — security-stinger
+# research/ - security-stinger
 
 Audit trail for the Stinger's factual claims. Every guide in `../guides/` cites at least one file here. When you update a guide, either cite an existing note or add a new one.
 
@@ -26,4 +26,4 @@ Audit trail for the Stinger's factual claims. Every guide in `../guides/` cites 
 
 ## Refresh cadence
 
-The CVE watchlist has a hard 90-day refresh target. Other research notes refresh opportunistically — when a guide's claim feels stale, re-research and overwrite the note with a fresh `Retrieved:` date.
+The CVE watchlist has a hard 90-day refresh target. Other research notes refresh opportunistically - when a guide's claim feels stale, re-research and overwrite the note with a fresh `Retrieved:` date.

@@ -1,6 +1,6 @@
 # Response Payload Schema (Reference)
 
-The canonical JSON shape every wiki-worker-bee invocation returns to the TS driver. Mirrors [`guides/10-response-payload.md`](../guides/10-response-payload.md) — refer there for field semantics and driver-side reconciliation behavior. This file is the schema-only reference for tooling and validation.
+The canonical JSON shape every wiki-worker-bee invocation returns to the graph driver. Mirrors [`guides/10-response-payload.md`](../guides/10-response-payload.md) - refer there for field semantics and driver-side reconciliation behavior. This file is the schema-only reference for tooling and validation.
 
 ## Schema (Zod-style, in TypeScript)
 
@@ -24,9 +24,9 @@ const Contradiction = z.object({
 const EntityDetected = z.object({
   name: z.string(),
   type: z.enum([
-    "function", "class", "module", "service", "endpoint",
-    "env-var", "config-key", "data-model", "react-component",
-    "sql-table", "queue", "cron-job", "feature-flag",
+    "function", "class", "module", "service", "mcp-tool",
+    "env-var", "config-key", "data-model", "exported-symbol",
+    "deeplake-table", "queue", "scheduled-hook", "feature-flag",
   ]),
   file: z.string(),
   line: z.number().int().positive(),
@@ -79,18 +79,18 @@ If the driver needs to validate without Zod, use `zodToJsonSchema(ResponsePayloa
 
 ```json
 {
-  "pages_created": ["entities/auth-middleware.md", "concepts/jwt-auth-flow.md"],
-  "pages_updated": ["entities/get-user.md"],
-  "decisions_filed": ["decisions/pending-fe9d8c7-nullable-session.md"],
+  "pages_created": ["entities/extract-typescript.md", "concepts/per-file-extraction-flow.md"],
+  "pages_updated": ["entities/extract-declarations.md"],
+  "decisions_filed": ["library/knowledge/private/architecture/ADR-pending-fe9d8c7-tree-sitter-extraction.md"],
   "contradictions_flagged": [
-    {"old": "entities/get-user.md", "new": "entities/get-user.md", "reason": "return type changed", "commit": "fe9d8c7"}
+    {"old": "entities/extract-declarations.md", "new": "entities/extract-declarations.md", "reason": "return type changed", "commit": "fe9d8c7"}
   ],
   "meta_reports_written": ["meta/2026-04-29-contradiction-report.md"],
   "notification_flags": [
-    {"severity": "warning", "title": "Contract change in get-user", "page": "entities/get-user.md", "report": "meta/2026-04-29-contradiction-report.md"}
+    {"severity": "warning", "title": "Contract change in extractDeclarations", "page": "entities/extract-declarations.md", "report": "meta/2026-04-29-contradiction-report.md"}
   ],
   "entities_detected": [
-    {"name": "authMiddleware", "type": "function", "file": "src/auth/middleware.ts", "line": 4}
+    {"name": "extractTypeScript", "type": "function", "file": "src/graph/extract/typescript.ts", "line": 97}
   ],
   "gaps": [],
   "lint_findings": [],
@@ -104,9 +104,9 @@ If the driver needs to validate without Zod, use `zodToJsonSchema(ResponsePayloa
 {
   "error": {
     "code": "validation_failed",
-    "message": "git_context missing entry for chunk[1].path = src/auth/session.ts",
+    "message": "git_context missing entry for chunk[1].path = src/graph/types.ts",
     "phase": 0,
-    "details": {"missing_paths": ["src/auth/session.ts"]}
+    "details": {"missing_paths": ["src/graph/types.ts"]}
   },
   "pages_created": [],
   "pages_updated": [],
@@ -121,18 +121,18 @@ If the driver needs to validate without Zod, use `zodToJsonSchema(ResponsePayloa
 }
 ```
 
-The driver MUST NOT proceed with reconciliation if `error` is present — even the empty arrays in the rest of the payload are sentinel values, not data.
+The driver MUST NOT proceed with reconciliation if `error` is present - even the empty arrays in the rest of the payload are sentinel values, not data.
 
 ## Field invariants (driver-side enforcement)
 
 The driver SHOULD assert these in addition to schema validation:
 
-1. If `contradictions_flagged.length > 0` then `meta_reports_written.length > 0` AND `notification_flags.length > 0` — incomplete contradiction handling per [`references/contradiction-protocol.md`](../references/contradiction-protocol.md).
+1. If `contradictions_flagged.length > 0` then `meta_reports_written.length > 0` AND `notification_flags.length > 0` - incomplete contradiction handling per [`references/contradiction-protocol.md`](../references/contradiction-protocol.md).
 2. If `decisions_filed.length > 0` then `pages_created` includes every entry in `decisions_filed` (an ADR is a created page).
 3. If `partial_scan === true` then the invocation came from a direct `@`-mention; the driver queues a reconciliation pass.
-4. Every path in `pages_created` and `pages_updated` is repo-relative under `library/knowledge-base/wiki/` — never absolute, never outside the wiki root.
+4. Every path in `pages_created` and `pages_updated` is repo-relative under `library/knowledge/` (the codebase-graph knowledge area, or `library/knowledge/private/architecture/` for ADRs) - never absolute, never outside the knowledge root.
 5. `entities_detected` includes ALL entities the agent observed, not just the ones it wrote pages for. Used by the driver to update the hash manifest's `pages_created`/`pages_updated` per source file map.
 
 ## Source
 
-Schema is the canonical contract between wiki-worker-bee and the Legion VS Code extension's TS driver. Field semantics in [`guides/10-response-payload.md`](../guides/10-response-payload.md). Validation patterns ported from `research/2026-04-29-frontmatter-validation.md` (Zod safeParse).
+Schema is the canonical contract between wiki-worker-bee and Hivemind's graph driver (`src/graph/`). Field semantics in [`guides/10-response-payload.md`](../guides/10-response-payload.md). Validation patterns from `research/2026-04-29-frontmatter-validation.md` (Zod safeParse).

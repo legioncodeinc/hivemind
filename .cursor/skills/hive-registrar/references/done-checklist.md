@@ -21,11 +21,11 @@ Walk this before announcing registration is complete. Each item should be "done"
 - [ ] File exists at the correct path.
 - [ ] Title and `{{bee-name}}` references replaced with real values.
 - [ ] Bee, Stinger, and Command Brief links in the top-matter point at real files using current `ai-tools/` paths.
-- [ ] Domain paragraph is 3–5 sentences, lifted from the Command Brief.
+- [ ] Domain paragraph is 3-5 sentences, lifted from the Command Brief.
 - [ ] Trigger phrases section lists 3+ realistic user phrases.
 - [ ] "Do NOT route when" section is non-empty (or explicitly notes "no known competing Bees").
 - [ ] Inputs and Outputs sections match the Command Brief.
-- [ ] Critical directives section pulls 2–3 highlights from the Bee file.
+- [ ] Critical directives section pulls 2-3 highlights from the Bee file.
 - [ ] Trigger policy matches the Bee file's `proactive:` value.
 - [ ] No `{{placeholder}}` strings remain anywhere in the file.
 
@@ -33,10 +33,10 @@ Walk this before announcing registration is complete. Each item should be "done"
 
 - [ ] One new row added to the Roster table.
 - [ ] Bee name uses backticks: `` `<bee-name>` ``.
-- [ ] Domain summary is ≤15 words.
-- [ ] Trigger keywords are 2–4 short, quoted user phrases.
+- [ ] Domain summary is 15 words or fewer.
+- [ ] Trigger keywords are 2-4 short, quoted user phrases.
 - [ ] Guide link is relative (`[`guides/<bee-name>.md`](guides/<bee-name>.md)`) and resolves.
-- [ ] Table markdown is intact — pipes line up, no broken cells, no extra blank rows.
+- [ ] Table markdown is intact: pipes line up, no broken cells, no extra blank rows.
 
 ## Multi-Bee orchestration
 

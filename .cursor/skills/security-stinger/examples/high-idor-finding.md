@@ -1,102 +1,86 @@
-# Worked Example — High: IDOR / Broken Object-Level Authorization
+# Worked Example - High: Cross-Scope Read of the `memory` Table
 
-Demonstrates: `guides/02-vibe-coding-patterns.md` A1 · `guides/03-owasp-top-10.md` B4 · `guides/01-scan-procedure.md` Step 6 · `guides/05-remediation-playbooks.md` §IDOR.
+Demonstrates: `guides/02-vibe-coding-patterns.md` A1 · `guides/03-owasp-top-10.md` B4 · `guides/01-scan-procedure.md` Step 6 · `guides/05-remediation-playbooks.md` §Scoped query.
 
 ---
 
 ## Scenario
 
-Branch `feat/document-sharing` adds a GET endpoint for retrieving user documents. AI-generated — developer requested "a route that returns a document by id with auth".
+Branch `feat/memory-recall` adds a recall path that returns memory rows by path prefix. AI-generated - the developer requested "a query that returns memory entries matching a prefix."
 
 ## Vulnerable code discovered
 
-`app/api/documents/[id]/route.ts` (lines 1–10):
+`src/deeplake-api.ts` (recall path):
 
 ```ts
-import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/db';
-
-export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
-  const session = await auth();
-  if (!session) return new Response('Unauthorized', { status: 401 });
-
-  const doc = await prisma.document.findUnique({
-    where: { id: params.id },
-  });
-
-  if (!doc) return new Response('Not found', { status: 404 });
-  return Response.json(doc);
+async recall(prefix: string) {
+  const tbl = sqlIdent(this.memoryTable);
+  return this.query(
+    `SELECT path, summary FROM "${tbl}"
+     WHERE path LIKE '${sqlLike(prefix)}%'`
+  );
 }
 ```
 
 ## Why it fails
 
-The `auth()` check confirms the caller is logged in — that's **authentication**. But the lookup `findUnique({ where: { id: params.id } })` has no ownership constraint, so any authenticated user can read any document by iterating IDs. Classic IDOR (Insecure Direct Object Reference) / BOLA (Broken Object-Level Authorization).
+The values are escaped correctly (`sqlIdent`, `sqlLike` - good). But the query has **no `me|team` scope filter and no org constraint**. Any authenticated caller can recall any user's memory rows by guessing prefixes - the org pin and scope live only in convention, not in the statement. This is the Hivemind shape of IDOR / BOLA: object-level (here, scope-level) authorization is missing.
 
-Secondary finding: the response returns the full `Document` record including fields like `internalNotes`, `creatorIpAddress`, and `deletedAt` that should not leak across users.
+Secondary finding: the recall returns whatever `summary` text exists, which may include residual sensitive content from another scope.
 
 ## Finding text (report-ready)
 
-> - [x] **IDOR / Broken Access Control** `app/api/documents/[id]/route.ts:9-11` — Handler authenticates the caller but does not verify ownership of the requested document. Any logged-in user can read any document by iterating `id`. Also returns all Document columns; should use `select:` DTO.
+> - [x] **Broken Access Control / Cross-Scope Read** `src/deeplake-api.ts:recall` - Recall query escapes its inputs but does not filter by the caller's `me|team` scope and does not pin the org. Any authenticated caller can read any scope's `memory` rows by iterating path prefixes. Escalates to Critical if the matched rows contain another org's captured PII.
 
 ## Severity rationale
 
-**High.** Documents may contain user-authored content subject to GDPR. If any document contains financial or regulated data, escalate to **Critical** per the never-downgrade rule. Without knowing the document corpus, default to High and flag the question in the report.
+**High.** Captured `memory` content is user-authored and may carry sensitive prompt/response text. If a matched row can belong to another org, escalate to **Critical** per the never-downgrade rule. Without knowing the corpus, default to High and flag the cross-org question in the report.
 
 ## Remediation diff (applied in-session)
 
 ```diff
---- a/app/api/documents/[id]/route.ts
-+++ b/app/api/documents/[id]/route.ts
-@@ -4,10 +4,14 @@ import { prisma } from '@/lib/db';
- export async function GET(
-   req: Request,
-   { params }: { params: { id: string } }
- ) {
-   const session = await auth();
--  if (!session) return new Response('Unauthorized', { status: 401 });
-+  if (!session?.user?.id) return new Response('Unauthorized', { status: 401 });
-
--  const doc = await prisma.document.findUnique({
--    where: { id: params.id },
--  });
-+  const doc = await prisma.document.findFirst({
-+    where: { id: params.id, userId: session.user.id }, // scoped read
-+    select: {
-+      id: true, title: true, content: true, updatedAt: true,
-+    },
-+  });
-
-   if (!doc) return new Response('Not found', { status: 404 });
-   return Response.json(doc);
+--- a/src/deeplake-api.ts
++++ b/src/deeplake-api.ts
+@@ async recall(prefix: string) {
+   const tbl = sqlIdent(this.memoryTable);
+-  return this.query(
+-    `SELECT path, summary FROM "${tbl}"
+-     WHERE path LIKE '${sqlLike(prefix)}%'`
+-  );
++  const scopes = this.authContext.scopes;            // caller's me|team, from credentials
++  const scopeList = scopes.map(s => `'${sqlStr(s)}'`).join(',');
++  return this.query(
++    `SELECT path, summary, scope FROM "${tbl}"
++     WHERE path LIKE '${sqlLike(prefix)}%'
++       AND scope IN (${scopeList})`
++    // org is pinned by X-Activeloop-Org-Id from the credential context,
++    // NOT a value the caller can name or widen.
++  );
  }
 ```
 
 Two targeted changes:
 
-1. `findUnique` → `findFirst` with a `where` that includes `userId: session.user.id`. The query itself enforces ownership — no way for a later refactor to reintroduce the bug.
-2. `select:` enumerates exactly the fields the client needs. No accidental leakage of internal fields.
+1. Add `AND scope IN (...)` bound to the caller's own `me|team` scopes - the query itself enforces authorization, so a later refactor can't drop a separate check.
+2. The org id stays pinned by the `X-Activeloop-Org-Id` header sourced from the credential context (never from input), confining the read to the caller's tenant.
 
-Returning 404 (not 403) means an unauthorized caller cannot distinguish "doesn't exist" from "not yours" — prevents enumeration as a reconnaissance oracle.
+Returning fewer rows (rather than erroring) means an unauthorized prefix simply matches nothing - no "exists but not yours" enumeration oracle.
 
 ## Post-fix verification
 
 ```bash
-pnpm test -- documents
-git diff app/api/documents/[id]/route.ts
+npm test -- recall
+git diff src/deeplake-api.ts
 ```
 
-Sanity: the diff touches only this file and only the identity/scoping lines.
+Sanity: the diff touches only this method and only the scope/org lines.
 
 ## What goes in the audit report
 
 Under **High Findings (fixed in this session):**
 
-- [x] **IDOR / Broken Access Control** `app/api/documents/[id]/route.ts:9-11` — Authenticated but did not verify ownership; any logged-in user could read any document by ID. Fix: `findFirst` with `where: { id, userId: session.user.id }`, explicit `select:` DTO, 404 on miss (no enumeration).
+- [x] **Broken Access Control / Cross-Scope Read** `src/deeplake-api.ts:recall` - Recall ignored the caller's `me|team` scope; any caller could read any scope's memory rows. Fix: `AND scope IN (<caller scopes>)` with org pinned by the credential context. Flagged for cross-org review.
 
 Under **Recommended Follow-Up (architectural):**
 
-- Audit all other `app/api/**/[id]/**` handlers for the same pattern. A CI ESLint rule that forbids `findUnique({ where: { id } })` on multi-tenant tables would be a structural fix.
+- Audit every `sessions` / `memory` query in `src/deeplake-api.ts` for the same missing-scope pattern. A helper that injects the scope/org clause for all captured-trace reads would be a structural fix.

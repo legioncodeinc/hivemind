@@ -1,4 +1,4 @@
-# Guide 03 — Feature PRD Authoring
+# Guide 03 - Feature PRD Authoring
 
 Covers creating and managing PRDs (Product Requirement Documents) for planned product and feature work.
 
@@ -29,7 +29,7 @@ library/requirements/backlog/prd-<###>-<kebab-slug>/
 - Folder: `prd-<###>-<kebab-slug>/`
 - `<###>` is repo-local sequential (3-digit zero-padded). **Before assigning**, list all `prd-*` folders across `backlog/`, `in-work/`, and `completed/`; take `max + 1`.
 - Index file: `prd-<###>-<kebab-slug>-index.md`
-- Sub-PRDs: `prd-<###><letter>-<kebab-slug>-<feature-name>.md` where `<letter>` is `a`, `b`, `c`, etc. — one letter per sub-feature, alphabetical.
+- Sub-PRDs: `prd-<###><letter>-<kebab-slug>-<feature-name>.md` where `<letter>` is `a`, `b`, `c`, etc. - one letter per sub-feature, alphabetical.
 - Optional ClickUp suffix on the index file only: `prd-<###>-<kebab-slug>-index-ck-<clickupId>.md`. The folder name never includes the ClickUp suffix.
 - Slugs: lowercase kebab-case, ≤ 60 chars.
 

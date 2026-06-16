@@ -1,4 +1,4 @@
-# Principles — terminal-bash-stinger
+# Principles - terminal-bash-stinger
 
 Core rules that govern every invocation of `terminal-bash-worker-bee`. Read before any other guide.
 
@@ -13,7 +13,7 @@ Not all shells are equal. The tier determines which syntax is legal:
 | Tier | Target | Constraints |
 |---|---|---|
 | POSIX sh | `#!/bin/sh` | No arrays, no `[[`, no `pipefail`, no `local`, no `$((...))` |
-| Bash 4+ | `#!/usr/bin/env bash` | All Bash features; macOS ships Bash 3.2 — use `brew install bash` |
+| Bash 4+ | `#!/usr/bin/env bash` | All Bash features; macOS ships Bash 3.2 - use `brew install bash` |
 | Zsh | `#!/usr/bin/env zsh` | Superset of POSIX; use for interactive config, rarely for scripts |
 | Fish | N/A (not POSIX) | Interactive only; scripts live in `~/.config/fish/functions/` |
 
@@ -39,13 +39,13 @@ Never mark a finding as "acceptable" without a written justification comment `# 
 
 ## The escalation rule
 
-When the terminal context is a Docker container, Kubernetes init container, or CI runner image, the appropriate owner is `devops-worker-bee`, not `terminal-bash-worker-bee`. The difference:
+When the terminal context is a Docker container, Kubernetes init container, or CI runner image, the appropriate owner is `ci-release-worker-bee`, not `terminal-bash-worker-bee`. The difference:
 
 - **Workstation dotfiles:** terminal-bash-worker-bee
-- **CI step that runs `npm install`:** devops-worker-bee
-- **Shell script that deploys to production:** devops-worker-bee (even if the script is Bash)
+- **CI step that runs `npm ci` in a GitHub Actions job:** ci-release-worker-bee
+- **Shell script that publishes the npm package:** ci-release-worker-bee (even if the script is Bash)
 
-When in doubt: "Would this script run identically on a developer's laptop as on a CI runner?" If no — escalate.
+When in doubt: "Would this script run identically on a developer's laptop as on a CI runner?" If no - escalate.
 
 ## The idempotency rule for dotfiles
 
@@ -75,4 +75,4 @@ When recommending a modern CLI tool, always surface the primary gotcha alongside
 - `rg`: ignores hidden files and `.gitignore`-excluded files by default.
 - `fd`: skips dotfiles by default.
 - `bat`: not a drop-in `cat` for pipes; use `--plain --no-pager`.
-- `zoxide`: requires building visit history before `z` is useful.
+- `zoxide`: requires building visi

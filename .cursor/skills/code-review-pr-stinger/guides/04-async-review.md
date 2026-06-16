@@ -16,7 +16,7 @@ Async-first does not mean async-only. It means the default mode is asynchronous,
 - Treating a PR as a formality rather than a communication event
 
 **Async-first MEANS:**
-- Every comment is self-contained — it does not require a follow-up question to understand
+- Every comment is self-contained - it does not require a follow-up question to understand
 - The PR description is written for a reader who has zero context
 - SLAs are explicit and team-agreed
 
@@ -24,7 +24,7 @@ Async-first does not mean async-only. It means the default mode is asynchronous,
 
 ## The review-window pattern
 
-Remote teams in multiple time zones should agree on a "review window" — a time block when everyone is expected to be available for code review notifications. Reviews opened before the window should have a response within the window; reviews opened during or after should have a response by the next window.
+Remote teams in multiple time zones should agree on a "review window" - a time block when everyone is expected to be available for code review notifications. Reviews opened before the window should have a response within the window; reviews opened during or after should have a response by the next window.
 
 **Typical patterns:**
 
@@ -41,7 +41,7 @@ Remote teams in multiple time zones should agree on a "review window" — a time
 Every async comment should answer three questions:
 
 1. **What is the issue?** (Describe the code concern, not the person)
-2. **What tier is this?** (blocker / suggestion / nit / question — see `guides/00-principles.md`)
+2. **What tier is this?** (blocker / suggestion / nit / question - see `guides/00-principles.md`)
 3. **What is the suggested fix?** (Or an explicit question if a fix is not obvious)
 
 **Anti-pattern:**
@@ -58,9 +58,9 @@ The anti-pattern requires a follow-up exchange. The async-compliant version is s
 
 Once a reviewer leaves comments, the author should:
 
-1. **Reply to every comment** — not just act on it. Async reviewers cannot see which comments have been addressed unless the author explicitly confirms.
-2. **Use the "resolved" / "outdated" flow correctly** — in GitHub, resolve only comments you have addressed. Do not mass-resolve to clear the inbox.
-3. **Re-request review** when all blocker-tier comments are addressed — do not silently push new commits and expect reviewers to notice.
+1. **Reply to every comment** - not just act on it. Async reviewers cannot see which comments have been addressed unless the author explicitly confirms.
+2. **Use the "resolved" / "outdated" flow correctly** - in GitHub, resolve only comments you have addressed. Do not mass-resolve to clear the inbox.
+3. **Re-request review** when all blocker-tier comments are addressed - do not silently push new commits and expect reviewers to notice.
 
 ---
 

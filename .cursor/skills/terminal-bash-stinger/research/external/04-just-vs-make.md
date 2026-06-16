@@ -1,4 +1,4 @@
-# Just vs Make — Research Note
+# Just vs Make - Research Note
 
 **Source type:** community synthesis
 **Authority:** high

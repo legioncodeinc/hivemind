@@ -8,7 +8,7 @@ ai_description: |
   PRD numbers are repo-local sequential. Take max+1 from all prd-* folders
   across backlog/, in-work/, and completed/.
   Never write PRD content outside of a prd-<###>-<slug>/ folder.
-  Do NOT put IRDs here — those go in issues/ (peer of requirements/).
+  Do NOT put IRDs here - those go in issues/ (peer of requirements/).
 human_description: |
   Product and feature work (PRDs) organized by lifecycle stage.
   - backlog/: planned work not yet started
@@ -48,4 +48,4 @@ prd-007-user-export/
 - Folder: `prd-<###>-<kebab-slug>/` (3-digit zero-padded)
 - Index: `prd-<###>-<kebab-slug>-index.md`
 - Sub-PRDs: `prd-<###><letter>-<kebab-slug>-<feature>.md`
-- PRD numbers are **repo-local sequential** — not GitHub issue numbers.
+- PRD numbers are **repo-local sequential** - not GitHub issue numbers.

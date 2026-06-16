@@ -8,6 +8,6 @@ human_description: |
   starts, and to completed/ when the GitHub issue is closed.
 ---
 
-# Issues — In Work
+# Issues - In Work
 
 IRDs currently being resolved. Move from `backlog/` → here when fix work starts, then `completed/` when the GitHub issue closes.

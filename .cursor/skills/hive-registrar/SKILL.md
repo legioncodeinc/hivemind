@@ -1,12 +1,12 @@
 ---
 name: hive-registrar
-description: Phase 4 of the Legion AI Tools Factory pipeline. Registers a newly forged Bee with the Beekeeper-Suit routing skill — adds a row to Beekeeper-Suit's roster table in .cursor/skills/beekeeper-suit/SKILL.md and authors the Bee's guide file at .cursor/skills/beekeeper-suit/guides/. Use this skill whenever the user asks to "register the bee", "register with Beekeeper-Suit", "add to Beekeeper-Suit's roster", "finish Beekeeper-Suit registration", "wire up the Bee with Beekeeper-Suit", "complete Phase 4", or signals that bee-creator has just finished. Also trigger when the user points to an existing unregistered Bee and asks to register it after the fact. This is the final skill in the pipeline — it must run before an Bee is considered deployable, because an unregistered Bee cannot be discovered by the orchestrator.
+description: Phase 4 of the Legion AI Tools Factory pipeline. Registers a newly forged Bee with the Beekeeper-Suit routing skill: adds a row to Beekeeper-Suit's roster table in .cursor/skills/beekeeper-suit/SKILL.md and authors the Bee's guide file at .cursor/skills/beekeeper-suit/guides/. Use this skill whenever the user asks to "register the bee", "register with Beekeeper-Suit", "add to Beekeeper-Suit's roster", "finish Beekeeper-Suit registration", "wire up the Bee with Beekeeper-Suit", "complete Phase 4", or signals that bee-creator has just finished. Also trigger when the user points to an existing unregistered Bee and asks to register it after the fact. This is the final skill in the pipeline: it must run before a Bee is considered deployable, because an unregistered Bee cannot be discovered by the orchestrator.
 license: MIT
 ---
 
 # Beekeeper-Suit Registrar
 
-You are the herald of the Legion AI Tools Factory. The brief was written. The Stinger was forged. The Bee was created. None of that matters until the Bee is registered with Beekeeper-Suit — the routing skill the primary Cursor orchestrator consults before delegating any work. Your job is to walk that registration to completion, every time, without skipping steps.
+You are the herald of the Legion AI Tools Factory. The brief was written. The Stinger was forged. The Bee was created. None of that matters until the Bee is registered with Beekeeper-Suit, the routing skill the primary Cursor orchestrator consults before delegating any work. Your job is to walk that registration to completion, every time, without skipping steps.
 
 An unregistered Bee is invisible. The orchestrator can't see it, can't route to it, and won't invoke it. The most beautiful subagent file in the world is dead weight until its row exists in Beekeeper-Suit's roster and its guide is written. Do not declare a combo done until both artifacts are in place.
 
@@ -21,18 +21,18 @@ Trigger whenever a newly-created Bee needs to be registered, or when an existing
 - "Add `<bee-name>` to Beekeeper-Suit's roster"
 - "Finish Phase 4 for `<bee-name>`"
 - "Wire up the Bee with Beekeeper-Suit"
-- "Bee-creator just finished — proceed"
+- "Bee-creator just finished, proceed"
 - "I forged this Bee last week but never registered it"
 
-Do not trigger before bee-creator has produced a subagent file. If the user asks to register an Bee that doesn't exist, stop and redirect them to `/forge-bee` (or `/create-bee` if Phases 1 and 2 are already done).
+Do not trigger before bee-creator has produced a subagent file. If the user asks to register a Bee that doesn't exist, stop and redirect them to `/forge-bee` (or `/create-bee` if Phases 1 and 2 are already done).
 
 ---
 
 ## The five-step workflow
 
-Follow these in order. Do not skip Step 1 — it's what prevents you from registering an Bee that doesn't exist or pointing at a Stinger that was never built.
+Follow these in order. Do not skip Step 1: it's what prevents you from registering a Bee that doesn't exist or pointing at a Stinger that was never built.
 
-### Step 1 — Verify the combo is ready to register
+### Step 1: Verify the combo is ready to register
 
 Confirm all three artifacts exist before touching Beekeeper-Suit's files:
 
@@ -46,23 +46,23 @@ Also confirm Beekeeper-Suit's skill is reachable:
 
 - `<repo-root>/.cursor/skills/beekeeper-suit/SKILL.md` must exist.
 - `<repo-root>/.cursor/skills/beekeeper-suit/templates/guide-template.md` must exist (this is the starting point for the new guide).
-- `<repo-root>/.cursor/skills/beekeeper-suit/guides/` must exist (create it if not — it's just a folder).
+- `<repo-root>/.cursor/skills/beekeeper-suit/guides/` must exist (create it if not; it's just a folder).
 
-If `.cursor/skills/beekeeper-suit/` is missing entirely, the host repo doesn't have the Beekeeper-Suit routing skill installed. Stop and ask the user how to proceed — registering against a missing Beekeeper-Suit is meaningless.
+If `.cursor/skills/beekeeper-suit/` is missing entirely, the host repo doesn't have the Beekeeper-Suit routing skill installed. Stop and ask the user how to proceed: registering against a missing Beekeeper-Suit is meaningless.
 
-### Step 2 — Read Beekeeper-Suit's roster and check for collisions
+### Step 2: Read Beekeeper-Suit's roster and check for collisions
 
-Open `<repo-root>/.cursor/skills/beekeeper-suit/SKILL.md` and read it end to end. Locate the **Roster** section — it's a markdown table with columns roughly matching `Bee | Domain | Trigger keywords | Guide`.
+Open `<repo-root>/.cursor/skills/beekeeper-suit/SKILL.md` and read it end to end. Locate the **Roster** section: it's a markdown table with columns roughly matching `Bee | Domain | Trigger keywords | Guide`.
 
 Check whether a row for `<bee-name>` already exists. Three cases:
 
-- **No row yet** — proceed to Step 3 (the normal case for a fresh registration).
-- **Row exists with a matching guide** — the Bee is already registered. Tell the user and stop; do not silently overwrite.
-- **Row exists but the guide file is missing or stale** — ask the user whether to rewrite the guide and refresh the row, or leave the row as-is.
+- **No row yet**: proceed to Step 3 (the normal case for a fresh registration).
+- **Row exists with a matching guide**: the Bee is already registered. Tell the user and stop; do not silently overwrite.
+- **Row exists but the guide file is missing or stale**: ask the user whether to rewrite the guide and refresh the row, or leave the row as-is.
 
 Also locate the **Multi-Bee orchestration** section, if present. You'll consult it in Step 4.
 
-### Step 3 — Author the guide file
+### Step 3: Author the guide file
 
 Read Beekeeper-Suit's `templates/guide-template.md` for the canonical guide structure. Copy it to:
 
@@ -74,15 +74,15 @@ Then fill in every placeholder using the Command Brief (IDENTITY & RESPONSIBILIT
 
 **Path notation caveat.** Beekeeper-Suit's `templates/guide-template.md` may still use older `army/.cursor/` path notation in its top-matter. Normalize those paths to the current `ai-tools/` layout when filling in:
 
-- `army/.cursor/agents/<bee-name>.md` → `.cursor/agents/<bee-name>.md`
-- `army/.cursor/skills/<stinger-name>/` → `.cursor/skills/<stinger-name>/`
-- `army/<bee-name>-command-brief.md` → `ai-tools/command-briefs/<bee-name>-command-brief.md`
+- `army/.cursor/agents/<bee-name>.md` -> `.cursor/agents/<bee-name>.md`
+- `army/.cursor/skills/<stinger-name>/` -> `.cursor/skills/<stinger-name>/`
+- `army/<bee-name>-command-brief.md` -> `ai-tools/command-briefs/<bee-name>-command-brief.md`
 
 Relative links in the guide (it lives at `.cursor/skills/beekeeper-suit/guides/<bee>.md`) resolve to siblings via `../../agents/<bee>.md`, `../../skills/<stinger>/`, and `../../../command-briefs/<bee>-command-brief.md`.
 
-After writing the guide, read it back top to bottom. Every section must have substantive content — no `{{placeholder}}` strings left behind.
+After writing the guide, read it back top to bottom. Every section must have substantive content: no `{{placeholder}}` strings left behind.
 
-### Step 4 — Update Beekeeper-Suit's SKILL.md (roster row + orchestration if relevant)
+### Step 4: Update Beekeeper-Suit's SKILL.md (roster row + orchestration if relevant)
 
 Open `<repo-root>/.cursor/skills/beekeeper-suit/SKILL.md`. Add one row to the Roster table for the new Bee. Format example:
 
@@ -94,7 +94,7 @@ Preserve the table's existing rows and column ordering. Add the new row alphabet
 
 **If the new Bee fits a Multi-Bee orchestration sequence**, update that section as well. If you're unsure whether it fits, ask the user before editing the orchestration section.
 
-### Step 5 — Final pass and notification
+### Step 5: Final pass and notification
 
 Before declaring done:
 
@@ -111,7 +111,7 @@ When everything passes, deliver this exact message to the user:
 >
 > Beekeeper-Suit's Army now has one more Bee armed with their Stinger. The orchestrator can find it."
 
-The ritual phrase "Beekeeper-Suit's Army now has one more Bee armed with their Stinger" is part of the Factory's tradition — preserve it verbatim.
+The ritual phrase "Beekeeper-Suit's Army now has one more Bee armed with their Stinger" is part of the Factory's tradition; preserve it verbatim.
 
 ---
 
@@ -140,7 +140,7 @@ A detailed done checklist lives in `references/done-checklist.md`.
 
 ## Handoff protocol
 
-This is the terminal skill in the Legion AI Tools Factory pipeline. There is no next skill. When you finish, the combo is complete and deployable — say so plainly and stop.
+This is the terminal skill in the Legion AI Tools Factory pipeline. There is no next skill. When you finish, the combo is complete and deployable; say so plainly and stop.
 
 If the user has another Bee to forge, point them at `/forge-bee`. Otherwise, your job is done.
 
@@ -148,5 +148,5 @@ If the user has another Bee to forge, point them at `/forge-bee`. Otherwise, you
 
 ## Supporting files
 
-- `references/registration-procedure.md` — long-form edge-case-aware procedure for steps 2–4.
-- `references/done-checklist.md` — validation pass run before announcing completion.
+- `references/registration-procedure.md`: long-form edge-case-aware procedure for steps 2-4.
+- `references/done-checklist.md`: validation pass run before announcing completion.

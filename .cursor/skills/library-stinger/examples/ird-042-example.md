@@ -11,7 +11,7 @@ Move entire ird-042-password-reset-expiry/ folder to in-work/ then completed/ as
 
 # IRD-042: Password reset link expires too quickly
 
-> **GitHub Issue:** [#42](https://github.com/<org>/<repo>/issues/42) — Bug
+> **GitHub Issue:** [#42](https://github.com/<org>/<repo>/issues/42) - Bug
 >
 > **Status:** Backlog
 > **Priority:** P2
@@ -73,10 +73,10 @@ Hardcoded constant was never updated after the auth spec changed from 15 → 60 
 
 ## Out of scope
 
-- Email copy changes (email says "this link will expire" without a specific minute count — no change needed).
+- Email copy changes (email says "this link will expire" without a specific minute count - no change needed).
 - Resend / re-request rate limiting (tracked separately in IRD-044).
 
 ## Related
 
-- [`ird-044-password-reset-rate-limit`](../ird-044-password-reset-rate-limit/ird-044-password-reset-rate-limit-index.md) — rate limiter for repeated reset requests.
-- [`library/knowledge/private/auth/auth-architecture.md`](../../../knowledge/private/auth/auth-architecture.md) — architectural context.
+- [`ird-044-password-reset-rate-limit`](../ird-044-password-reset-rate-limit/ird-044-password-reset-rate-limit-index.md) - rate limiter for repeated reset requests.
+- [`library/knowledge/private/auth/auth-architecture.md`](../../../knowledge/private/auth/auth-architecture.md) - architectural context.

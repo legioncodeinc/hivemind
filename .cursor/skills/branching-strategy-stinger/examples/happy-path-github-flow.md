@@ -1,4 +1,4 @@
-# Example: SaaS Team Migrating from Ad-hoc to GitHub Flow
+# Example: TypeScript Library Team Migrating from Ad-hoc to GitHub Flow
 
 **Guides demonstrated:** `guides/00-principles.md`, `guides/01-model-selection.md`, `guides/02-release-and-hotfix.md`
 
@@ -6,7 +6,7 @@
 
 ## Input
 
-> "We're a 12-engineer SaaS team building a B2B web app. We deploy to production whenever we're ready, roughly 2-3 times a week. Right now, everyone just works on whatever branch they want — some are weeks old, and we get nasty merge conflicts. We have no formal branching policy. We want to fix this."
+> "We're a 12-engineer team building an open-source TypeScript/Node library that ships to npm. We cut a release whenever we're ready, roughly 2-3 times a week. Right now, everyone just works on whatever branch they want - some are weeks old, and we get nasty merge conflicts. We have no formal branching policy. We want to fix this."
 
 ---
 
@@ -14,7 +14,7 @@
 
 **1. Assess the current model.**
 
-No formal model. Branch ages suggest long-lived-branch trap. 12 engineers with 2-3 deploys/week = continuous-ish delivery cadence. No multi-version requirement evident. Feature flag infrastructure: unknown — need to ask.
+No formal model. Branch ages suggest long-lived-branch trap. 12 engineers with 2-3 releases/week = continuous-ish delivery cadence. The library ships a single supported major line to npm, so no multi-version requirement. Feature flag infrastructure: unknown - need to ask.
 
 *Question asked:* "Are you using any feature flags today (LaunchDarkly, Unleash, home-grown, etc.)?"
 
@@ -27,19 +27,19 @@ No formal model. Branch ages suggest long-lived-branch trap. 12 engineers with 2
 - Team size? 12.
 - Cadence? Continuous-ish.
 
-Result: **GitHub Flow** is the correct model. TBD is ruled out (no flag infra). GitFlow is ruled out (no multi-version, SaaS).
+Result: **GitHub Flow** is the correct model. TBD is ruled out (no flag infra). GitFlow is ruled out (single supported major line, no multi-version).
 
 **3. Diagnose pain points:**
 
-- "Merge conflicts on every PR" → long-lived branches (> 2 working days). Primary fix: enforce the 2-day rule via branch protection warnings and team norm.
-- "Some branches are weeks old" → features are too large OR team lacks PR review culture. Ask: "What's blocking those branches from merging?"
-- *Team answers:* "The features are half-done — we don't want to ship incomplete code."
+- "Merge conflicts on every PR" -> long-lived branches (> 2 working days). Primary fix: enforce the 2-day rule via branch protection warnings and team norm.
+- "Some branches are weeks old" -> features are too large OR team lacks PR review culture. Ask: "What's blocking those branches from merging?"
+- *Team answers:* "The features are half-done - we don't want to ship incomplete code."
 
 **4. Deliver the feature-flag insight (from `guides/04-feature-flag-vs-branch.md`):**
 
 > "The root cause is that your features are scoped too large for short-lived branches, and you don't have feature flags to hide incomplete work. Here's your choice: either scope each PR to something completable in 2 days, OR introduce a lightweight feature flag for any feature that spans more than 2 days.
 
-> For your team's size, I'd recommend starting without a flag system — just split features into smaller PRs. If after 4 weeks you still have branches that need to span multiple days, then introduce a simple feature flag solution."
+> For your team's size, I'd recommend starting without a flag system - just split features into smaller PRs. If after 4 weeks you still have branches that need to span multiple days, then introduce a simple feature flag solution."
 
 **5. Recommend the migration (from `guides/05-migration-playbook.md`, Migration 1):**
 
@@ -77,15 +77,15 @@ Output: a filled-in `docs/engineering/branching-policy.md` committed to the repo
 - Delete branches on merge (auto-enabled in GitHub settings).
 
 ## Naming
-- `feat/short-description` — new feature
-- `fix/short-description` — bug fix
-- `chore/short-description` — maintenance
-- `hotfix/short-description` — production emergency
+- `feat/short-description` - new feature
+- `fix/short-description` - bug fix
+- `chore/short-description` - maintenance
+- `hotfix/short-description` - production emergency
 
 ## Hotfix process
 Fast-track PR to main. Label: hotfix. Required: 1 expedited review. Deploy immediately after merge.
 
-## Branch protection (configure in GitHub — route to github-repo-health-worker-bee)
+## Branch protection (configure in GitHub - route to github-repo-health-worker-bee)
 - Require PR review: 1
 - Dismiss stale reviews: yes
 - Require status checks: [ci-pass]
@@ -97,4 +97,4 @@ Fast-track PR to main. Label: hotfix. Required: 1 expedited review. Deploy immed
 
 ## Notes
 
-This example demonstrates the ~80% case. The key insight the Bee delivers that the team didn't ask for is the feature-flag explanation — teams in this state often don't know that long-lived branches are a scope problem, not a Git problem.
+This example demonstrates the ~80% case. The key insight the Bee delivers that the team didn't ask for is the feature-flag explana

@@ -1,22 +1,13 @@
 # changelog-release-notes-stinger
 
-A Cursor skill that helps teams write engaging public changelogs and release notes, choose the right changelog tool, and distribute announcements across the right channels.
+A Cursor skill that writes the CHANGELOG.md and release notes for the **@deeplake/hivemind** npm package and CLI - Activeloop's cloud-backed shared memory for coding agents.
 
-This stinger is paired with `changelog-release-notes-worker-bee` — the Legion AI Army's specialist for turning shipped code into communication artifacts that users actually read.
+Paired with `changelog-release-notes-worker-bee`, the specialist that turns merged PRs into a Keep-a-Changelog entry, picks the right semver bump, and drafts the GitHub Release.
 
 ## What it covers
 
-- **Tool selection** — Headway, FeatureBase, Productlane, Beamer, and self-hosted markdown compared across team size, stack fit, and budget.
-- **Copy craft** — the impact-first writing pattern, user-centric verb vocabulary, and the honest scope note.
-- **Distribution** — in-app widget, email digest, blog post, and community channel sequencing.
-- **Audit** — a scoring framework for evaluating existing changelog quality.
-
-See `SKILL.md` for the complete triage decision tree and critical directives.
-
-## Sources
-
-Research in `research/` covers: Keep a Changelog (format standard), Headway, FeatureBase, Productlane, Beamer (tool profiles), and community best-practices synthesis.
-
----
-
-*Research summary: `research/research-summary.md`*
+- **Changelog format** - Keep a Changelog `CHANGELOG.md` at the repo root, GitHub Releases as the distribution surface. No SaaS changelog tool.
+- **Semver decisions** - patch vs minor vs breaking for an agent-memory CLI/library, with the wide contract surface: CLI, library API, harness contracts, MCP tool surface, and Deep Lake schema.
+- **Copy craft** - impact-first release notes, the Hivemind verb table, the honest scope note, the before/after test.
+- **Release mechanics** - how `package.json` -> `scripts/sync-versions.mjs` (prebuild) -> esbuild `define` single-sources the version, how `release.yaml` and `publish-smoke-test.yaml` cut and verify a release, and where the CHANGELOG plugs in.
+- **Audit** - a five-dimension scoring framework (cadence, 

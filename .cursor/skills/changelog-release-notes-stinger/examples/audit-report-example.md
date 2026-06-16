@@ -1,17 +1,17 @@
-# Example: Changelog Audit Report
+# Example: CHANGELOG Audit Report
 
-> Demonstrates a filled-in audit report for a fictional product "Taskr" (a task management SaaS).
+> A filled-in audit of a hypothetical @deeplake/hivemind CHANGELOG.
 > Guide references: `guides/05-audit-playbook.md`
 
 ---
 
-## Audit: Taskr Changelog
+## Audit: @deeplake/hivemind CHANGELOG
 
-**Audited by:** changelog-release-notes-worker-bee  
-**Date:** 2026-05-20  
-**Changelog URL:** taskr.app/changelog  
-**Entries reviewed:** 8 most recent entries (covering 2025-09 to 2026-04)  
-**Time span:** ~7 months
+**Audited by:** changelog-release-notes-worker-bee
+**Date:** 2026-06-16
+**Path:** `CHANGELOG.md`
+**Entries reviewed:** 10 most recent, cross-checked against git tags and npm versions
+**Time span:** ~3 months (0.6.x to 0.7.96)
 
 ---
 
@@ -19,13 +19,13 @@
 
 | Dimension | Score | Notes |
 |---|---|---|
-| Cadence | 3/5 | 8 entries over 7 months; 2 gaps of 6+ weeks with no entry despite visible product changes |
-| User-centric language | 2/5 | Approximately 60% of bullets read as raw commit messages or internal ticket references |
-| Tone consistency | 4/5 | Generally professional tone; one entry (2026-01-14) was notably more casual |
-| Distribution coverage | 2/5 | In-app widget present; no email digest; no community posts found |
-| Honest scope | 1/5 | "Smart inbox" was announced at their 2025 conference and has appeared in zero changelogs despite 7 months of releases |
+| Cadence | 3/5 | Many auto-patch releases shipped with no CHANGELOG entry; only the notable ones are documented. |
+| User-centric language | 3/5 | Roughly half the bullets read as commit messages ("bump tree-sitter", "refactor capture writer"). |
+| Semver accuracy | 2/5 | A Deep Lake schema tweak shipped under a patch with no migration note. |
+| Distribution coverage | 4/5 | GitHub Releases present and populated; no Slack heads-up for the schema change. |
+| Honest scope | 3/5 | No notes, but few publicly-promised capabilities are outstanding. |
 
-**Total: 12/25** — Below healthy threshold (18). Priority improvements needed.
+**Total: 15/25** - Below healthy threshold (18). Semver accuracy is the priority fix.
 
 ---
 
@@ -33,50 +33,44 @@
 
 ### Cadence (3/5)
 
-Two gaps:
-- 2025-09-12 to 2025-11-08: 8 weeks with no entry. Product was shipping (checked GitHub releases).
-- 2025-12-20 to 2026-02-01: 6 weeks over the holidays. Partially expected, but a single "here's what shipped in January" entry would have covered it.
+`release.yaml` auto-patches on most pushes, so dozens of `0.7.x` versions shipped. Only ~10 have CHANGELOG entries. That is acceptable for pure internal patches, but at least three of the undocumented patches contained user-visible fixes.
 
-**Recommendation:** Nominate one person per sprint to own the changelog entry before the sprint closes. Treat it as a done criterion alongside tests and deployment.
+**Recommendation:** Land a bullet under `[Unreleased]` for every user-facing PR as it merges, so auto-patch releases inherit an entry instead of shipping blank.
 
-### User-centric language (2/5)
+### User-centric language (3/5)
 
-Sample bullets from the most recent entry:
+Sample bullets from recent entries:
 
-- "Fixed race condition in task assignment API" — ❌ Implementation. Rewrite: "Fixed a bug where assigning tasks to a teammate sometimes didn't save."
-- "Migrated to React 19" — ❌ Invisible. Omit unless there is a user-facing improvement to name (e.g., "Faster page transitions" if React 19 brought a visible speedup).
-- "Add keyboard shortcut for quick-add task (Cmd+K)" — ✅ User-centric. Good.
-- "Resolve issue #3241 regarding filter persistence" — ❌ Ticket reference. Rewrite: "Fixed a bug where your saved filters were reset on page refresh."
+- "Fix recall ranking off-by-one" - partial. Rewrite: "Recall no longer drops the most relevant memory when more than 50 match."
+- "Bump tree-sitter to 0.21" - implementation, invisible. Omit unless it fixed a parse bug users hit.
+- "Add `skillify --dry-run`" - user-centric. Good.
+- "Refactor capture writer module" - internal. Omit.
 
-**Recommendation:** Apply the user-centric rewrite from `guides/03-copy-craft.md` to the backlog of existing entries, and add a review step to the changelog process.
+**Recommendation:** Apply the verb table and before/after test from `guides/03-copy-craft.md`; drop internal-only bullets.
 
-### Tone consistency (4/5)
+### Semver accuracy (2/5)
 
-Minor: 2026-01-14 entry was substantially more casual than surrounding entries ("Hey! We snuck in a few fixes before the holidays"). This is not a problem if it reflects the team's actual voice, but it felt like an anomaly. Clarify with the team whether the product voice is casual or professional.
+Version `0.7.40` added an optional Deep Lake tensor and was shipped as a patch. That happened to be backward compatible (old clients ignore the field), so MINOR would have been correct, not patch. More seriously, `0.7.61` changed a tensor dtype - a real schema break - and also shipped as a patch with no migration note. That is the kind of silent break `guides/02-semver-decisions.md` exists to prevent.
 
-### Distribution coverage (2/5)
+**Recommendation:** Add a pre-release check: any diff touching the Deep Lake schema, MCP tool surface, or harness contracts must be classified before the version is set. Retroactively document the `0.7.61` schema change with a migration note.
 
-The widget is present (Headway). No email subscriber signup visible on the changelog page. No #changelog or #product-updates mention found in the public Discord.
+### Distribution coverage (4/5)
 
-**Recommendation:**
-1. Enable the Headway email subscriber feature — add the signup widget to the changelog page footer.
-2. Post one-liner links in the Discord #announcements channel for each new entry.
+GitHub Releases exist for tagged versions with CHANGELOG-derived bodies. Gap: the `0.7.61` schema break got no Slack post, so harness users had no heads-up.
 
-### Honest scope (1/5)
+**Recommendation:** Make a Slack community post mandatory for any harness/MCP/schema break (`guides/04-release-mechanics.md`).
 
-"Smart inbox" was featured in a conference keynote and is the most common support ticket topic ("when is Smart inbox coming?"). It has appeared in zero of the 8 reviewed changelog entries.
+### Honest scope (3/5)
 
-**Recommendation:** Add the following note to the next changelog entry immediately:
+No honest-scope notes, but no major capability has been publicly promised and withheld, so the absence is not yet a problem.
 
-> "Smart inbox: we are actively working on this and expect to ship an early version in Q3 2026. We know it is the most-requested feature — thank you for your patience."
-
-Then include a brief update in every subsequent entry until it ships.
+**Recommendation:** No action now. Add a note the moment a roadmap capability slips a release.
 
 ---
 
 ## Priority action plan
 
-1. **Immediate:** Add the Smart inbox honest scope note to the next entry.
-2. **This sprint:** Rewrite the 3 most recent entries using `guides/03-copy-craft.md`.
-3. **This month:** Enable Headway email subscriptions + Discord announcement habit.
-4. **Next quarter:** Add changelog entry as a sprint done criterion.
+1. **Immediate:** Retroactively document the `0.7.61` schema change with a migration note; post it to Slack.
+2. **This release:** Add the pre-release semver-classification check for schema / MCP / harness diffs.
+3. **Ongoing:** Land an `[Unreleased]` bullet per user-facing PR; strip internal-only bullets.
+4. **Process:** Treat a CHANGELOG entry as a done criterion for any user-facing change.

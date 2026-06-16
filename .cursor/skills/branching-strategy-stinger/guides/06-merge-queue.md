@@ -1,12 +1,12 @@
 # GitHub Merge Queue: Setup, Modes, and Real-World Adoption
 
-**Research sources:** `research/external/2026-03-17-github-merge-queue-official-docs.md` (primary — official GitHub docs, updated 2026-03-17), `research/external/2024-03-06-github-merge-queue-at-scale-blog.md` (GitHub's own internal usage, scale stats), `research/external/2025-04-29-merge-queue-operations-guide.md` (operations guide, gotchas).
+**Research sources:** `research/external/2026-03-17-github-merge-queue-official-docs.md` (primary - official GitHub docs, updated 2026-03-17), `research/external/2024-03-06-github-merge-queue-at-scale-blog.md` (GitHub's own internal usage, scale stats), `research/external/2025-04-29-merge-queue-operations-guide.md` (operations guide, gotchas).
 
 ---
 
 ## What the merge queue does
 
-A merge queue serializes PR merges to a protected branch, ensuring that every merge is tested against the exact state of the branch at merge time — without requiring PR authors to manually update their branch.
+A merge queue serializes PR merges to a protected branch, ensuring that every merge is tested against the exact state of the branch at merge time - without requiring PR authors to manually update their branch.
 
 **The problem it solves:** When 10 PRs are approved and ready to merge, the first to merge is tested against `main@HEAD`. But PR #10 is still tested against `main@HEAD-from-30-minutes-ago`. If PRs 1-9 changed something PR #10 relies on, PR #10 breaks the branch after merge even though CI passed on the PR itself.
 
@@ -18,7 +18,7 @@ A merge queue serializes PR merges to a protected branch, ensuring that every me
 
 ## Setup: the five-step checklist
 
-1. **Enable branch protection on the target branch.** The merge queue requires branch protection. Wildcard branch name patterns (`*`) are NOT supported — you must specify exact branch names (e.g., `main`).
+1. **Enable branch protection on the target branch.** The merge queue requires branch protection. Wildcard branch name patterns (`*`) are NOT supported - you must specify exact branch names (e.g., `main`).
 
 2. **Enable "Require merge queue" in branch protection settings.** This prevents direct merges to the branch, forcing all merges through the queue.
 
@@ -28,7 +28,7 @@ A merge queue serializes PR merges to a protected branch, ensuring that every me
    # .github/workflows/ci.yml
    on:
      pull_request:
-     merge_group:    # REQUIRED — do not omit
+     merge_group:    # REQUIRED - do not omit
    ```
 
    For third-party CI (CircleCI, Jenkins, Buildkite), watch for pushes to branches matching `gh-readonly-queue/{base_branch}/*`.
@@ -44,11 +44,11 @@ A merge queue serializes PR merges to a protected branch, ensuring that every me
 ### Only merge non-failing PRs
 
 - **YES (default):** All PRs in a merge group must pass all required checks. One failure breaks the group.
-- **NO:** The group can merge as long as the LAST PR in the group passed. The option is designed for intermittent/flaky tests where most tests pass most of the time. Use with caution — it means a failing test can shadow a real regression.
+- **NO:** The group can merge as long as the LAST PR in the group passed. The option is designed for intermittent/flaky tests where most tests pass most of the time. Use with caution - it means a failing test can shadow a real regression.
 
 ### Merge method
 
-When merge queue is enabled, the merge method is controlled by the queue configuration — not by individual PR authors. The setting in the queue overrides the repository's general merge method setting for queue-initiated merges. Choose one method (squash recommended for GitHub Flow teams) and document it in the branching policy.
+When merge queue is enabled, the merge method is controlled by the queue configuration - not by individual PR authors. The setting in the queue overrides the repository's general merge method setting for queue-initiated merges. Choose one method (squash recommended for GitHub Flow teams) and document it in the branching policy.
 
 ### Jumping the queue
 
@@ -73,12 +73,12 @@ It is probably NOT worth it when:
 
 ## GitLab merge trains
 
-> TODO: open question — GitLab merge trains differ from GitHub's queue in that trains build sequentially without the "rebuild-all" behavior of GitHub's queue-reordering. The research corpus has limited coverage (`research/external/2026-05-20-gitlab-merge-trains.md`). Teams on GitLab should consult GitLab's official merge train documentation directly; this guide covers GitHub Merge Queue only. (`research/research-summary.md` open question 1)
+> TODO: open question - GitLab merge trains differ from GitHub's queue in that trains build sequentially without the "rebuild-all" behavior of GitHub's queue-reordering. The research corpus has limited coverage (`research/external/2026-05-20-gitlab-merge-trains.md`). Teams on GitLab should consult GitLab's official merge train documentation directly; this guide covers GitHub Merge Queue only. (`research/research-summary.md` open question 1)
 
 ---
 
 ## Routing
 
-- If the Merge Queue setup requires changes to GitHub Actions workflows: route to `devops-worker-bee`.
+- If the Merge Queue setup requires changes to GitHub Actions workflows: route to `ci-release-worker-bee`.
 - If the Merge Queue requires branch protection ruleset changes: route to `github-repo-health-worker-bee`.
-- `branching-strategy-worker-bee` owns the decision of whether to use a merge queue; the other Bees own the configuration.
+- `branching-strategy-worker-bee` owns the decision of whether to use a merge queue; the other Bees own the configuratio

@@ -1,4 +1,4 @@
-# Guide 06 — Sync Audit / Maintenance
+# Guide 06 - Sync Audit / Maintenance
 
 Covers detecting and fixing drift between the library structure and schema v2.
 
@@ -17,11 +17,11 @@ These should not exist in any repo. Flag every one found:
 
 | Stale path | Fix |
 |---|---|
-| `library/knowledge-base/` | Run `pnpm standardize-library --repository <name>` |
-| `library/architecture/` | Same |
-| `library/requirements/features/` | Same |
-| `library/requirements/issues/` | Same |
-| `library/qa/` | Same |
+| `library/knowledge-base/` | Migrate to `library/knowledge/private/` per the map in `guides/00-initialize.md` |
+| `library/architecture/` | Migrate to `library/knowledge/private/architecture/` |
+| `library/requirements/features/` | Migrate to `library/requirements/backlog/` |
+| `library/requirements/issues/` | Migrate to `library/issues/backlog/` |
+| `library/qa/` | Migrate to `library/requirements/reports/` |
 
 ### 2. PRD/IRD naming violations
 
@@ -41,23 +41,17 @@ Every PRD and IRD folder should have a `qa/` subfolder (even if empty). Create m
 
 ### 5. Missing README.md files
 
-Every v2 folder should have a seeded `README.md` with the correct YAML headmatter. Running `pnpm standardize-library --repository <name>` will seed any missing ones.
+Every v2 folder should have a seeded `README.md` with the correct YAML headmatter. Seed any missing ones from this skill's `templates/` folder.
 
-### 6. Stale wiki content
+### 6. Stale wiki pages
 
-Run `pnpm legion-sync --status` to check for stale entries in the wiki that no longer have a source.
+`wiki-worker-bee` derives knowledge pages from the source tree. Flag any page under `library/knowledge/` whose cited source path no longer exists, and recommend re-running `wiki-worker-bee` rather than hand-patching the page (see `guides/07-wiki-sync.md`).
 
 ## Audit procedure
 
-1. For each repo: run `pnpm standardize-library --repository <name> --dry-run`. Zero actions = no drift.
-2. Run `pnpm legion-sync --status`. All repos should show OK.
-3. Grep for old naming patterns:
+1. Walk the `library/` tree and compare it against the v2 target in `guides/00-initialize.md`. Any folder off-map or missing its `README.md` is drift.
+2. Grep for old naming patterns:
    ```bash
    rg "knowledge-base|/features/|/issues/" <repo>/library/ --files-with-matches
    rg "feature-[0-9]{3}|issue-[0-9]{3}" <repo>/library/ --files-with-matches
-   ```
-4. Produce a drift report listing: repo, drift type, affected paths, recommended fix.
-
-## Output
-
-Drift report as markdown. Do not fix without user confirmation on destructive operations (renames). Safe operations (creating missing folders, writing missing READMEs) may proceed immediately.
+   

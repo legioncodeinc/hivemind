@@ -49,11 +49,8 @@ The official Cursor MCP documentation covers the complete `mcp.json` configurati
 - "For MCP servers that use OAuth, you can provide static OAuth client credentials in `mcp.json` instead of dynamic client registration."
 - "Use variables in `mcp.json` values. Cursor resolves variables in these fields: `command`, `args`, `env`, `url`, and `headers`."
 
-## Annotations for stinger-forge
+## Relevance to the stinger
 
-- This is the PRIMARY source for `guides/03-mcp-integration.md`. All `mcp.json` field specs should cite this doc.
-- The config interpolation variable table is highly useful for teams - reproduce it in full in guide 03.
-- The static OAuth `auth` object is a 2026 addition - note it explicitly as a new capability.
-- The Extension API (`vscode.cursor.mcp.registerServer`) enables enterprise plugin patterns - cover in `guides/06-extension-development.md`.
-- The "project-level wins on name conflicts" merge behavior should be called out in the guide's project vs. global config section.
-- Hot-reload: docs say "Restart Cursor" after config changes - note this as a friction point vs. Claude Code's hot-reload.
+- Primary backing reference for `guides/03-mcp-integration.md`: the `mcp.json` field specs and the config interpolation variable table used to register the Hivemind MCP server in Cursor.
+- The "project-level wins on name conflicts" merge behavior backs the config hierarchy section.
+- "Restart Cursor after config changes" (no hot reload) is noted in guide 03 and the example.

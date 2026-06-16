@@ -1,4 +1,4 @@
-# LFS and Large Files — git-stinger
+# LFS and Large Files - git-stinger
 
 Git LFS, partial clone, and sparse checkout for managing large files and repositories.
 
@@ -47,7 +47,7 @@ git lfs track "*.png"
 # Track all files in a directory:
 git lfs track "assets/**"
 
-# Track files over a size threshold (manual — LFS tracks by pattern, not size):
+# Track files over a size threshold (manual - LFS tracks by pattern, not size):
 git lfs track "*.psd"
 git lfs track "*.mp4"
 git lfs track "*.zip"
@@ -59,7 +59,7 @@ This adds entries to `.gitattributes`:
 *.mp4 filter=lfs diff=lfs merge=lfs -text
 ```
 
-**Commit `.gitattributes` to the repo** — this is how other developers know which files use LFS.
+**Commit `.gitattributes` to the repo** - this is how other developers know which files use LFS.
 
 ### Adding LFS files
 
@@ -135,10 +135,10 @@ Exceeding limits requires purchasing data packs or self-hosting an LFS server.
 Partial clone lets you clone a repository without downloading all file contents (blobs) or even all trees. You get a functional repo; Git fetches missing objects on demand.
 
 ```bash
-# Blobless clone (history without file contents — most common):
+# Blobless clone (history without file contents - most common):
 git clone --filter=blob:none https://github.com/org/repo.git
 
-# Treeless clone (even lighter — no tree objects):
+# Treeless clone (even lighter - no tree objects):
 git clone --filter=tree:0 https://github.com/org/repo.git
 
 # After cloning, working with files fetches missing blobs automatically.
@@ -156,7 +156,7 @@ Partial clone requires Git 2.22+ and server-side support (GitHub, GitLab, and Gi
 
 ## Sparse checkout
 
-Sparse checkout lets you check out only a subset of the working tree — essential for monorepos where you only work in one package.
+Sparse checkout lets you check out only a subset of the working tree - essential for monorepos where you only work in one package.
 
 ```bash
 # Enable sparse checkout after cloning:
@@ -176,7 +176,7 @@ git sparse-checkout add packages/design-system
 git sparse-checkout disable
 ```
 
-**Cone mode** (recommended, Git 2.26+) is optimized for directory-level patterns — fast and predictable.
+**Cone mode** (recommended, Git 2.26+) is optimized for directory-level patterns - fast and predictable.
 
 ```bash
 # See what's included:

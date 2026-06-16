@@ -1,4 +1,4 @@
-# React / Next.js Code Review Checklist (2025–2026)
+# React / Next.js Code Review Checklist (2025-2026)
 
 **Sources:**
 - https://pagepro.co/blog/18-tips-for-a-better-react-code-review-ts-js/
@@ -22,7 +22,7 @@ Modern React/Next.js code review focuses on component structure, hook usage, ren
 - Components composed over configuration (prefer children/slots over prop explosion).
 
 ### Hooks
-- Hooks called at the top level only — not in conditionals, loops, or after early returns.
+- Hooks called at the top level only - not in conditionals, loops, or after early returns.
 - Dependency arrays on `useEffect`, `useMemo`, `useCallback` are exhaustive (lint rule: `react-hooks/exhaustive-deps`).
 - No duplicate state derivable from props or other state.
 - Custom hooks extracted when two components share non-trivial state logic.
@@ -35,7 +35,7 @@ Modern React/Next.js code review focuses on component structure, hook usage, ren
 ### Data fetching and rendering strategy
 - Correct choice of SSR / SSG / ISR / CSR for the route. Static content should not render on every request.
 - `fetch` calls have cache hints (`cache: "force-cache"`, `next: { revalidate: N }`) when appropriate.
-- No waterfall fetches — parallelize with `Promise.all` where data is independent.
+- No waterfall fetches - parallelize with `Promise.all` where data is independent.
 
 ### Accessibility, performance, SEO (touch points the Bee may flag)
 - Semantic HTML (`<button>` not `<div onClick>`).
@@ -49,7 +49,7 @@ Modern React/Next.js code review focuses on component structure, hook usage, ren
 
 > "Developers should pay attention to common React pitfalls such as unnecessary re-renders, poor state management, and improper use of hooks."
 
-> "For 2025, hybrid strategies—mixing Server-Side Rendering (SSR), Static Site Generation (SSG), Incremental Static Regeneration (ISR), and Client-Side Rendering (CSR)—let developers tailor data delivery for optimal speed."
+> "For 2025, hybrid strategies-mixing Server-Side Rendering (SSR), Static Site Generation (SSG), Incremental Static Regeneration (ISR), and Client-Side Rendering (CSR)-let developers tailor data delivery for optimal speed."
 
 ## Relevance to this stinger
 

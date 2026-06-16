@@ -4,11 +4,11 @@
 
 Voice and tone rules determine how the text sounds to the reader. The goal is not to impose a single style on all documentation but to enforce *consistency within a document* and *house style adherence when a style guide is provided*.
 
-**Important:** When a house style guide is supplied, enforce that instead of Legion defaults. Do not silently apply Legion defaults when a house style exists. Name the conflict and ask the user to clarify if the two systems contradict.
+**Important:** When a house style guide is supplied, enforce that instead of the default style. Do not silently apply the default style when a house style exists. Name the conflict and ask the user to clarify if the two systems contradict.
 
 ---
 
-## Legion defaults (apply when no house style is supplied)
+## Default style (apply when no house style is supplied)
 
 These defaults are grounded in the Google Developer Documentation Style Guide (`research/external/03-google-developer-style-guide.md`), which is the most widely adopted public developer documentation style.
 
@@ -86,8 +86,8 @@ When a house style is supplied:
 
 1. Read the house style guide before starting the review.
 2. Extract its rules for active/passive, second/third person, tense, headings, and contractions.
-3. Use those rules, not Legion defaults, for the review.
-4. If the house style is ambiguous or silent on a specific rule, apply the Legion default and note in the report which default was applied.
+3. Use those rules, not the default style, for the review.
+4. If the house style is ambiguous or silent on a specific rule, apply the default and note in the report which default was applied.
 5. If the document contradicts the house style, flag as Blocker (if the contradiction is systematic) or Suggestion (if isolated).
 
 **Note on Stripe:** Stripe does not publish a traditional public style guide document. Stripe's principles must be inferred from the Markdoc blog post (stripe.dev/blog/markdoc) and third-party analyses (`research/external/07-stripe-docs-approach.md`). When asked to match Stripe style, apply: second person, imperative mood, short sentences, concrete code before prose, minimal theory. Cite these as inferred principles, not a direct URL.

@@ -32,10 +32,10 @@ sources: []
 
 ## Verdict
 
-[One clear conclusion — which is better for what use case in this codebase. Active voice.]
+[One clear conclusion - which is better for what use case in this codebase. Active voice.]
 
 ## Sources
 
 - `path/to/file.ts` (Subject A)
 - `path/to/other-file.ts` (Subject B)
-- commit `{sha}` — when the alternative was introduced
+- commit `{sha}` - when the alternative was introduced

@@ -68,13 +68,12 @@ When the Bee generates a checklist for a specific PR, it should scope the checkl
 
 | File type | Checklist emphasis |
 |---|---|
-| Python / Django | ORM N+1, migrations, Celery idempotency |
-| TypeScript / React | Server/client boundary, hook dependencies, RSC rules |
-| SQL / migrations | Zero-downtime migration pattern (expand-backfill-contract) |
-| Auth code | Token handling, session management, privilege escalation |
-| API routes | Status codes, input validation, auth middleware |
+| TypeScript / Node (ESM) | Strict types (no stray `any`), explicit `.js` import extensions, no top-level await in CJS interop |
+| Deep Lake dataset code | Tensor schema/commit correctness, recall query filters, embedding dimension match |
+| Harness integration code | Adapter contract honored, transcript parsing edge cases, idempotent writes |
+| MCP tool / protocol code | Tool schema matches `mcp-tool-docs`, error envelope shape, no unbounded payloads |
 | Config / env | No secrets hardcoded, env var names documented |
-| Tests | Coverage of new branches, no implementation-coupled assertions |
+| Tests (Vitest) | Coverage of new branches, no implementation-coupled assertions |
 
 The full three-phase checklist is always the baseline. Context-specific items are appended under each relevant section.
 

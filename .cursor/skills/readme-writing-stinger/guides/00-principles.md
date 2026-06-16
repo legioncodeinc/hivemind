@@ -20,13 +20,13 @@ The README is not documentation. Documentation explains how things work. The REA
 
 ## The five rules
 
-### Rule 1 — Every section earns its place
+### Rule 1, Every section earns its place
 
 Before adding any section, ask: "Does this convert a visitor or retain a contributor?" If neither, cut it.
 
 A table of contents with 12 items does not convert visitors. A quickstart block that runs in one copy-paste does.
 
-### Rule 2 — The quickstart is the hero section
+### Rule 2, The quickstart is the hero section
 
 The single highest-leverage line in any README is the install command. Everything that appears before it is setup. Everything that appears after it is expansion.
 
@@ -37,7 +37,7 @@ The quickstart must be:
 
 See `guides/01-structure-checklist.md` for placement.
 
-### Rule 3 — Write for your audience register
+### Rule 3, Write for your audience register
 
 Two registers. Two READMEs.
 
@@ -49,16 +49,16 @@ Never mix registers. A README written for both audiences serves neither.
 
 See `guides/03-oss-vs-internal.md` for the full split.
 
-### Rule 4 — Prose is the last resort
+### Rule 4, Prose is the last resort
 
 Use headers, code fences, and bulleted lists before writing a paragraph. When a section exceeds 30 lines without a code example, it belongs in a separate docs file.
 
-Effective length: 300–1,500 words.
-Extraction threshold: 2,000 words — flag for docs-site extraction route to `library-worker-bee`.
+Effective length: 300-1,500 words.
+Extraction threshold: 2,000 words, flag for docs-site extraction route to `library-worker-bee`.
 
-### Rule 5 — Status badges are signals, not decorations
+### Rule 5, Status badges are signals, not decorations
 
-3–5 badges in the header signals a maintained, production-quality project. 9 badges with four "made with ❤️" signals an unmaintained hobby project trying to look professional.
+3-5 badges in the header signals a maintained, production-quality project. 9 badges with four "made with ❤️" signals an unmaintained hobby project trying to look professional.
 
 Approved badge types: CI/CD status, coverage, version, downloads, license. Vanity badges: cut them all.
 
@@ -82,9 +82,8 @@ These conditions require escalating outside this stinger:
 |---|---|
 | README exceeds 2,000 words | Flag extraction; hand off to `library-worker-bee` |
 | User wants a full docs site | Hand off to `library-worker-bee` |
-| CI badge pipeline needs setup | Hand off to `devops-worker-bee` |
-| Python `.rst` README | Hand off to `python-worker-bee` |
-| Ruby gem Ankane-style README | Route to `ce-ankane-readme-writer` |
+| CI badge pipeline needs setup | Hand off to `ci-release-worker-bee` |
+| TypeScript/Node package publishing flow needs documenting | Hand off to `typescript-node-worker-bee` |
 
 ---
 

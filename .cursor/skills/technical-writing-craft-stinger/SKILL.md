@@ -1,6 +1,6 @@
 ---
 name: technical-writing-craft-stinger
-description: Writing docs well -- the Diataxis framework (tutorial / how-to / reference / explanation), inverted-pyramid prose structure, scannable headings, code-example discipline, the "what does the reader already know?" reader-lens, ghostwriting vs voice consistency, and the docs-as-code review workflow. Distinct from docs-site-worker-bee (which owns the platform); this stinger owns the craft of writing. Use when the user says "review this document", "is this doc well-written", "audit this page", "write a tutorial for X", "apply Diataxis", "ghostwrite this guide", "my docs PR needs a writing review", or any request about documentation quality rather than documentation tooling.
+description: Writing docs well -- the Diataxis framework (tutorial / how-to / reference / explanation), inverted-pyramid prose structure, scannable headings, code-example discipline, the "what does the reader already know?" reader-lens, ghostwriting vs voice consistency, and the docs-as-code review workflow. Distinct from library-worker-bee (which owns docs-site architecture and where a doc lives); this stinger owns the craft of writing. Use when the user says "review this document", "is this doc well-written", "audit this page", "write a tutorial for X", "apply Diataxis", "ghostwrite this guide", "my docs PR needs a writing review", or any request about documentation quality rather than documentation tooling.
 ---
 
 # technical-writing-craft Stinger
@@ -24,7 +24,7 @@ Trigger on any request where the question is *how well is this written*, not *wh
 - "Rewrite this introduction"
 - "Why does this page feel confusing?"
 
-Do NOT trigger for: platform selection (docs-site-worker-bee), folder structure decisions (library-worker-bee), API spec enrichment (api-docs-worker-bee), or SEO metadata (seo-aeo-worker-bee). Surface the correct Bee and step aside when requests fall outside the craft boundary.
+Do NOT trigger for: docs-site architecture and platform decisions (library-worker-bee), folder structure decisions (library-worker-bee), or MCP tool spec enrichment (mcp-tool-docs-worker-bee). Surface the correct Bee and step aside when requests fall outside the craft boundary.
 
 ---
 
@@ -57,7 +57,7 @@ When asked to write rather than review:
 
 - **Classify Diataxis mode before offering any prose feedback.** Mode-mixing is the root cause of most documentation confusion. Fixing prose before fixing structure wastes both parties' time. Source: `research/external/01-diataxis-framework-overview.md`.
 - **Never produce a vague finding.** Every Blocker must include a specific rewrite proposal. "Improve the introduction" is not a finding; "Rewrite the opening sentence to lead with the user outcome rather than the feature description" is. Source: Command Brief SUBAGENT CRITICAL DIRECTIVES.
-- **Respect the supplied style guide; do not impose Legion defaults when a house style exists.** Source: Command Brief.
+- **Respect the supplied style guide; do not impose the stinger's default style when a house style exists.** Source: Command Brief.
 - **Do not recommend platform changes, folder moves, or metadata edits.** Those concerns belong to peer Bees.
 - **In ghostwriting mode, self-review before delivering.** The Bee must apply its own rubric to its own output.
 
@@ -68,7 +68,7 @@ When asked to write rather than review:
 1. `guides/00-diataxis.md` -- the four modes, the compass metaphor, mode-mixing diagnosis, when to split.
 2. `guides/01-inverted-pyramid.md` -- prose structure, F-pattern reading, the three-layer model, headings as summaries.
 3. `guides/02-code-example-discipline.md` -- runnable, correct, preceded, annotated, consistent. The full checklist.
-4. `guides/03-voice-and-tone.md` -- active voice, second person, present tense, imperative mood. Legion defaults and house-style override.
+4. `guides/03-voice-and-tone.md` -- active voice, second person, present tense, imperative mood. Default style and house-style override.
 5. `guides/04-reader-lens.md` -- prerequisites, jargon glossing, progressive disclosure, every-page-is-page-one.
 6. `guides/05-ghostwriting.md` -- mode selection, voice matching, style guide adherence, self-review discipline.
 7. `guides/06-docs-as-code-review.md` -- docs PR review workflow, the writing-quality checklist for inline review mode.
@@ -102,14 +102,14 @@ When asked to write rather than review:
 
 | Concern | Bee |
 |---|---|
-| Platform selection (Docusaurus, Mintlify, Starlight) | docs-site-worker-bee |
-| Folder structure, knowledge-base organization, PRDs | library-worker-bee |
-| OpenAPI spec enrichment, SDK docs | api-docs-worker-bee |
-| SEO metadata, schema markup, AI Overviews | seo-aeo-worker-bee |
+| Docs-site architecture and platform selection | library-worker-bee |
+| Folder structure, knowledge-base organization, PRDs/IRDs | library-worker-bee |
+| MCP tool spec enrichment, tool reference docs | mcp-tool-docs-worker-bee |
 | README files (specialized subset) | readme-writing-worker-bee |
+| ADRs (architecture decision records) | adr-writing-worker-bee |
 
 When a request touches one of those concerns, name the correct Bee and step aside. Do not attempt to own adjacent domains.
 
 ---
 
-*Forged by stinger-forge from `technical-writing-craft-worker-bee-command-brief.md` and `research/`. Part of the Legion AI Tools Factory by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*
+*Part of the Cursor IDE Army curated by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*

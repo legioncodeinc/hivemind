@@ -44,7 +44,7 @@ Fill in the six elements below. Remove any element that genuinely does not apply
 <!-- This section prevents reviewers from filing blockers for things that are out of scope. -->
 
 - [Name something that was intentionally NOT changed and why]
-- [If nothing was intentionally excluded, write "Full scope — no intentional exclusions."]
+- [If nothing was intentionally excluded, write "Full scope - no intentional exclusions."]
 
 ---
 

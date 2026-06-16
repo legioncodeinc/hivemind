@@ -1,4 +1,4 @@
-# Next.js Security Headers — `next.config.js` / CSP / HSTS
+# Next.js Security Headers - `next.config.js` / CSP / HSTS
 
 **Sources:**
 - https://nextjs.org/docs/app/guides/content-security-policy
@@ -13,7 +13,7 @@
 
 Next.js lets you attach response headers via an `async headers()` export in `next.config.js`. For apps using App Router with nonces, set the CSP in `middleware.ts` so a per-request nonce can be generated. Both approaches are valid; the Stinger flags absence, not approach.
 
-## Required baseline (Stinger rule — any missing header = Medium)
+## Required baseline (Stinger rule - any missing header = Medium)
 
 | Header | Recommended value | Purpose |
 |---|---|---|

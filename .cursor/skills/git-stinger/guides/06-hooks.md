@@ -1,4 +1,4 @@
-# Hooks — git-stinger
+# Hooks - git-stinger
 
 Client-side Git hooks: pre-commit, commit-msg, prepare-commit-msg, pre-push. Hook managers: Husky, lefthook.
 
@@ -16,7 +16,7 @@ Client-side Git hooks: pre-commit, commit-msg, prepare-commit-msg, pre-push. Hoo
 | `post-checkout` | After `git checkout` | Install dependencies, rebuild assets |
 | `pre-rebase` | Before rebase starts | Stash check, validation |
 
-Server-side hooks (`pre-receive`, `update`, `post-receive`) run on the remote server — escalate to `devops-worker-bee`.
+Server-side hooks (`pre-receive`, `update`, `post-receive`) run on the remote server - escalate to `ci-release-worker-bee`.
 
 ---
 
@@ -67,8 +67,8 @@ npx husky init
 Husky hooks are in `.husky/` (tracked by Git):
 ```bash
 # .husky/pre-commit
-npm run lint
-npm run test:unit
+npm run typecheck   # tsc --noEmit
+npx vitest run
 ```
 
 Husky auto-runs `git config core.hooksPath .husky` during `npm install` (via `prepare` script in `package.json`).
@@ -90,14 +90,11 @@ Configure in `lefthook.yml`:
 pre-commit:
   parallel: true
   commands:
-    lint:
-      glob: "*.{ts,tsx,js}"
-      run: npx eslint {staged_files}
-    format:
-      glob: "*.{ts,tsx}"
-      run: npx prettier --check {staged_files}
+    duplication:
+      glob: "*.{ts,mts,cts}"
+      run: npx jscpd {staged_files}
     typecheck:
-      run: npx tsc --noEmit
+      run: npm run typecheck   # tsc --noEmit
 
 commit-msg:
   commands:
@@ -105,7 +102,7 @@ commit-msg:
       run: npx commitlint --edit {1}
 ```
 
-lefthook runs commands in parallel and only on staged files matching the glob — significantly faster than running on all files.
+lefthook runs commands in parallel and only on staged files matching the glob - significantly faster than running on all files.
 
 ---
 
@@ -115,17 +112,17 @@ lefthook runs commands in parallel and only on staged files matching the glob �
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run linter on staged files only
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx|js|jsx)$' || true)
+# Run duplication check on staged files only
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|mts|cts)$' || true)
 
 if [ -n "$STAGED_FILES" ]; then
-  echo "Running ESLint on staged files..."
-  npx eslint $STAGED_FILES
+  echo "Running jscpd on staged files..."
+  npx jscpd $STAGED_FILES
 fi
 
 # Run fast unit tests
 echo "Running unit tests..."
-npm run test:unit --silent
+npx vitest run --silent
 ```
 
 ---
@@ -147,7 +144,7 @@ PATTERN="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))
 if ! echo "$COMMIT_MSG" | grep -qE "$PATTERN"; then
   echo "ERROR: Commit message does not follow Conventional Commits format."
   echo "Expected: type(scope): description"
-  echo "Example:  feat(auth): add Google OAuth login"
+  echo "Example:  feat(retrieval): add Deep Lake recall filter"
   exit 1
 fi
 ```
@@ -193,8 +190,8 @@ git push --no-verify
 
 ---
 
-## Server-side hooks: escalate to devops-worker-bee
+## Server-side hooks: escalate to ci-release-worker-bee
 
-Server-side hooks (`pre-receive`, `update`, `post-receive`) run on the remote Git server. They enforce rules that clients cannot bypass. Configuration depends on the hosting platform (GitHub, GitLab, Bitbucket, Gitea). Escalate to `devops-worker-bee` for server-side hook setup.
+Server-side hooks (`pre-receive`, `update`, `post-receive`) run on the remote Git server. They enforce rules that clients cannot bypass. Configuration depends on the hosting platform (GitHub, GitLab, Bitbucket, Gitea). Escalate to `ci-release-worker-bee` for server-side hook setup.
 
 Sources: research/external/01-interactive-rebase.md (autosquash section mentions hooks)

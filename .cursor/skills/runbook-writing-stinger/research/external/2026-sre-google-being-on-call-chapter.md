@@ -8,7 +8,7 @@ topic: on-call-principles
 stinger: runbook-writing-stinger
 ---
 
-# Being On-Call — Google SRE Book, Chapter 11
+# Being On-Call - Google SRE Book, Chapter 11
 
 Published: Primary reference (Google SRE Book; no publication date; canonical primary source)
 

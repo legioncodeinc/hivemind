@@ -11,8 +11,8 @@ Each report should include:
 - The model recommendation and rationale
 - The migration plan (if applicable)
 - The feature flag verdict
-- Any open questions routed to `github-repo-health-worker-bee` or `devops-worker-bee`
+- Any open questions routed to `github-repo-health-worker-bee` or `ci-release-worker-bee`
 
 ## Currently archived
 
-*(empty — reports accumulate as the Bee is used)*
+*(empty - reports accumulate as the Bee is used

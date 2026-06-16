@@ -1,4 +1,4 @@
-# 08 — Issue and PR Templates Audit
+# 08 - Issue and PR Templates Audit
 
 *Research basis: `research/external/04-issue-pr-templates-docs.md`*
 
@@ -7,8 +7,8 @@
 **Location:** `.github/ISSUE_TEMPLATE/` (directory with multiple `.md` or `.yml` templates)
 
 Minimum for a healthy repo:
-- `bug_report.md` (or `bug_report.yml`) — structured fields for reproduction steps, expected vs. actual behavior, environment
-- `feature_request.md` — fields for use case, proposed solution, alternatives considered
+- `bug_report.md` (or `bug_report.yml`) - structured fields for reproduction steps, expected vs. actual behavior, environment
+- `feature_request.md` - fields for use case, proposed solution, alternatives considered
 
 A `config.yml` in the template directory can disable blank issues and add external links:
 ```yaml
@@ -64,5 +64,5 @@ See `research/external/04-issue-pr-templates-docs.md`. Summary:
 | Type of change | ❌ Missing |
 
 **Findings:**
-- RECOMMEND: Add a "Type of change" section to the PR template (bug fix / feature / refactor / breaking change) — 5 minutes to add.
+- RECOMMEND: Add a "Type of change" section to the PR template (bug fix / feature / refactor / breaking change) - 5 minutes to add.
 ```

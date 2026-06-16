@@ -31,7 +31,7 @@ Does the team support multiple live product versions simultaneously?
 > 1. You support three live major versions simultaneously (v3, v4, v5).
 > 2. Your release gate (App Store review) forces a stabilization window of up to 14 days that you cannot control.
 >
-> GitHub Flow or trunk-based development could serve you, but they would require a more sophisticated release-train setup with feature flags and tagged release candidates — solving the same problem with different tooling, not eliminating it."
+> GitHub Flow or trunk-based development could serve you, but they would require a more sophisticated release-train setup with feature flags and tagged release candidates - solving the same problem with different tooling, not eliminating it."
 
 **4. Address the "team complexity" complaint directly**
 
@@ -44,7 +44,7 @@ The team's complaint is about GitFlow's complexity, not about the model choice b
 
 **5. Why feature flags don't solve this case (from `guides/04-feature-flag-vs-branch.md`)**
 
-> "You might wonder: can feature flags replace release branches here? Partially — but not completely. The App Store review process reviews a specific binary artifact. That artifact must be stable and reproducible for the entire review window (up to 14 days). A release branch gives you an exact snapshot of the code that produced that binary.
+> "You might wonder: can feature flags replace release branches here? Partially - but not completely. The App Store review process reviews a specific binary artifact. That artifact must be stable and reproducible for the entire review window (up to 14 days). A release branch gives you an exact snapshot of the code that produced that binary.
 >
 > Feature flags help with incomplete features during active development but cannot substitute for the reproducibility guarantee of a release branch during an external review window."
 
@@ -82,6 +82,6 @@ These changes address the pain without a model migration.
 
 ## Notes
 
-This example is the canonical counter-case to the "always recommend GitHub Flow" default. The Bee must be able to recognize when GitFlow is the right answer and explain why clearly — including why feature flags don't fully substitute for release branches in this specific context.
+This example is the canonical counter-case to the "always recommend GitHub Flow" default. The Bee must be able to recognize when GitFlow is the right answer and explain why clearly - including why feature flags don't fully substitute for release branches in this specific context.
 
 The mobile SDK case study from `research/external/2026-03-31-tbd-vs-gitflow-comparison-novvista.md` is the real-world precedent for this recommendation.

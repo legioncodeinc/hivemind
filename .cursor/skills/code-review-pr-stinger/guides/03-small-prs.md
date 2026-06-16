@@ -92,7 +92,7 @@ Lines changed: 643 (threshold: 400)
 Logical concerns identified: 4
 
 Suggested splits:
-  - PR A: extract `useAuthContext` hook (45 lines) — no behavioral change
+  - PR A: extract `useAuthContext` hook (45 lines) - no behavioral change
   - PR B: add token-refresh logic using the new hook (280 lines)
   - PR C: update E2E auth tests (120 lines)
   - PR D: update documentation (50 lines)

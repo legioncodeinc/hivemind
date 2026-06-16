@@ -1,4 +1,4 @@
-# Command Brief — Internal Reference
+# Command Brief - Internal Reference
 
 **Source type:** internal
 **Authority:** authoritative
@@ -22,8 +22,8 @@ This note records the authoritative scope boundaries, ACTION verbs, and CRITICAL
 
 ### Domain NOT owned (named handoffs)
 
-- CI/CD pipelines and container shell scripts → devops-worker-bee
-- Python packaging and build tooling → python-worker-bee
+- CI/CD pipelines and container shell scripts → ci-release-worker-bee
+- TypeScript/Node build and packaging tooling → typescript-node-worker-bee
 - OS-level sysadmin beyond developer workstation → out of scope
 
 ### Seven ACTION verbs (map to guides)
@@ -43,4 +43,4 @@ This note records the authoritative scope boundaries, ACTION verbs, and CRITICAL
 3. Quote every shell variable expansion unless deliberately word-splitting.
 4. Always explain trade-offs when recommending a modern CLI replacement.
 5. Keep dotfile changes idempotent.
-6. Escalate to devops-worker-bee for CI shell steps that run in containers.
+6. Escalate to ci-release-worker-bee for CI shell steps that run in containers.

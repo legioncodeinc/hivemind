@@ -7,11 +7,11 @@ url: https://docs.github.com/en/communities/using-templates-to-encourage-useful-
 fetched: 2026-05-20
 ---
 
-# GitHub Issue/PR Templates — Synthesis
+# GitHub Issue/PR Templates - Synthesis
 
 ## Issue templates location
 
-`.github/ISSUE_TEMPLATE/` directory — supports multiple templates (bug_report.md, feature_request.md, etc.)
+`.github/ISSUE_TEMPLATE/` directory - supports multiple templates (bug_report.md, feature_request.md, etc.)
 
 YAML front matter per template:
 ```yaml

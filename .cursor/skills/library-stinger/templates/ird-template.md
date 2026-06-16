@@ -1,4 +1,4 @@
-# IRD Template — Schema v2
+# IRD Template - Schema v2
 
 > Canonical blank template for an IRD index file.
 > Copy to: `library/issues/backlog/ird-<###>-<slug>/ird-<###>-<slug>-index.md`
@@ -14,7 +14,7 @@
 
 # IRD-<###>: <Issue Title>
 
-> **GitHub Issue:** [#<###>](<link-to-issue>) — Bug | Enhancement | Regression | Security
+> **GitHub Issue:** [#<###>](<link-to-issue>) - Bug | Enhancement | Regression | Security
 >
 > **Status:** Backlog
 > **Priority:** P0 | P1 | P2 | P3
@@ -50,7 +50,7 @@
 ## Fix plan
 
 <!-- Step-by-step approach. Cite specific files and line numbers where known.
-     Keep scope to this one issue — no scope creep. -->
+     Keep scope to this one issue - no scope creep. -->
 
 1. 
 2. 

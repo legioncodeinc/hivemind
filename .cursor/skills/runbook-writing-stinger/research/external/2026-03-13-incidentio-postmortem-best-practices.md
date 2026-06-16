@@ -8,7 +8,7 @@ topic: postmortem-linkage
 stinger: runbook-writing-stinger
 ---
 
-# SRE Incident Post-Mortem Best Practices: Templates, Process & Learning Culture — incident.io
+# SRE Incident Post-Mortem Best Practices: Templates, Process & Learning Culture - incident.io
 
 Published: 2026-03-13
 

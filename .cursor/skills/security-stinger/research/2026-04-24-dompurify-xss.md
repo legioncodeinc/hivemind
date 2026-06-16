@@ -1,4 +1,4 @@
-# React `dangerouslySetInnerHTML` + DOMPurify — XSS Prevention
+# React `dangerouslySetInnerHTML` + DOMPurify - XSS Prevention
 
 **Sources:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html
@@ -12,7 +12,7 @@
 
 ## Summary
 
-JSX auto-escapes text — typing `{userInput}` is safe. The single dangerous opt-out is `dangerouslySetInnerHTML={{ __html: x }}`. If `x` is user-controlled or user-influenced (markdown rendered to HTML, rich-text editor output, CMS-provided snippets), sanitize with DOMPurify **before** assigning.
+JSX auto-escapes text - typing `{userInput}` is safe. The single dangerous opt-out is `dangerouslySetInnerHTML={{ __html: x }}`. If `x` is user-controlled or user-influenced (markdown rendered to HTML, rich-text editor output, CMS-provided snippets), sanitize with DOMPurify **before** assigning.
 
 ## Canonical safe wrapper
 
@@ -33,7 +33,7 @@ export function SafeHTML({ html }: { html: string }) {
 
 - Use `isomorphic-dompurify` for Next.js (handles SSR with jsdom).
 - Always include `rel="noopener noreferrer"` on anchors with `target="_blank"` (add as post-processing hook).
-- A single `<SafeHTML />` component centralizes the risk — all raw-HTML rendering goes through it, easy to lint.
+- A single `<SafeHTML />` component centralizes the risk - all raw-HTML rendering goes through it, easy to lint.
 
 ## Common mistake patterns (Stinger flags)
 
@@ -42,7 +42,7 @@ export function SafeHTML({ html }: { html: string }) {
 | `dangerouslySetInnerHTML={{ __html: userInput }}` no sanitizer | **High** |
 | `dangerouslySetInnerHTML={{ __html: marked(md) }}` without sanitizer | **High** (`marked` is not safe) |
 | Home-rolled sanitizer with `.replace(/<script>/g, '')` | **High** (easily bypassed) |
-| `dangerouslySetInnerHTML` on server-fetched constant string from your own CMS | **Medium** (still flag — CMS compromises are a thing) |
+| `dangerouslySetInnerHTML` on server-fetched constant string from your own CMS | **Medium** (still flag - CMS compromises are a thing) |
 
 ## Relevance to this stinger
 

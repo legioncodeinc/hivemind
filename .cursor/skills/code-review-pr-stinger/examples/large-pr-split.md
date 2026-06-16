@@ -6,20 +6,20 @@ A worked example of `code-review-pr-worker-bee` evaluating a large PR (643 chang
 
 ## Scenario
 
-**PR title:** `feat: user dashboard v2`
+**PR title:** `feat: recency-weighted recall`
 **Lines changed:** 643
 **Files changed:** 18
 **Author request:** "Is this PR too large? How should I split it?"
 
 **Diff overview:**
-- `hooks/useAuthContext.ts` — 45 lines (new hook extracted from `AuthProvider`)
-- `components/AuthProvider.tsx` — 38 lines (uses new hook; removes inline logic)
-- `api/users.ts` — 120 lines (adds `updateUserProfile` endpoint)
-- `api/users.test.ts` — 80 lines (tests for new endpoint)
-- `components/Dashboard.tsx` — 180 lines (new dashboard layout)
-- `components/ProfileCard.tsx` — 60 lines (new component)
-- `components/__tests__/Dashboard.test.tsx` — 90 lines (new tests)
-- `styles/dashboard.css` — 30 lines (new styles)
+- `src/utils/scoring.ts` - 45 lines (new `decayWeight` helper extracted from `recall.ts`)
+- `src/retrieval/recall.ts` - 38 lines (uses new helper; removes inline math)
+- `src/dataset/queryWindow.ts` - 120 lines (adds `queryRecentCommits` Deep Lake method)
+- `src/dataset/queryWindow.test.ts` - 80 lines (Vitest cases for the new method)
+- `src/retrieval/pipeline.ts` - 180 lines (rewires recall to apply recency weighting)
+- `src/retrieval/rankers/recencyRanker.ts` - 60 lines (new ranker)
+- `src/retrieval/pipeline.test.ts` - 90 lines (new tests)
+- `docs/retrieval.md` - 30 lines (documents the new ranker)
 
 ---
 
@@ -31,36 +31,36 @@ Lines changed: 643 (threshold: 400)
 Files changed: 18
 Logical concerns identified: 4
 
-  1. Auth hook extraction (useAuthContext) — no behavioral change
-  2. API endpoint addition (updateUserProfile) — backend concern
-  3. Dashboard UI build — frontend concern
-  4. Tests — spread across concerns 1-3
+  1. Scoring helper extraction (decayWeight) - no behavioral change
+  2. Deep Lake query method (queryRecentCommits) - dataset concern
+  3. Pipeline rewiring + new ranker - retrieval concern
+  4. Tests - spread across concerns 1-3
 ```
 
-**Verdict:** This PR exceeds the 400-line threshold and mixes backend, frontend, and refactoring concerns. Splitting is strongly recommended.
+**Verdict:** This PR exceeds the 400-line threshold and mixes dataset, retrieval, and refactoring concerns. Splitting is strongly recommended.
 
 ---
 
 ## Step 2: Split proposal
 
-### PR A: Extract `useAuthContext` hook
-**Lines:** ~83 (hook + AuthProvider changes)
-**Concern:** Pure refactor — no behavioral change
+### PR A: Extract `decayWeight` helper
+**Lines:** ~83 (helper + recall.ts changes)
+**Concern:** Pure refactor - no behavioral change
 **Rationale:** This is the safest PR to review; it changes structure without changing behavior. Ship it first so downstream PRs can depend on it.
-**Description starter:** "Extracts auth state management from `AuthProvider` into a `useAuthContext` hook. No behavioral change. Enables cleaner consumption in Dashboard (see #[next-PR])."
+**Description starter:** "Extracts the time-decay math from `recall.ts` into a `decayWeight` helper in `scoring.ts`. No behavioral change. Enables reuse in the new recency ranker (see #[next-PR])."
 
-### PR B: Add `updateUserProfile` API endpoint
-**Lines:** ~200 (endpoint + tests)
-**Concern:** Backend addition
-**Rationale:** Backend-only change; can be reviewed by backend engineers without frontend context. Ships independently.
-**Description starter:** "Adds `PUT /api/users/:id/profile` endpoint with validation and auth middleware. Includes integration tests. Dashboard will consume this in #[next-PR]."
+### PR B: Add `queryRecentCommits` Deep Lake method
+**Lines:** ~200 (method + tests)
+**Concern:** Dataset-layer addition
+**Rationale:** Dataset-only change; can be reviewed by whoever owns the Deep Lake layer without retrieval context. Ships independently. Route any schema questions to `deeplake-dataset-worker-bee`.
+**Description starter:** "Adds `queryRecentCommits(window)` to the dataset layer, returning commits within a time window with bounded result size. Includes Vitest cases. The pipeline will consume this in #[next-PR]."
 **Depends on:** Can be opened in parallel with PR A.
 
-### PR C: Dashboard UI (`Dashboard.tsx`, `ProfileCard.tsx`, styles)
-**Lines:** ~360 (UI components + CSS + tests)
-**Concern:** Frontend feature
-**Rationale:** Uses the hook from PR A and calls the endpoint from PR B. Must be reviewed after both are merged.
-**Description starter:** "Implements the user dashboard v2 layout using `useAuthContext` (from #PR-A) and the profile API (from #PR-B). Includes Storybook stories and 12 test cases."
+### PR C: Pipeline rewiring + recency ranker
+**Lines:** ~360 (pipeline + ranker + docs + tests)
+**Concern:** Retrieval feature
+**Rationale:** Uses the helper from PR A and calls the method from PR B. Must be reviewed after both are merged.
+**Description starter:** "Wires recency weighting into the recall pipeline using `decayWeight` (from #PR-A) and `queryRecentCommits` (from #PR-B). Adds `recencyRanker` and 12 test cases. Updates `docs/retrieval.md`."
 **Depends on:** PR A merged, PR B merged.
 
 ---
@@ -68,10 +68,10 @@ Logical concerns identified: 4
 ## Step 3: Dependency visualization
 
 ```
-PR A: useAuthContext hook (refactor)  ←── No deps; ship first
-PR B: updateUserProfile API            ←── No deps; ship in parallel with A
-          ↓
-PR C: Dashboard UI                     ←── Depends on A + B
+PR A: decayWeight helper (refactor)   <-- No deps; ship first
+PR B: queryRecentCommits method        <-- No deps; ship in parallel with A
+          |
+PR C: pipeline + recency ranker        <-- Depends on A + B
 ```
 
 ---
@@ -85,7 +85,7 @@ PR C: Dashboard UI                     ←── Depends on A + B
 | PR C | ~360 | ✅ Under 400 |
 | Original PR | 643 | ❌ Over threshold |
 
-All three PRs are independently reviewable. The total review effort is similar (same code), but each reviewer has a focused context window — dramatically improving defect detection probability.
+All three PRs are independently reviewable. The total review effort is similar (same code), but each reviewer has a focused context window - dramatically improving defect detection probability.
 
 ---
 
@@ -94,37 +94,37 @@ All three PRs are independently reviewable. The total review effort is similar (
 ```markdown
 ## Motivation
 
-`AuthProvider` currently mixes rendering concerns with auth state management.
-The auth state logic was tightly coupled to the provider component, making it
-difficult to test and impossible to consume without rendering the full provider
-tree. This extraction enables cleaner consumption in Dashboard v2 (#[issue]).
+`recall.ts` currently inlines the time-decay scoring math alongside the ranking
+logic. The decay function is tightly coupled to the recall path, making it hard
+to test in isolation and impossible to reuse in the new recency ranker. This
+extraction enables clean reuse in recency-weighted recall (#[issue]).
 
 ## Context
 
-- Closes: N/A (enabler PR for #[Dashboard issue])
+- Closes: N/A (enabler PR for #[recency recall issue])
 - No prior PR dependency
 
 ## What changed
 
-- `hooks/useAuthContext.ts`: New hook that manages auth state. Moved from
-  `AuthProvider.tsx` lines 22-67 (cut and paste with minor naming cleanup).
-- `components/AuthProvider.tsx`: Now imports and uses `useAuthContext`.
-  Rendering logic is unchanged.
+- `src/utils/scoring.ts`: New `decayWeight(ageMs, halfLifeMs)` helper. Moved from
+  `recall.ts` lines 22-67 (cut and paste with minor naming cleanup).
+- `src/retrieval/recall.ts`: Now imports and uses `decayWeight`. Ranking logic
+  is unchanged.
 
 ## What did NOT change
 
-- Auth behavior is identical — this is a refactor only
-- No changes to the public API of `AuthProvider`
-- No changes to downstream consumers (they still use `<AuthProvider>`)
+- Recall behavior is identical - this is a refactor only
+- No changes to the public API of `recall.ts`
+- No changes to downstream consumers (they still call `recall()`)
 
 ## Testing proof
 
-- [x] Existing AuthProvider tests pass without modification
+- [x] Existing recall tests pass without modification
 - [x] CI passes: [link]
 
 ## Reviewer hints
 
-- The key diff is in `AuthProvider.tsx` lines 22-67 (deletion) and
-  `hooks/useAuthContext.ts` (addition)
-- No logic was changed — the move is line-for-line except for the export name
+- The key diff is in `recall.ts` lines 22-67 (deletion) and
+  `src/utils/scoring.ts` (addition)
+- No logic was changed - the move is line-for-line except for the export name
 ```

@@ -1,209 +1,207 @@
-# Example 02 — Blocker-Heavy Audit
+# Example 02, Blocker-Heavy Audit
 
-Demonstrates an implementation with multiple Critical findings (plan gaps, an N+1, tenant-leak) and several Warnings. Illustrates the report at its most impactful: dense, specific, and prioritized.
+Demonstrates an implementation with multiple Critical findings (plan gaps, an N+1 dataset read, a scope-filter leak) and several Warnings. Illustrates the report at its most impactful: dense, specific, and prioritized.
 
-**Illustrates guides:** `03-cross-reference-audit.md` (thorough traceability), `04-five-axis-evaluation.md` (multiple axes failing), `05-severity-classification.md` (Critical vs. Warning judgment), `07-common-gaps.md` (tenant scoping, N+1, missing auth).
+**Illustrates guides:** `03-cross-reference-audit.md` (thorough traceability), `04-five-axis-evaluation.md` (multiple axes failing), `05-severity-classification.md` (Critical vs. Warning judgment), `07-common-gaps.md` (scope filter, N+1, missing gate).
 
 ---
 
-## Input — Plan document excerpt
+## Input, Plan document excerpt
 
-Plan file: `library/requirements/features/feature-013-team-invoices/prd-feature-013-team-invoices.md`
+Plan file: `library/requirements/features/feature-013-library-search/prd-feature-013-library-search.md`
 
 ```markdown
-# PRD: Team Invoices (Phase 3)
+# PRD: Library Search (Phase 3)
 
 ## Goal
-Let team owners view and download invoices for their team. Part of the billing rollout.
+Let a user search the library corpus and get ranked results. Part of the retrieval rollout.
 
 ## User Stories
-- US-1: As a team owner, I view a list of invoices for my team with status, date, and amount.
-- US-2: As a team owner, I click an invoice to view line items.
-- US-3: As a team owner, I download an invoice as a PDF.
-- US-4: As a team owner, failed invoices automatically retry with exponential backoff (1h / 6h / 24h) and surface as "Past Due" after three failures.
+- US-1: As a user, I run `hivemind search "<query>"` and see ranked entries with title, path, and score.
+- US-2: As a user, I open a result to view its full entry.
+- US-3: As a user, results respect the public/private split of the library.
+- US-4: As a user, when embeddings are disabled the search falls back to BM25 automatically and labels the result mode.
 
 ## Acceptance Criteria
-- AC-1: Invoice list is scoped to the signed-in owner's team (tenant isolation).
-- AC-2: Only team owners can access; regular members are redirected.
-- AC-3: Empty state shown if team has no invoices.
-- AC-4: Pagination (20 per page, cursor-based).
+- AC-1: Search is scoped to the requested library partition (public vs private); private entries never leak into a public search.
+- AC-2: Only the pre-tool-use gate-approved query path reaches the dataset; raw queries are validated first.
+- AC-3: Empty-result message shown when nothing matches.
+- AC-4: Results are capped (20 per call, cursor-based).
 
 ## Non-Goals
-- NG-1: No invoice editing.
-- NG-2: No subscription cancellation flow.
+- NG-1: No re-embedding of the corpus in this phase.
+- NG-2: No changes to the embeddings daemon lifecycle.
 ```
 
-## Input — Diff (summary)
+## Input, Diff (summary)
 
 ```
-A  src/app/billing/invoices/page.tsx
-A  src/app/billing/invoices/[id]/page.tsx
-A  src/app/billing/invoices/[id]/pdf/route.ts
-A  src/billing/invoice-service.ts
-A  src/billing/cancel-subscription.ts         ← out-of-scope
-M  src/db/schema.prisma
+A  src/search/search-command.ts
+A  src/search/result-view.ts
+A  src/search/format-result.ts
+A  src/search/search-service.ts
+A  src/embeddings/restart-daemon.ts        <- out-of-scope
+M  src/dataset/schema.ts
 ```
 
 Key excerpts (abridged):
 
-**`src/billing/invoice-service.ts`**
+**`src/search/search-service.ts`**
 ```ts
-export async function listInvoices() {
-  const invoices = await prisma.invoice.findMany();   // no tenant filter, no pagination
+export async function search(query: string) {
+  const hits = await dataset.query({ text: query });   // no partition filter, no limit
   return Promise.all(
-    invoices.map(async (inv) => ({
-      ...inv,
-      lineItems: await prisma.invoiceLineItem.findMany({ where: { invoiceId: inv.id } }),
+    hits.map(async (h) => ({
+      ...h,
+      entry: await dataset.get(h.id),                   // one read per hit (N+1)
     }))
   );
 }
 
-export async function onPaymentFailed(event: StripeEvent) {
-  logger.warn("invoice payment failed", { id: event.data.object.id });
-  // TODO: retry logic
+export async function onEmbeddingsOff() {
+  logger.warn("embeddings unavailable");
+  // TODO: BM25 fallback
 }
 ```
 
-**`src/app/billing/invoices/page.tsx`**
-```tsx
-export default async function InvoicesPage() {
-  const invoices = await listInvoices();
-  return (
-    <div>
-      {invoices.map(inv => <InvoiceRow key={inv.id} invoice={inv} />)}
-    </div>
-  );
+**`src/search/search-command.ts`**
+```ts
+export async function searchCommand(query: string) {
+  const results = await search(query);
+  for (const r of results) {
+    process.stdout.write(formatResult(r) + "\n");
+  }
 }
 ```
 
-**`src/app/billing/invoices/[id]/page.tsx`** — no owner-role check.
+**`src/search/result-view.ts`**, no partition/visibility check.
 
-**`src/billing/cancel-subscription.ts`** — 52 lines implementing a cancellation flow, violating NG-2.
+**`src/embeddings/restart-daemon.ts`**, 52 lines restarting the embeddings daemon, violating NG-2.
 
 ---
 
-## Output — QA Report
+## Output, QA Report
 
-Written to `library/requirements/features/feature-013-team-invoices/reports/2026-04-24-qa-report.md`.
+Written to `library/requirements/features/feature-013-library-search/reports/2026-04-24-qa-report.md`.
 
 ```markdown
-# QA Report: feature-013 Team Invoices
+# QA Report: feature-013 Library Search
 
-**Plan document:** `library/requirements/features/feature-013-team-invoices/prd-feature-013-team-invoices.md`
+**Plan document:** `library/requirements/features/feature-013-library-search/prd-feature-013-library-search.md`
 **Audit date:** 2026-04-24
 **Base branch:** `main`
-**Head:** `feat/team-invoices`
+**Head:** `feat/library-search`
 **Auditor:** quality-worker-bee
 
 ## Summary
 
-The team-invoices implementation has three Critical blockers that must be addressed before merge: a tenant-scoping gap that leaks invoices across teams (AC-1), missing owner-role authorization (AC-2), and the retry logic from US-4 is entirely absent. Four Warnings surfaced in addition, including an N+1 on the list endpoint and an out-of-scope cancellation flow that violates NG-2. The happy-path rendering works but the implementation is not ship-ready.
+The library-search implementation has three Critical blockers that must be addressed before merge: a partition-scoping gap that leaks private entries into public search (AC-1), a missing gate/validation on the query path (AC-2), and the BM25 fallback from US-4 is entirely absent. Four Warnings surfaced in addition, including an N+1 dataset read on the result path and an out-of-scope daemon-restart file that violates NG-2. The happy-path ranking works but the implementation is not ship-ready.
 
 ## Scorecard
 
 | Category      | Status | Notes |
 |---------------|--------|-------|
-| Completeness  | ❌ | US-4 retry logic absent; AC-4 cursor pagination not implemented |
-| Correctness   | ❌ | Tenant scoping missing → data correctness compromised |
-| Alignment     | ⚠️ | Out-of-scope cancellation file added (NG-2 violation) |
-| Gaps          | ❌ | No owner-role check, no empty state, no error boundary |
-| Detrimental   | ⚠️ | N+1 on list endpoint; no pagination; dead TODO in retry handler |
+| Completeness  | ❌ | US-4 BM25 fallback absent; AC-4 cursor capping not implemented |
+| Correctness   | ❌ | Partition scoping missing, correctness of the public/private split compromised |
+| Alignment     | ⚠️ | Out-of-scope daemon-restart file added (NG-2 violation) |
+| Gaps          | ❌ | No gate/validation, no empty-result message, no error path on dataset read |
+| Detrimental   | ⚠️ | N+1 dataset read on result path; no capping; dead TODO in fallback handler |
 
 ## Critical Issues (must fix)
 
-- [ ] **Tenant leak — invoices are not scoped to the signed-in team (AC-1)** — `src/billing/invoice-service.ts:2`
+- [ ] **Partition leak, search is not scoped to the requested public/private partition (AC-1)**, `src/search/search-service.ts:2`
 
-  `prisma.invoice.findMany()` returns every invoice in the database, not just the signed-in user's team. This leaks other tenants' billing data on the `InvoicesPage` render. AC-1 explicitly requires tenant isolation.
+  `dataset.query({ text: query })` searches every entry, public and private, not just the requested partition. This leaks private library entries into a public search. AC-1 explicitly requires the partition split to hold.
 
-  Suggested: thread the current `teamId` from the session into the service and filter: `where: { teamId }`. Add a compile-time guard so `listInvoices` requires a `teamId` arg.
+  Suggested: thread the requested partition into the service and filter: `dataset.query({ text: query, where: { visibility } })`. Add a compile-time guard so `search` requires a `visibility` arg.
 
   ```ts
-  export async function listInvoices() {
-    const invoices = await prisma.invoice.findMany();   // ← missing where: { teamId }
+  export async function search(query: string) {
+    const hits = await dataset.query({ text: query });   // <- missing where: { visibility }
   ```
 
-- [ ] **Missing owner-role authorization (AC-2)** — `src/app/billing/invoices/[id]/page.tsx:1-24`
+- [ ] **Missing gate and validation on the query path (AC-2)**, `src/search/result-view.ts:1-24`
 
-  The detail page reads the invoice by ID but does not check whether the signed-in user is a team owner (or that the invoice belongs to their team). Regular members and cross-team users can read any invoice by guessing IDs.
+  The result path reaches the dataset with the raw query string and never routes through the pre-tool-use gate or validates the input. A crafted query can reach the dataset unchecked.
 
-  Suggested: fetch the user's `teamId` and role from the session; 404 if the invoice's `teamId` doesn't match, and redirect non-owners to `/billing`.
+  Suggested: validate the query with the shared `zod`/`valibot` schema and route the call through the gate before it reaches `dataset.query`.
 
-- [ ] **US-4 retry logic not implemented** — `src/billing/invoice-service.ts:16-19`
+- [ ] **US-4 BM25 fallback not implemented**, `src/search/search-service.ts:14-17`
 
-  The `onPaymentFailed` handler logs and returns. No retry is scheduled, and there is no "Past Due" transition after three failures. This is a core plan requirement, not an edge case.
+  The `onEmbeddingsOff` handler logs and returns. No BM25 ranking runs, so search returns nothing when embeddings are disabled. This is a core plan requirement, not an edge case.
 
-  Suggested: enqueue a retry job with `queue.enqueue("invoice.retry", { id, attempt: 1 })`, backoff schedule 1h / 6h / 24h, mark `status: "past_due"` on the third failure.
+  Suggested: call the BM25 ranker over the library corpus and label the result mode `bm25-fallback`.
 
   ```ts
-  export async function onPaymentFailed(event: StripeEvent) {
-    logger.warn("invoice payment failed", { id: event.data.object.id });
-    // TODO: retry logic   ← entire requirement lives in this TODO
+  export async function onEmbeddingsOff() {
+    logger.warn("embeddings unavailable");
+    // TODO: BM25 fallback   <- entire requirement lives in this TODO
   }
   ```
 
 ## Warnings (should fix)
 
-- [ ] **N+1 query on invoice list** — `src/billing/invoice-service.ts:2-8`
+- [ ] **N+1 dataset read on result path**, `src/search/search-service.ts:2-8`
 
-  The list endpoint runs one query for invoices and then one query per invoice for its line items. For a team with 200 invoices, this is 201 queries.
+  The result path runs one query for hits and then one `dataset.get` per hit. For 200 hits, this is 201 dataset reads.
 
-  Suggested: replace the `Promise.all(...map)` pattern with Prisma's `include`: `prisma.invoice.findMany({ where: { teamId }, include: { lineItems: true } })`.
+  Suggested: replace the `Promise.all(...map)` pattern with a single batched read that returns the full entry inline.
 
-- [ ] **Missing cursor-based pagination (AC-4)** — `src/billing/invoice-service.ts:2`
+- [ ] **Missing result capping (AC-4)**, `src/search/search-service.ts:2`
 
-  `findMany` returns the full set. AC-4 specifies 20 per page with cursor pagination.
+  `dataset.query` returns the full result set. AC-4 specifies 20 per call with a cursor.
 
   Suggested: accept `{ cursor, take: 20 }` args, return `{ items, nextCursor }`.
 
-- [ ] **Out-of-scope cancellation flow (NG-2 violation)** — `src/billing/cancel-subscription.ts:1-52`
+- [ ] **Out-of-scope daemon-restart flow (NG-2 violation)**, `src/embeddings/restart-daemon.ts:1-52`
 
-  NG-2 explicitly excludes cancellation flows from this phase. A full 52-line cancellation implementation landed in this PR.
+  NG-2 explicitly excludes changes to the embeddings daemon lifecycle in this phase. A full 52-line daemon-restart implementation landed in this PR.
 
-  Suggested: remove the file, or open a scope-amendment PRD with `library-worker-bee` if cancellation is now desired for this phase.
+  Suggested: remove the file, or open a scope-amendment PRD with `library-worker-bee` if daemon changes are now desired for this phase.
 
-- [ ] **Missing empty state (AC-3)** — `src/app/billing/invoices/page.tsx:1-9`
+- [ ] **Missing empty-result message (AC-3)**, `src/search/search-command.ts:1-7`
 
-  AC-3 calls for an empty state when a team has no invoices. The current page renders an empty `<div>`.
+  AC-3 calls for an empty-result message when nothing matches. The current command prints nothing.
 
-  Suggested: branch on `invoices.length === 0` and render a "No invoices yet" message with a link to the billing settings.
+  Suggested: branch on `results.length === 0` and print a "No matches" message.
 
 ## Suggestions (consider improving)
 
-- [ ] **Extract the Stripe event handler to a thin adapter** — `src/billing/invoice-service.ts:16-19`
+- [ ] **Extract the embeddings-state handler to a thin adapter**, `src/search/search-service.ts:14-17`
 
-  Once the retry logic lands, the handler will carry non-trivial branching. Consider moving the Stripe-shape knowledge to a separate `stripe-webhook-handler.ts` adapter and keep `invoice-service.ts` storage-agnostic.
+  Once the fallback logic lands, the handler will carry non-trivial branching. Consider moving the embeddings-availability knowledge to a separate `embeddings-state.ts` adapter and keep `search-service.ts` ranking-agnostic.
 
 ## Plan Item Traceability
 
 | #    | Plan Requirement                                    | Status | Implementation Location                              | Notes |
 |------|-----------------------------------------------------|--------|-------------------------------------------------------|-------|
-| US-1 | Team owner views invoice list                       | ⚠️ | `src/app/billing/invoices/page.tsx:1-9`              | Renders, but with tenant leak and N+1 |
-| US-2 | Team owner clicks to view line items                | ⚠️ | `src/app/billing/invoices/[id]/page.tsx:1-24`        | Works, but no authz check |
-| US-3 | Team owner downloads PDF                            | ✅ | `src/app/billing/invoices/[id]/pdf/route.ts:1-40`    | — |
-| US-4 | Failed invoices auto-retry + Past Due after 3       | ❌ | `src/billing/invoice-service.ts:16-19`               | TODO only — not implemented |
-| AC-1 | Invoice list scoped to owner's team                 | ❌ | `src/billing/invoice-service.ts:2`                   | No tenant filter |
-| AC-2 | Only team owners can access                         | ❌ | `src/app/billing/invoices/[id]/page.tsx`             | No role check |
-| AC-3 | Empty state when no invoices                        | ❌ | `src/app/billing/invoices/page.tsx`                  | Empty `<div>` |
-| AC-4 | Pagination (20/page, cursor-based)                  | ❌ | `src/billing/invoice-service.ts:2`                   | No pagination |
-| NG-1 | No invoice editing                                  | ✅ | —                                                    | Honored |
-| NG-2 | No subscription cancellation flow                   | ❌ | `src/billing/cancel-subscription.ts:1-52`            | Violated — 52-line cancellation added |
+| US-1 | User runs search, sees ranked entries               | ⚠️ | `src/search/search-command.ts:1-7`                  | Renders, but with partition leak and N+1 |
+| US-2 | User opens a result to view the entry               | ⚠️ | `src/search/result-view.ts:1-24`                   | Works, but no gate/validation |
+| US-3 | Results respect public/private split                | ❌ | `src/search/search-service.ts:2`                   | No partition filter |
+| US-4 | BM25 fallback when embeddings off                   | ❌ | `src/search/search-service.ts:14-17`               | TODO only, not implemented |
+| AC-1 | Search scoped to requested partition                | ❌ | `src/search/search-service.ts:2`                   | No partition filter |
+| AC-2 | Query path gated and validated                      | ❌ | `src/search/result-view.ts`                        | No gate, no validation |
+| AC-3 | Empty-result message                                | ❌ | `src/search/search-command.ts`                     | Prints nothing |
+| AC-4 | Capping (20/call, cursor-based)                     | ❌ | `src/search/search-service.ts:2`                   | No capping |
+| NG-1 | No re-embedding of the corpus                       | ✅ |,                                                    | Honored |
+| NG-2 | No embeddings daemon lifecycle changes              | ❌ | `src/embeddings/restart-daemon.ts:1-52`            | Violated, 52-line daemon restart added |
 
 ## Files Changed
 
-- `src/app/billing/invoices/[id]/page.tsx` (A) — invoice detail page; missing authz check (AC-2 gap)
-- `src/app/billing/invoices/[id]/pdf/route.ts` (A) — PDF download endpoint; US-3 ✅
-- `src/app/billing/invoices/page.tsx` (A) — invoice list page; empty state absent, tenant leak inherited from service
-- `src/billing/cancel-subscription.ts` (A) — out-of-scope cancellation flow (NG-2 violation)
-- `src/billing/invoice-service.ts` (A) — central service; three Critical issues and one Warning live here
-- `src/db/schema.prisma` (M) — adds `Invoice` and `InvoiceLineItem` models
+- `src/search/result-view.ts` (A), result detail view; missing gate/validation (AC-2 gap)
+- `src/search/format-result.ts` (A), result formatter; US-1 ✅
+- `src/search/search-command.ts` (A), CLI command; empty-result message absent, partition leak inherited from service
+- `src/embeddings/restart-daemon.ts` (A), out-of-scope daemon restart (NG-2 violation)
+- `src/search/search-service.ts` (A), central service; three Critical issues and one Warning live here
+- `src/dataset/schema.ts` (M), adds the search index tensor to the Deep Lake schema
 ```
 
 ---
 
 ## Why the audit looks this way
 
-- **Three Criticals, four Warnings.** Each Critical matches a bullet in the `05-severity-classification.md` decision tree (plan requirement missing, data integrity risk, plan requirement absent). Each Warning is "should fix" — non-hot-path N+1, scope creep, implied gap.
-- **Tenant leak is Critical, not Warning**, per `07-common-gaps.md` — tenant scoping violations are always Critical.
-- **Cancellation is Warning, not Critical.** The code itself works; it just violates a non-goal. If the cancellation code were broken, severity would escalate.
-- **The report names each axis even though three have failed** — no silent passes (`00-principles.md`).
-- **Traceability table includes both NG rows.** One is Pass, one is Fail — so scope auditing is visible.
+- **Three Criticals, four Warnings.** Each Critical matches a bullet in the `05-severity-classification.md` decision tree (plan requirement missing, data-correctness risk, plan requirement absent). Each Warning is "should fix", non-hot-path N+1, scope creep, implied gap.
+- **Partition leak is Critical, not Warning**, per `07-common-gaps.md`, a scope-filter violation that mixes private and public data is always Critical.
+- **Daemon restart is Warning, not Critical.** The code itself works; it just violates a non-goal. If the restart code were broken, severity would escalate.
+- **The report names each axis even though three have failed**, no silent passes (`00-principles.md`).
+- **Traceability table includes both NG rows.** One is Pass, one is Fail, so scope auditing is visible.

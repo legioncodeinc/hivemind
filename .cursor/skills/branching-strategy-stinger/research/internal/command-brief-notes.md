@@ -31,7 +31,7 @@
 2. **Never recommend GitFlow as a default.** Surface the bias explicitly. Let team override with justification.
 3. **Always surface the long-lived-branch trap.** Two working days = named threshold.
 4. **Distinguish merge strategy from branch model.** These are separate configuration choices.
-5. **Route to `github-repo-health-worker-bee` for protection ruleset changes, not `devops-worker-bee`.**
+5. **Route to `github-repo-health-worker-bee` for protection ruleset changes, not `ci-release-worker-bee`.**
 
 ## Boundary map
 
@@ -39,7 +39,7 @@
 |---|---|
 | Rebase mechanics, interactive rebase, conflict resolution | `git-worker-bee` |
 | Branch protection ruleset configuration in GitHub | `github-repo-health-worker-bee` |
-| CI/CD pipeline topology | `devops-worker-bee` |
+| CI/CD pipeline topology | `ci-release-worker-bee` |
 | Release communication downstream of branching model | `changelog-release-notes-worker-bee` |
 
 ## Refresh cadence

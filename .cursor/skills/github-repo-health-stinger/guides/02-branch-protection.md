@@ -1,4 +1,4 @@
-# 02 — Branch Protection and Rulesets Audit
+# 02 - Branch Protection and Rulesets Audit
 
 *Research basis: `research/external/01-github-rulesets-docs.md`*
 
@@ -62,11 +62,11 @@ gh api /repos/{owner}/{repo}/branches/main/protection
 **Bypass actors:** @org/platform-leads (admin bypass)
 
 **Findings:**
-- RECOMMEND: Enable `dismiss_stale_reviews` — takes 2 minutes in Settings > Branches.
+- RECOMMEND: Enable `dismiss_stale_reviews` - takes 2 minutes in Settings > Branches.
 - CONSIDER: Enable `required_linear_history` to enforce clean merge history.
 ```
 
 ## Handoffs
 
-- Required status check gaps (missing CI stages): surface finding, hand to `devops-worker-bee` for CI architecture.
-- Force-push incident investigation: hand to `security-worker-bee`.
+- Required status check gaps (missing CI stages): surface finding, hand to `ci-release-worker-bee` for CI architecture.
+- Force-push incident investigation: hand to `security-worker-bee

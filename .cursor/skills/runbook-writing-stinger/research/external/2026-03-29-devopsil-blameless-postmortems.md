@@ -8,7 +8,7 @@ topic: postmortem-linkage
 stinger: runbook-writing-stinger
 ---
 
-# Writing Blameless Postmortems That Actually Prevent Recurrence — DevOpsil
+# Writing Blameless Postmortems That Actually Prevent Recurrence - DevOpsil
 
 Published: 2026-03-29 (Author: Zara Blackwood)
 
@@ -25,10 +25,10 @@ Published: 2026-03-29 (Author: Zara Blackwood)
 
 ## Direct quotes
 
-- "Every action item must be: Specific — not 'improve monitoring' but 'add PagerDuty alert when DB connection pool usage exceeds 80%'; Assigned — one named owner, not a team; Time-bound — a due date, not 'soon'; Tracked — a ticket number."
-- "Postmortem action items should enter the engineering backlog immediately — not sit in a separate document."
-- "The document should be written before the review meeting — not during it. The meeting is for validating the timeline, stress-testing the contributing factors, and refining action items."
-- "Write runbook for DB connection pool exhaustion" — shown as a specific action item in a real postmortem example (ENG-4824).
+- "Every action item must be: Specific - not 'improve monitoring' but 'add PagerDuty alert when DB connection pool usage exceeds 80%'; Assigned - one named owner, not a team; Time-bound - a due date, not 'soon'; Tracked - a ticket number."
+- "Postmortem action items should enter the engineering backlog immediately - not sit in a separate document."
+- "The document should be written before the review meeting - not during it. The meeting is for validating the timeline, stress-testing the contributing factors, and refining action items."
+- "Write runbook for DB connection pool exhaustion" - shown as a specific action item in a real postmortem example (ENG-4824).
 
 ## Implications for stinger-forge
 

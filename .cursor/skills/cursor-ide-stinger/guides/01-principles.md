@@ -1,76 +1,68 @@
 # Guide 01: Principles
 
-Core philosophy for `cursor-ide-worker-bee` — read this before any rule authoring, MCP work, or SDK task.
+The mental model for `cursor-ide-worker-bee`. Read this before any rule, MCP, hook, layout, or extension work.
 
-## The MDC-first imperative
+## The Hivemind Cursor surface
 
-`.cursorrules` was Cursor's original rules format: a single file at the project root, always included in every chat/composer/agent context. It still works in Chat mode, but **it is silently ignored in Agent mode**. Because virtually all modern Cursor workflows involve the agent — inline completions aside — any team using `.cursorrules` exclusively loses all their rules the moment they adopt agentic workflows. There is no error, no warning, no indication.
+This repo (`@deeplake/hivemind`, TS ^6 / Node >=22 / ESM) integrates with Cursor across four real surfaces. Know which one a task touches before you act:
 
-**Rule 1: any project using agentic workflows must use `.cursor/rules/*.mdc`.**
+1. **The hooks harness.** `src/cli/install-cursor.ts` merges `~/.cursor/hooks.json` (Cursor 1.7+) and copies built hook scripts to `~/.cursor/hivemind/bundle/`. Six lifecycle events are wired so Hivemind captures sessions, recalls memory, and builds the code graph. This is `guides/04`.
+2. **The extension.** `harnesses/cursor/extension/` is a first-party VS Code/Cursor extension (its own webpack + `package.json`). It surfaces health, onboarding, a dashboard webview, the codebase graph, and skill sync, and can wire/refresh the same hooks. This is `guides/06`.
+3. **The MCP server in Cursor.** `src/mcp/server.ts` (stdio) exposes `hivemind_search` / `hivemind_read` / `hivemind_index`. Registering it inside Cursor is a `mcp.json` entry. This is `guides/03`.
+4. **The `.cursor/` Bee Army platform.** The rules (`.mdc`), agents (`*.md`), skills/Stingers, commands (`the-beekeeper`, `the-smoker`), and `model-comparison-matrix.md` that make the Army run inside Cursor. Authoring rules is `guides/02`; the layout is `guides/05`.
 
-When both formats coexist, MDC wins on conflicting instructions. The override is silent. This means `.cursorrules` content may seem to work (in Chat) while being completely absent (in Agent), leading to inconsistent behaviour across contexts. The safe state is: migrate fully, then archive `.cursorrules`.
+Everything this Bee does lives in one of those four. If a task is about the TypeScript quality, the MCP tool schemas, or another agent's harness, it belongs to a different Bee (see "When to defer" below).
 
-## Context budget awareness
+## Cursor's hooks.json is its own shape
 
-Every `alwaysApply: true` rule is prepended to every chat, composer, and agent context window — before any code, before the user's message, before tool calls. This is powerful but expensive.
+Cursor 1.7+ reads `~/.cursor/hooks.json`:
 
-**Rule 2: keep total `alwaysApply: true` content under ~2,000 tokens across all rule files.**
+```jsonc
+{ "version": 1, "hooks": { "<event>": [ { "type": "command", "command": "...", "timeout": 30 } ] } }
+```
 
-At 2,000 tokens you have roughly 1,500 words of rule content always burning context budget. Beyond this threshold:
+This differs from Claude Code and Codex in two ways that matter:
 
-- Agents see less of the actual code they are working on.
-- Token costs increase on metered plans.
-- Response quality degrades on long-context models that struggle with early instructions being "forgotten".
+- **No outer wrapper per entry.** The array entries under each event ARE the command objects directly. There is no `{ hooks: [...] }` nesting inside an entry.
+- **No top-level `matcher` wrapper.** Field names are `type` + `command` + `timeout`. A `matcher` (e.g. `"Shell"`) is a sibling field on the command object itself, used on `preToolUse`.
 
-Prefer `alwaysApply: false` with narrow globs. A rule scoped to `**/*.tsx` that fires only when a TSX file is in context is just as effective as `alwaysApply: true` for TSX files — and costs nothing when the agent is working on Python.
+Getting this shape wrong is the most common way to break the harness. `install-cursor.ts` is the authoritative reference.
 
-## The four activation modes
+## Idempotent, Windows-safe hook merges
 
-Every `.mdc` file with frontmatter picks exactly one of these modes based on the three frontmatter fields:
+`install-cursor.ts` must be safe to run repeatedly:
 
-| Mode name | `alwaysApply` | `globs` | `description` | When it fires |
+- It strips prior Hivemind entries before re-adding them, matched on a path normalized to forward slashes (`cmd.replace(/\\/g, "/").includes("/.cursor/hivemind/bundle/")`). Without normalization, Windows backslash paths would not match and re-install would duplicate every hook.
+- It only rewrites `hooks.json` when the merged content actually changed (`writeJsonIfChanged`), so it does not perturb Cursor's hooks trust fingerprint on a no-op install.
+
+Preserve both properties in any change to the wiring.
+
+## The `.cursor/rules/*.mdc` model
+
+Cursor project rules are `.mdc` files with YAML frontmatter. Three fields select the activation mode:
+
+| Mode | `alwaysApply` | `globs` | `description` | Fires when |
 |---|---|---|---|---|
 | Always Apply | `true` | any | any | Every chat, composer, and agent context |
-| Apply to Specific Files | `false` | set | any | When a file matching the glob is in context |
-| Apply Intelligently | `false` | unset | set | AI reads `description` and decides if relevant |
-| Apply Manually | `false` | unset | unset | Only when `@`-mentioned in chat |
+| Apply to Specific Files | `false` | set | any | A file matching the glob is in context |
+| Apply Intelligently | `false` | unset | set | The agent reads `description` and decides |
+| Apply Manually | `false` | unset | unset | Only when `@`-mentioned |
 
-**Rule 3: use the most specific activation mode that satisfies the rule's purpose.**
+**Prefer the most specific mode that satisfies the rule's purpose.** Every `alwaysApply: true` rule is prepended to every context window, so reserve it for short, always-true directives. This repo uses `alwaysApply: true` only for `no-em-dashes.mdc`; `plan-construction-protocol.mdc` and `respect-agent-work-boundaries.mdc` ride on `description` / globs.
 
-Guidelines:
-- Global coding standards that apply everywhere: "Always Apply" (but watch the token budget).
-- Language-specific patterns: "Apply to Specific Files" with a glob like `**/*.ts`.
-- Domain context (e.g., "This project uses our auth module"): "Apply Intelligently" with a descriptive `description`.
-- Reference material users look up on demand: "Apply Manually".
+One rule file per logical concern, named descriptively. Keep individual files well under Cursor's 500-line composability ceiling.
 
-## Rule file size and composability
+## NO em dashes (hard rule)
 
-Cursor recommends keeping individual rule files under 500 lines. This is not a hard limit but a composability signal: if a rule file is growing beyond 500 lines, it probably conflates multiple concerns and should be split.
-
-**Rule 4: one rule file per logical concern. Name files descriptively.**
-
-Good names: `no-em-dashes.mdc`, `react-component-conventions.mdc`, `api-security-rules.mdc`.
-Bad names: `rules.mdc`, `all-rules.mdc`, `misc.mdc`.
-
-Use `@filename` references inside rule bodies to point to example files rather than copying them inline. This keeps rules short and prevents them from going stale when the referenced file changes.
-
-## Rule precedence hierarchy
-
-When multiple rules apply to the same context, Cursor applies them in this order (highest priority first):
-
-1. Team Rules (Enterprise/Business admin-enforced, all repos)
-2. Project-level `.cursor/rules/*.mdc` files
-3. User-level rules (Cursor Settings > Rules)
-4. `.cursorrules` (legacy, Chat mode only)
-
-This means project rules can be overridden by Team Rules. Inform users on Enterprise/Business plans that Team Rules may suppress or override their project rules.
+`.cursor/rules/no-em-dashes.mdc` (alwaysApply) bans em dashes (`U+2014`) and en dashes (`U+2013`) in any prose authored on the user's behalf: chat, docs, commit messages, comments, every file this Bee writes. Use a comma, colon, parentheses, or a period instead. Write hyphens directly; do not run a blanket replace that could corrupt code.
 
 ## When to defer to other Bees
 
-`cursor-ide-worker-bee` owns the configuration layer. When the conversation shifts to what the agent produces, hand off:
+`cursor-ide-worker-bee` owns the Cursor configuration and platform layer. Hand off when:
 
-- Code quality of agent output → relevant language worker-bee (`react-worker-bee`, `python-worker-bee`, etc.)
-- Prompts sent to external LLMs → `mind-worker-bee`
-- CI/CD pipelines that invoke SDK agents → `devops-worker-bee` (after providing the SDK code)
-- Canvas React components → `react-worker-bee`
-- Security of MCP credential handling → `security-worker-bee`
+- The TypeScript quality or typing of `install-cursor.ts` / the extension source is the concern -> `typescript-node-worker-bee`.
+- The MCP server's tool schemas, Zod validation, or transport is the concern -> `mcp-protocol-worker-bee`.
+- The harness for Claude Code, Codex, or Hermes is the concern -> `harness-integration-worker-bee`.
+- TypeScript/UI code inside the extension's webview -> `typescript-node-worker-bee`.
+- Publishing or CI for the extension -> `ci-release-worker-bee`.
+- Every implementation task closes out with `security-worker-bee` first, then `quality-worker-bee`.

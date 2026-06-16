@@ -8,7 +8,7 @@ topic: escalation-paths
 stinger: runbook-writing-stinger
 ---
 
-# Escalation Policies — PagerDuty Full-Service Ownership Documentation
+# Escalation Policies - PagerDuty Full-Service Ownership Documentation
 
 Published: Primary reference (no date; PagerDuty official documentation)
 

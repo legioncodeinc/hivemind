@@ -1,4 +1,4 @@
-# {{Bee Display Name}} — Beekeeper-Suit's Guide
+# {{Bee Display Name}} - Beekeeper-Suit's Guide
 
 The Beekeeper-Suit routing skill's record of when to invoke `{{bee-name}}`. Use this guide to decide whether a user request belongs to this Bee.
 
@@ -11,7 +11,7 @@ The Beekeeper-Suit routing skill's record of when to invoke `{{bee-name}}`. Use 
 
 ## Domain
 
-{{One paragraph: what single domain does this Bee own? Lift from the Command Brief's IDENTITY & RESPONSIBILITY, tightened to 3–5 sentences.}}
+{{One paragraph: what single domain does this Bee own? Lift from the Command Brief's IDENTITY & RESPONSIBILITY, tightened to 3-5 sentences.}}
 
 ## Trigger phrases
 
@@ -25,7 +25,7 @@ Or when the request implicitly involves {{the domain area}}.
 
 ## Do NOT route when
 
-- {{negative trigger 1 — names the other Bee that owns this}}
+- {{negative trigger 1 - names the other Bee that owns this}}
 - {{negative trigger 2}}
 - {{negative trigger 3}}
 
@@ -37,9 +37,9 @@ Before invoking, ensure the user has provided (or you can infer):
 
 - {{required input 1}}
 - {{required input 2}}
-- {{optional input — default behavior if absent}}
+- {{optional input - default behavior if absent}}
 
-If a required input is missing, do not invoke yet — ask the user to supply it.
+If a required input is missing, do not invoke yet - ask the user to supply it.
 
 ## Outputs the Bee produces
 
@@ -49,7 +49,7 @@ If a required input is missing, do not invoke yet — ask the user to supply it.
 
 ## Multi-Bee sequences this Bee participates in
 
-- {{sequence name}} — {{this Bee's position in the sequence and what hands off to it / from it}}
+- {{sequence name}} - {{this Bee's position in the sequence and what hands off to it / from it}}
 
 ## Critical directives the orchestrator should respect
 

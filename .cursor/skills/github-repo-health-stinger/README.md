@@ -4,7 +4,7 @@ Repository hygiene auditor for GitHub repositories. Encodes the 2026 authoritati
 
 Paired with: `github-repo-health-worker-bee` (the Bee that wields this Stinger).
 
-**Start here:** `SKILL.md` — the routing table, hard rules, and scoring weights.
+**Start here:** `SKILL.md` - the routing table, hard rules, and scoring weights.
 
 
-**Research summary:** `research/research-summary.md` — 12 primary sources synthesized, normal depth tier, May 2026 window.
+**Research summary:** `research/research-summary.md` - 12 primary sources synthesized, normal depth tier, May 2026 window.

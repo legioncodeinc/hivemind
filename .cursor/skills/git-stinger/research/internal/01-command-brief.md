@@ -46,10 +46,10 @@ The full Git workflow surface:
 
 | Out of scope | Owned by |
 |---|---|
-| CI/CD pipeline configuration on top of Git events | `devops-worker-bee` |
-| GitHub/GitLab API usage beyond the Git protocol | `devops-worker-bee` |
-| PR review process tooling | `devops-worker-bee` |
-| Server-side hook configuration in CI | `devops-worker-bee` |
+| CI/CD pipeline configuration on top of Git events | `ci-release-worker-bee` |
+| GitHub/GitLab API usage beyond the Git protocol | `ci-release-worker-bee` |
+| PR review process tooling | `ci-release-worker-bee` |
+| Server-side hook configuration in CI | `ci-release-worker-bee` |
 | Credential rotation after secrets-in-history incident | `security-worker-bee` |
 | Secret scanning policies | `security-worker-bee` |
 
@@ -95,7 +95,7 @@ When a developer brings a Git problem, `git-worker-bee` maps it to one of:
 
 5. **Escalate to the right Bee.**
    - Secrets removal → secrets rotation → `security-worker-bee`
-   - Server-side hooks + CI → `devops-worker-bee`
+   - Server-side hooks + CI → `ci-release-worker-bee`
 
 ---
 

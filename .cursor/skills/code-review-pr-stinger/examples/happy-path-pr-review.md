@@ -6,7 +6,7 @@ A worked end-to-end example of `code-review-pr-worker-bee` handling a well-scope
 
 ## Scenario
 
-**PR title:** `feat: add email validation to registration form`
+**PR title:** `feat: validate email in the digest-notification config loader`
 **Author:** Alex Chen
 **Reviewer request:** "Audit this PR description and generate a review checklist. Also coach one of the reviewer's comments."
 
@@ -16,9 +16,9 @@ Added email validation. Fixed a bug.
 ```
 
 **Diff overview:**
-- `components/RegistrationForm.tsx` — 45 lines changed (adds `validateEmail` function, applies it to the form submit handler)
-- `utils/validation.ts` — 20 lines changed (adds email regex utility)
-- `components/__tests__/RegistrationForm.test.tsx` — 60 lines changed (adds test cases for valid/invalid emails)
+- `src/config/loadNotificationConfig.ts` - 45 lines changed (adds `validateEmail` call when parsing the config)
+- `src/utils/validation.ts` - 20 lines changed (adds email regex utility)
+- `src/utils/validation.test.ts` - 60 lines changed (adds Vitest cases for valid/invalid emails)
 
 **Reviewer comment to coach:**
 > "This regex is way too simple. You'll need something better."
@@ -29,9 +29,9 @@ Added email validation. Fixed a bug.
 
 | Element | Status | Notes |
 |---|---|---|
-| Motivation | ❌ Missing | "Added email validation" — no problem statement |
+| Motivation | ❌ Missing | "Added email validation" - no problem statement |
 | Context | ❌ Missing | No issue link, no prior PR reference |
-| What changed | ❌ Partial | "Added email validation" — not per-file |
+| What changed | ❌ Partial | "Added email validation" - not per-file |
 | What did NOT change | ❌ Missing | No scope boundary |
 | Testing proof | ❌ Missing | No CI link, no test run evidence |
 | Reviewer hints | ❌ Missing | None |
@@ -45,64 +45,65 @@ Added email validation. Fixed a bug.
 ```markdown
 ## Motivation
 
-Registration form currently accepts any string in the email field. Malformed
-email addresses are reaching the database and failing on the unique constraint
-rather than returning a user-friendly validation message. Fixes #214.
+The digest-notification config loader currently accepts any string in the
+`email` field. Malformed addresses propagate downstream and fail later with a
+cryptic SMTP error instead of a clear config-validation message at load time.
+Fixes #214.
 
 ## Context
 
-- Closes: #214 (Users seeing cryptic error on registration with malformed email)
+- Closes: #214 (Operators seeing cryptic SMTP error from a malformed config email)
 - No prior PR dependency
 
 ## What changed
 
-- `components/RegistrationForm.tsx`: Added `validateEmail` call on form submit.
-  Returns early with an inline error message if the email is invalid.
-- `utils/validation.ts`: Added `validateEmail(email: string): boolean` utility
+- `src/config/loadNotificationConfig.ts`: Added `validateEmail` call during parse.
+  Throws a typed config error early if the email is invalid.
+- `src/utils/validation.ts`: Added `validateEmail(email: string): boolean` utility
   using RFC-5321-compatible regex (see code comment for source).
-- `components/__tests__/RegistrationForm.test.tsx`: Added 8 test cases covering
-  valid emails, missing @, missing TLD, and empty string.
+- `src/utils/validation.test.ts`: Added 8 Vitest cases covering valid emails,
+  missing @, missing TLD, and empty string.
 
 ## What did NOT change
 
-- Password validation logic is unchanged (separate ticket: #218)
-- Existing user records with malformed emails in the database are not affected
-  (no migration; this is front-end only)
+- SMTP transport logic is unchanged (separate ticket: #218)
+- Existing persisted configs with malformed emails are not rewritten
+  (no migration; this validates on load only)
 
 ## Testing proof
 
-- [x] All 8 new test cases pass locally (`pnpm test RegistrationForm`)
+- [x] All 8 new test cases pass locally (`npx vitest run validation`)
 - [x] CI passes: [link to CI run]
-- [x] Manual test: submitted form with `notanemail`, `@nodomain`, and valid
-  `user@example.com` — correct behavior in all three cases
+- [x] Manual test: loaded configs with `notanemail`, `@nodomain`, and valid
+  `ops@example.com` - correct behavior in all three cases
 
 ## Reviewer hints
 
-- Key logic is in `components/RegistrationForm.tsx` lines 42-58
-- `utils/validation.ts` is a simple utility — can skim
-- Open question: should we add server-side validation too, or is client-only
-  acceptable given we also validate at the DB constraint level?
+- Key logic is in `src/config/loadNotificationConfig.ts` lines 42-58
+- `src/utils/validation.ts` is a simple utility - can skim
+- Open question: should we also validate at send time, or is load-time
+  validation sufficient given the loader is the only entry point?
 ```
 
 ---
 
 ## Step 3: Review checklist (scoped to this PR)
 
-**Phase 1: Author checklist** — ✅ all items met after description rewrite.
+**Phase 1: Author checklist** - ✅ all items met after description rewrite.
 
 **Phase 2: Reviewer checklist (context-scoped)**
 
 ### Correctness
 - [ ] Does `validateEmail` correctly reject the edge cases named in the tests?
-- [ ] What happens if the user submits with JavaScript disabled? (Client-only validation)
-- [ ] Is the error message shown inline or as a toast? Does it clear on correction?
+- [ ] What happens when the field is absent vs an empty string? (Both covered?)
+- [ ] Is the thrown config error typed and does it name the offending field?
 
-### TypeScript / React additions
+### TypeScript / Node additions
 - [ ] Is `validateEmail` pure (no side effects)?
-- [ ] The form submit handler: does it prevent default before or after validation? (Order matters)
+- [ ] Does the loader fail fast at parse time, before any downstream call?
 
 ### Style
-- [ ] Is the regex source cited in a code comment? (non-obvious logic — `nit:`)
+- [ ] Is the regex source cited in a code comment? (non-obvious logic - `nit:`)
 
 ### Phase 3: Process
 - [ ] CI passes
@@ -116,11 +117,11 @@ rather than returning a user-friendly validation message. Fixes #214.
 > "This regex is way too simple. You'll need something better."
 
 **Coached version:**
-> `suggestion:` The current regex (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`) rejects the most common malformed emails but passes some technically-invalid ones (e.g., double dots in the local part). For registration, this is likely acceptable — the goal is UX feedback, not RFC-5321 compliance, and the DB constraint is the hard gate.
+> `suggestion:` The current regex (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`) rejects the most common malformed emails but passes some technically-invalid ones (e.g., double dots in the local part). For a config loader this is likely acceptable - the goal is an early, clear failure, not RFC-5321 compliance, and the SMTP layer is the hard gate.
 >
-> If we want stricter validation, consider the `validator.js` library's `isEmail()` which handles the RFC edge cases. Trade-off: adds a dependency; benefit: maintained regex we don't have to own.
+> If we want stricter validation, consider the `validator` library's `isEmail()` which handles the RFC edge cases. Trade-off: adds a dependency (and `dependency-audit-worker-bee` review); benefit: maintained regex we don't have to own.
 >
-> Not a merge gate — flagging so Alex can make a conscious choice. If staying with the current approach, suggest adding a code comment explaining the intentional simplicity.
+> Not a merge gate - flagging so Alex can make a conscious choice. If staying with the current approach, suggest adding a code comment explaining the intentional simplicity.
 
 ---
 

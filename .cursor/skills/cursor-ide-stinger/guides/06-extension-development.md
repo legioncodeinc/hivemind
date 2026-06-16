@@ -1,96 +1,70 @@
-# Guide 06: Extension Development
+# Guide 06: The Cursor Extension
 
-Building Cursor plugins and extensions — manifest structure, MCP server bundling, and marketplace readiness.
+Hivemind ships a first-party VS Code/Cursor extension at `harnesses/cursor/extension/`. This guide covers its build, its contributions, and how it relates to the hooks bundle.
 
-> **Source gap note (from research):** The full Cursor plugin manifest schema and marketplace submission checklist were not fully confirmed in the May 2026 research window. The Extension API (`vscode.cursor.mcp.registerServer`, `vscode.cursor.plugins.registerPath`) was found. For the authoritative manifest spec, fetch `https://cursor.com/docs/plugins` directly. This guide documents what is confirmed and flags gaps.
+## What the extension is
 
-## What is a Cursor extension?
+`hivemind-cursor-extension` (publisher `deeplake`, `engines.vscode: ^1.85.0`) runs alongside the hooks integration installed by `hivemind cursor install`. It is a separate build with its own `package.json` and webpack config. It gives the user, inside Cursor:
 
-Cursor extensions are VS Code-compatible extensions that additionally register into the `cursor.*` Extension API namespace. They are distributed through the Cursor marketplace (or installed via VSIX). They can:
+| Surface | Purpose |
+|---|---|
+| Status bar | Four-dimension health: Hivemind CLI, `cursor-agent`, login, hooks wired |
+| Onboarding | Wire hooks, log in, reload when `hooks.json` changes |
+| Dashboard webview | KPIs, settings, recent sessions, codebase graph, rules, skill sync |
+| Skill bridge | Symlinks from `~/.claude/skills/` into Cursor skill roots on workspace open |
 
-- Bundle an MCP server and register it programmatically at extension activation.
-- Register plugin paths that Cursor's agent loading machinery discovers.
-- Contribute skills (`.cursor/skills/`) packaged inside the extension.
-- Add commands, panels, and settings via standard VS Code contribution points.
+Hooks (capture, recall, skillify, graph, summaries) still run from `~/.cursor/hivemind/bundle/`. The extension merges `~/.cursor/hooks.json`; it does not replace the hook scripts.
 
-## Extension manifest (`package.json`) — confirmed fields
+## Manifest contributions (`package.json`)
 
-Standard VS Code fields apply. Cursor-specific additions:
+The `contributes` block declares:
 
-```json
-{
-  "name": "my-cursor-plugin",
-  "displayName": "My Cursor Plugin",
-  "version": "1.0.0",
-  "engines": { "vscode": "^1.85.0" },
-  "contributes": {
-    "commands": [ ... ],
-    "configuration": { ... }
-  },
-  "activationEvents": ["onStartupFinished"]
-}
+- **Commands** under the `hivemind.*` namespace: `runOnboarding`, `login`, `logout`, `showStatus`, `wireHooks`, `unwireHooks`, `openLogs`, `openDashboard`.
+- **`viewsContainers.activitybar`**: a `hivemind` container with `media/icon.svg`.
+- **`views.hivemind`**: a `hivemind.dashboard` webview view.
+
+`activationEvents` is `["onStartupFinished"]`; `main` is `./dist/extension.js`.
+
+## Build
+
+Webpack with `ts-loader`, target `node`, output `dist/extension.js` (`commonjs2`), `vscode` marked external. Notable: the webpack config aliases `@hivemind` to the repo's `src/`, so the extension imports shared Hivemind code directly from source.
+
+```bash
+# repo root: build the hook scripts first
+npm install
+npm run build
+
+# then the extension
+cd harnesses/cursor/extension
+npm install
+npm run compile        # webpack --mode production
 ```
 
-The Cursor marketplace layer reads standard VS Code manifest fields. No confirmed additional top-level Cursor-specific manifest keys as of May 2026 — verify at `cursor.com/docs/plugins`.
+`npm run watch` runs webpack in dev/watch mode; `npm run lint` is `tsc --noEmit`.
 
-## Registering an MCP server from an extension
+## Activation flow (`src/extension.ts`)
 
-In `extension.ts` / `activate()`:
+On `activate()` the extension:
 
-```typescript
-import * as vscode from "vscode";
+1. Sets the bundled extension src path for health checks.
+2. Creates a `HealthPoller` and a status bar item wired to `hivemind.showStatus`, updating the bar from each poll snapshot.
+3. Registers the `hivemind.*` commands and the dashboard webview.
+4. Runs auto-sync (the skill bridge) on activation.
+5. Starts the poller, and on first run prompts onboarding if not yet healthy.
 
-export function activate(context: vscode.ExtensionContext) {
-  const cursorExt = vscode.extensions.getExtension("cursor.cursor");
-  const mcpApi = cursorExt?.exports?.mcp;
-  
-  if (mcpApi?.registerServer) {
-    const serverPath = context.asAbsolutePath("out/mcp-server.js");
-    mcpApi.registerServer("my-plugin-tools", {
-      command: "node",
-      args: [serverPath],
-      env: {}
-    });
-    
-    context.subscriptions.push({
-      dispose: () => mcpApi.unregisterServer("my-plugin-tools")
-    });
-  }
-}
-```
+Source is organized under `src/`: `statusbar/`, `webview/`, `bridge/`, `graph/`, `health/`, `auth/`, `utils/`, `types/`. Helper loaders live in `scripts/` (`load-dashboard.mjs`, `load-sessions.mjs`, `load-rules.mjs`, etc.).
 
-Push to `context.subscriptions` so the server is unregistered when the extension deactivates.
+## Bundle provisioning note
 
-## Registering a plugin path
+A standalone VSIX install does not ship the hook bundle. The bundle must be supplied first by the CLI (`hivemind cursor install`) or the **Hivemind: Wire Hooks** command. When developing from this monorepo, the extension copies the bundle from `harnesses/cursor/bundle/` (the output of `npm run build` at the repo root), not from npm.
 
-```typescript
-const pluginApi = cursorExt?.exports?.plugins;
-if (pluginApi?.registerPath) {
-  pluginApi.registerPath(context.extensionPath);
-}
-```
+## Requirements (for the extension to be healthy)
 
-Cursor then discovers skills and rules in the extension's directory structure.
-
-## Marketplace readiness checklist
-
-Items confirmed or inferred from VS Code + Cursor publishing norms. Flag any item that requires verification at `cursor.com/docs/plugins`:
-
-- [ ] `package.json` has `name`, `displayName`, `version`, `description`, `publisher`
-- [ ] `engines.vscode` set to a realistic minimum version
-- [ ] `activationEvents` are as narrow as possible (avoid `*`)
-- [ ] Extension compiles cleanly with `vsce package`
-- [ ] All `vscode.cursor.*` API calls are guarded with optional chaining (graceful degradation if API not present)
-- [ ] Bundled MCP server exits cleanly on deactivation (no zombie processes)
-- [ ] Secrets are not hardcoded — use VS Code `secrets` storage or `${env:NAME}` interpolation
-- [ ] `README.md` explains what the extension does, how to install, and how to configure
-- [ ] `CHANGELOG.md` present with version history
-- [ ] Extension icon provided (128x128px PNG)
-
-## Plugin quality gates rule
-
-The `plugin-quality-gates.mdc` rule file at `.cursor/plugins/cache/cursor-public/create-plugin/.../rules/plugin-quality-gates.mdc` enforces manifest, path, and component metadata validity during plugin authoring. Load it when writing extension code.
+- Hivemind CLI on PATH (`npm i -g @deeplake/hivemind`).
+- Cursor 1.7+ with the hooks API.
+- `cursor-agent` on PATH and logged in (session wiki summaries).
+- Hook bundle at `~/.cursor/hivemind/bundle/`.
 
 ## Handoff boundary
 
-`cursor-ide-worker-bee` owns extension scaffolding and the `vscode.cursor.*` API surface. For the React components inside the extension's webview panels, hand off to `react-worker-bee`. For publishing and CI for the extension, hand off to `devops-worker-bee`.
+This Bee owns the extension's manifest, contributions, build, and the `vscode.*` activation surface. The TypeScript/UI code inside the dashboard webview and the TypeScript quality of the extension source are `typescript-node-worker-bee`'s. Packaging/publishing and CI are `ci-release-worker-bee`'s.

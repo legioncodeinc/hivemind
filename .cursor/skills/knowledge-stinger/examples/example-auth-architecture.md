@@ -1,107 +1,75 @@
 # Example: Auth Architecture Doc (Abbreviated)
 
-This shows how to write an auth architecture doc — the most common domain-level doc pattern. Source: `legion-code/library/knowledge/private/auth/auth-architecture.md`.
+This shows how to write an auth architecture doc - the most common domain-level doc pattern. Source: `library/knowledge/private/auth/device-flow-architecture.md`.
 
 Key patterns demonstrated:
 - Sequence diagram as a first-class section
-- Two enforcement layers explained separately
-- Specific claims cited ("GitHub OAuth only, no email/password")
+- The polling-key design explained on its own
+- Specific claims cited (the install-id-derived poll key, the default apiUrl)
 - ADR cross-referenced to explain WHY
 
 ---
 
 ```markdown
-# Auth Architecture
+# Device Flow Architecture
 
-> Category: Auth | Version: 1.0 | Date: May 2026 | Status: Active
+> Category: Auth | Version: 1.0 | Date: June 2026 | Status: Active
 
-Legion Code's authentication architecture — Clerk + GitHub OAuth only, mandatory 2FA, and two-layer enforcement.
+How the Hivemind CLI authenticates against the Deep Lake API using the browser device flow, and how the resulting token persists.
 
 **Related:**
-- [`session-model.md`](session-model.md)
-- [`tenant-roles.md`](tenant-roles.md)
-- [`rbac.md`](rbac.md)
-- [`../architecture/ADR-005-auth-github-oauth-mandatory.md`](../architecture/ADR-005-auth-github-oauth-mandatory.md)
+- [`credential-lifecycle.md`](credential-lifecycle.md)
+- [`org-workspace-binding.md`](org-workspace-binding.md)
+- [`../architecture/ADR-00N-device-flow.md`](../architecture/ADR-00N-device-flow.md)
 
 ---
 
-## Provider: Clerk
+## Why the device flow
 
-Clerk handles all authentication:
-- GitHub OAuth (the **only** sign-in method — no email/password, no other OAuth providers)
-- 2FA enrollment (passkey preferred, TOTP fallback) — **mandatory** before any page renders
-- JWT session management (60s JWTs, auto-refreshed by Clerk JS SDK)
-- User creation on first sign-in
-
-**Why GitHub OAuth only:** Every learner needs a GitHub account to do meaningful work — every project needs a real repo. Requiring GitHub at sign-in means the `repo` OAuth scope is available from the first session without a second consent step. See [ADR-005](../architecture/ADR-005-auth-github-oauth-mandatory.md).
+The CLI runs on a developer machine with no embedded secret, so it cannot do a confidential OAuth exchange. The device flow lets the user approve in a browser while the CLI polls for the token. There is no email/password path - approval always happens against the Deep Lake API in the browser.
 
 ---
 
-## Auth flow
+## Login flow
 
 ```mermaid
 sequenceDiagram
-    participant B as Browser
-    participant SK as React Shell
-    participant Clerk as Clerk
-    participant GitHub as GitHub OAuth
-    participant F as Fastify API
+    participant CLI as Hivemind CLI
+    participant API as Deep Lake API
+    participant Browser as Browser
 
-    B->>SK: GET /projects (unauthenticated)
-    SK->>SK: Clerk middleware: no session
-    SK-->>B: Redirect to /sign-in
-
-    B->>Clerk: Click "Sign in with GitHub"
-    Clerk->>GitHub: OAuth redirect (scopes: read:user user:email repo read:org)
-    GitHub-->>Clerk: Callback with auth code
-    Clerk-->>B: Set session cookie (Clerk JWT)
-
-    alt First sign-in: 2FA not enrolled
-        Clerk-->>B: Redirect to /2fa-setup
-    else Returning user with enrolled 2FA
-        Clerk-->>B: Redirect to /projects
+    CLI->>API: POST request device code
+    API-->>CLI: device_code, user_code, verification_uri(_complete)
+    CLI->>Browser: open verification_uri_complete (or print URL + user_code)
+    Browser->>API: user approves
+    loop until approved or expired
+        CLI->>API: pollForToken(device_code)
+        API-->>CLI: pending | token
     end
-
-    B->>F: POST /api/resolver/chat (with session cookie)
-    F->>F: fastify-clerk-auth: verify JWT
-    F->>F: Check 2FA enrollment (factorVerificationAge)
-    F-->>B: Response
+    API-->>CLI: long-lived API token
+    CLI->>CLI: saveCredentials(token, apiUrl)
 ```
 
 ---
 
-## Two enforcement layers
+## Polling key
 
-**Layer 1 — Fastify preHandler plugin (`fastify-clerk-auth`):**
-- Verifies Clerk JWT on every API request
-- Returns `401` for missing or invalid JWTs
-- Returns `403 { error: "2fa_required" }` if 2FA is not enrolled or the 8h window has expired
-
-**Layer 2 — React shell middleware:**
-- Clerk client-side session hooks check authentication on every navigation
-- Intercepts `403 2fa_required` and redirects to `/2fa-setup`
-
-A bug in the React layer does not expose data — the Fastify API rejects unauthenticated requests independently.
+The poll is keyed on a machine-stable install ID (`src/commands/install-id.ts`), not the per-attempt `device_code`. A retried or re-opened login therefore never breaks the in-flight flow - the key is stable across attempts on the same machine.
 
 ---
 
-## GitHub OAuth scopes
+## Credential persistence
 
-| Scope | Why |
-|---|---|
-| `read:user` | Basic profile: name, username, avatar |
-| `user:email` | Email address |
-| `repo` | Create and push to repos (required for project creation) |
-| `read:org` | Future: community-scoped instructor associations |
+`saveCredentials` writes the token plus the `apiUrl` (default `https://api.deeplake.ai`). Every later command reads it through `loadCredentials`; org and workspace selection are bound into the same credentials and persist until the user switches. `deleteCredentials` (via `hivemind logout`) clears it.
 ```
 
 ---
 
 ## What makes this a good auth doc
 
-1. **Opens with the provider choice** — not with how auth works in general, but specifically what was chosen and why
-2. **"Why GitHub OAuth only"** block — explains the ADR decision in plain English without requiring the reader to open the ADR
-3. **Sequence diagram** covers the full flow from browser open to API call — not just the OAuth handshake
-4. **Two enforcement layers** are separate, clearly named, and explain the defense-in-depth rationale
-5. **Scopes table** — the reader knows exactly what they authorized and why each scope is needed
-6. **Specific `403 { error: "2fa_required" }` error code** — not generic "2FA is enforced" but the exact error shape
+1. **Opens with the provider/flow choice** - specifically why the device flow, not how auth works in general
+2. **"Why the device flow" block** - explains the decision in plain English without requiring the reader to open the ADR
+3. **Sequence diagram** covers the full flow from CLI invocation to saved token - not just the handshake
+4. **Polling key** is called out separately because it is the non-obvious detail that prevents a class of bugs
+5. **Specific defaults cited** - the `https://api.deeplake.ai` apiUrl and the install-id-derived key, not vague "it authenticates"
+6. **Credential persistence** explained so the reader knows where the token lives and how to clear it

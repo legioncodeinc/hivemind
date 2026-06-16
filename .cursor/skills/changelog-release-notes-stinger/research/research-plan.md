@@ -1,37 +1,31 @@
 ---
 research_depth: shallow
-time_window: 2025-11 to 2026-05
-page_budget: 10
+time_window: 2026-01 to 2026-06
+page_budget: 6
 queries:
-  - "Productlane FeatureBase changelog 2026"
-  - "Headway changelog widget 2026"
-  - "Markdown changelog source of truth 2026"
-  - "In-app release announcement Beamer 2026"
-  - "Changelog open source release notes 2026"
-researcher: scripture-historian (shallow tier, slot-03)
-date: 2026-05-20
+  - "Keep a Changelog format 2026"
+  - "Semantic Versioning breaking change library 2026"
+  - "release notes copy craft developer tool 2026"
+  - "npm package changelog GitHub Releases workflow"
+date: 2026-06-16
 ---
 
 # Research Plan: changelog-release-notes-stinger
 
 ## Scope
 
-Shallow-tier research covering the primary changelog and release notes tooling landscape as of May 2026. Goal: give `stinger-forge` enough evidence to author credible, non-hallucinated guides for tool selection, copy craft, and distribution strategy.
+Shallow-tier research to support release communication for the @deeplake/hivemind npm package and CLI. Goal: enough evidence to author accurate guides for CHANGELOG format, semver decisions, copy craft, and the release mechanics, with no SaaS changelog-tool catalog.
 
 ## Sources to consult
 
-1. **Keep a Changelog** (keepachangelog.com) — format standard and philosophy.
-2. **Headway** (headwayapp.co) — embeddable widget changelog SaaS.
-3. **FeatureBase** (featurebase.app) — feedback + changelog platform with in-app widget and email digest.
-4. **Productlane** (productlane.com) — Linear-native changelog + roadmap.
-5. **Beamer** (getbeamer.com) — in-app changelog with NPS and engagement analytics.
-6. **Changelogfy** (changelogfy.com) — hosted changelog page SaaS.
-7. Community writing on changelog copy best practices (e.g., Lenny's Newsletter, product management blogs).
-8. Open-source alternatives: conventional-changelog, standard-version, release-please.
+1. **Keep a Changelog** (keepachangelog.com) - format standard and philosophy.
+2. **Semantic Versioning 2.0.0** (semver.org) - bump rules; extend to the package's contract surfaces (CLI, library, harness contracts, MCP tools, Deep Lake schema).
+3. **Release-note copy-craft practice** - impact-first framing, honest scope, distribution for developer tools.
+4. **Repo ground truth** - `scripts/sync-versions.mjs`, `.github/workflows/release.yaml`, `publish-smoke-test.yaml`, `package.json` (read directly, feeds `guides/04-release-mechanics.md`).
 
 ## What success looks like
 
-- `research-summary.md` naming the 5 most influential sources.
-- At least 5 source files in `external/` covering the key platforms.
+- `research-summary.md` naming the influential sources.
+- Source files in `external/` for the format standard, semver, and copy craft.
 - An `index.md` manifest linking every file.
-- Open questions surfaced for `stinger-forge` to flag.
+- Open questions surfaced for refresh.

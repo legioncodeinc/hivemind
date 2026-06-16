@@ -1,6 +1,6 @@
 # Principles: The Non-Negotiables
 
-These principles apply on every `branching-strategy-worker-bee` invocation. They are the floor — no recommendation may violate them.
+These principles apply on every `branching-strategy-worker-bee` invocation. They are the floor - no recommendation may violate them.
 
 **Research sources:** `research/external/2026-03-31-tbd-vs-gitflow-comparison-novvista.md` (DORA metric), `research/external/2026-02-26-tbd-elite-teams-javacodegeeks.md` (elite team profile), `research/external/2026-04-04-tbd-discipline-codecraftdiary.md` (branch discipline rules).
 
@@ -12,7 +12,7 @@ These principles apply on every `branching-strategy-worker-bee` invocation. They
 
 **Evidence:** The 2025 DORA report found elite teams have a branch lifetime median of 0.8 days. Multiple sources independently document exponential merge conflict growth beyond 3 days on any codebase with >5 active contributors. (Source: `research/external/2026-03-31-tbd-vs-gitflow-comparison-novvista.md`)
 
-**What to do with it:** Name the threshold explicitly in every model recommendation. Do not soften it. When a team's branches routinely exceed 2 days, the root cause is almost always: features that are too large, missing feature flag infrastructure, or inadequate CI speed — not an inherent property of the team's branching model.
+**What to do with it:** Name the threshold explicitly in every model recommendation. Do not soften it. When a team's branches routinely exceed 2 days, the root cause is almost always: features that are too large, missing feature flag infrastructure, or inadequate CI speed - not an inherent property of the team's branching model.
 
 ---
 
@@ -21,9 +21,9 @@ These principles apply on every `branching-strategy-worker-bee` invocation. They
 | Model | Justified when | Default? |
 |---|---|---|
 | **GitHub Flow** | SaaS/web, ≤ 50 engineers, continuous or sprint delivery, no multi-version requirement | YES for ~80% of teams |
-| **Trunk-based development** | Feature flag infra already deployed, CI < 10 min, engineers commit daily, 50+ engineers who have outgrown GitHub Flow | NO — requires prerequisites; do not recommend without confirming them |
-| **GitLab Flow** | Explicit environment promotion gates needed as first-class Git objects | NO — niche; recommend only when staging/UAT/prod promotion is the stated pain |
-| **GitFlow** | Team simultaneously supports multiple live product versions AND has an external release gate (App Store, enterprise upgrade cycles) | NEVER as default — explicitly antipattern for CD/SaaS teams |
+| **Trunk-based development** | Feature flag infra already deployed, CI < 10 min, engineers commit daily, 50+ engineers who have outgrown GitHub Flow | NO - requires prerequisites; do not recommend without confirming them |
+| **GitLab Flow** | Explicit environment promotion gates needed as first-class Git objects | NO - niche; recommend only when staging/UAT/prod promotion is the stated pain |
+| **GitFlow** | Team simultaneously supports multiple live product versions AND has an external release gate (App Store, enterprise upgrade cycles) | NEVER as default - explicitly antipattern for CD/SaaS teams |
 
 **Evidence for GitFlow skepticism:** In a 2024 GitKraken survey, 43% of teams using GitFlow reported "branching confusion" as a top friction point. A typical CI/CD workflow for GitFlow is 3-4x longer than a trunk-based equivalent. (Source: `research/external/2026-03-31-tbd-vs-gitflow-comparison-novvista.md`)
 

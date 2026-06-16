@@ -1,24 +1,24 @@
-# library-worker-bee — Companion Resources
+# library-worker-bee - Companion Resources
 
 This directory holds everything the `library-worker-bee` agent needs to do its job. Organized into three layers: **guides** (workflow rules), **examples** (exemplars to imitate), **templates** (files copied on `initialize`).
 
 > **Agent entry point:** [`.cursor/agents/library-worker-bee.md`](../library-worker-bee.md) (repo-local). The agent reads files from this directory by path; it does not auto-load everything into context.
 >
-> **QA authorship is out of scope.** A separate sibling agent — [`quality-worker-bee`](../quality-worker-bee.md) — owns the authorship of QA reports. Reports tied to a feature land in `library/requirements/features/feature-<###>-<title>/reports/<date>-qa-report.md`; reports tied to an issue land in `library/requirements/issues/issue-<###>-<title>/reports/<date>-qa-report.md`; standalone audits land in `library/qa/<domain>/<date>-qa-report.md`. This agent still owns the folder structure, numbering invariants, and lifecycle moves, but does not write QA content.
+> **QA authorship is out of scope.** A separate sibling agent - [`quality-worker-bee`](../quality-worker-bee.md) - owns the authorship of QA reports. Reports tied to a PRD land in `library/requirements/<lifecycle>/prd-<###>-<slug>/qa/prd-<###>-<slug>-qa.md`; reports tied to an IRD land in `library/issues/<lifecycle>/ird-<###>-<slug>/qa/ird-<###>-<slug>-qa.md`; standalone audits land in `library/qa/<domain>/<date>-qa-report.md`. This agent still owns the folder structure, numbering invariants, and lifecycle moves, but does not write QA content.
 
 ## Directory map
 
 ```
 library-stinger/
 ├── README.md            # you are here
-├── guides/              # workflow rules — the agent MUST read one before executing
+├── guides/              # workflow rules - the agent MUST read one before executing
 │   ├── 00-initialize.md
 │   ├── 01-knowledge-base.md
 │   ├── 02-issue.md
 │   ├── 03-feature-prd.md
 │   ├── 05-backwards-prd.md
 │   └── 06-maintenance.md
-├── examples/            # stripped, generic exemplars — mirror these when writing
+├── examples/            # stripped, generic exemplars - mirror these when writing
 │   ├── issue-042-example.md
 │   ├── feature-007-example.md
 │   ├── kb-architecture-example.md
@@ -35,9 +35,9 @@ library-stinger/
     └── qa-README.md
 ```
 
-> **Note on numbering:** `guides/04-qa.md` and `examples/qa-003-example.md` used to live here when this agent also authored QA reports. Both were removed when QA authorship moved to `quality-worker-bee`. The `04` slot is intentionally left empty — do not renumber the remaining guides.
+> **Note on numbering:** `guides/04-qa.md` and `examples/qa-003-example.md` used to live here when this agent also authored QA reports. Both were removed when QA authorship moved to `quality-worker-bee`. The `04` slot is intentionally left empty - do not renumber the remaining guides.
 
-## Guides — which one to read
+## Guides - which one to read
 
 The agent dispatches based on user intent. Read the matching guide **before** acting.
 
@@ -51,7 +51,7 @@ The agent dispatches based on user intent. Read the matching guide **before** ac
 | "run a sync audit" / "check for drift" | [`guides/06-maintenance.md`](guides/06-maintenance.md) |
 | "write a QA report" / "audit this" | **Hand off to [`quality-worker-bee`](../quality-worker-bee.md).** Not in this agent's scope. |
 
-## Examples — which one to mirror
+## Examples - which one to mirror
 
 When writing a new doc, open the matching example and imitate structure, section order, and tone.
 
@@ -62,23 +62,23 @@ When writing a new doc, open the matching example and imitate structure, section
 | Architecture doc | [`examples/kb-architecture-example.md`](examples/kb-architecture-example.md) |
 | API reference | [`examples/kb-api-reference-example.md`](examples/kb-api-reference-example.md) |
 | How-to guide | [`examples/kb-how-to-guide-example.md`](examples/kb-how-to-guide-example.md) |
-| QA report | — see the `quality-worker-bee` agent for the template. |
+| QA report | - see the `quality-worker-bee` agent for the template. |
 
 All examples use the placeholder project "ExampleApp" and generic features. Real PRDs should reference the repo's actual project name, files, and labels.
 
-**Path conventions (for outputs, not for examples themselves):** features land in `library/requirements/features/feature-<###>-<title>/prd-feature-<###>-<title>.md` (or `prd-feature-<###>-<title>-ck-<clickupId>.md` if ClickUp-sourced) with a `reports/` subfolder; completed features move to `library/requirements/features/completed/`. Issues land in `library/requirements/issues/issue-<###>-<title>/ird-issue-<###>-<title>.md` with a `reports/` subfolder; resolved issues move to `library/requirements/issues/completed/` (symmetric to features). Knowledge-base sources go under `library/knowledge-base/<domain>/`. The example files in this folder are reference artifacts; the comment headers inside them show the on-disk path they would have when used in a real repo.
+**Path conventions (for outputs, not for examples themselves):** PRDs land in `library/requirements/backlog/prd-<###>-<slug>/prd-<###>-<slug>-index.md` (the index filename may carry an optional `-ck-<clickupId>` suffix) with a `qa/` subfolder; they move through `in-work/` to `completed/` by relocating the whole folder. IRDs land in `library/issues/backlog/ird-<###>-<slug>/ird-<###>-<slug>-index.md` with a `qa/` subfolder, moving through the same lifecycle. Knowledge docs go under `library/knowledge/{public,private}/<domain>/`. The example files in this folder are reference artifacts; the comment headers inside them show the on-disk path they would have when used in a real repo. See [`SKILL.md`](SKILL.md) for the full path table.
 
-## Templates — used by `initialize`
+## Templates - used by `initialize`
 
-Templates seed the `library/` folder in a new repo. The agent copies them verbatim on first run via `cp -n` (no-clobber — existing files are preserved). See [`guides/00-initialize.md`](guides/00-initialize.md) for the full copy map.
+Templates seed the `library/` folder in a new repo. The agent copies them verbatim on first run via `cp -n` (no-clobber - existing files are preserved). See [`guides/00-initialize.md`](guides/00-initialize.md) for the full copy map.
 
 After `initialize`:
 
-1. Edit `library/knowledge-base/standards/documentation-framework.md` — replace placeholders like "(fill in on init)".
+1. Edit `library/knowledge/private/standards/documentation-framework.md` - replace placeholders like "(fill in on init)".
 2. Customize `library/README.md` with the repo's name + any repo-specific notes.
 3. Commit.
 
-The seeded `library/requirements/qa/README.md` (`templates/qa-README.md`) intentionally points downstream readers at the `quality-worker-bee` agent for report authorship — this agent only maintains the folder, not its contents.
+The seeded `library/requirements/qa/README.md` (`templates/qa-README.md`) intentionally points downstream readers at the `quality-worker-bee` agent for report authorship - this agent only maintains the folder, not its contents.
 
 ## For the agent (self-operation notes)
 
@@ -101,6 +101,6 @@ This agent consolidates 4 predecessors; archived at `~/.cursor/archive/`:
 - `issue-worker-bee` (was `.cursor/skills/issue-worker-bee/` in a repo)
 - `backwards-prd` (was `.cursor/skills/backwards-prd/` in a repo)
 
-The former `implementation-qa` predecessor is NOT folded in here — it was kept as a sibling and renamed `quality-worker-bee`. See `.cursor/agents/quality-worker-bee.md`.
+The former `implementation-qa` predecessor is NOT folded in here - it was kept as a sibling and renamed `quality-worker-bee`. See `.cursor/agents/quality-worker-bee.md`.
 
 Do not read archived sources; the guides in this directory are authoritative.

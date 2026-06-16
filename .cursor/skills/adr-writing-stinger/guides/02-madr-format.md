@@ -32,7 +32,7 @@ Date: YYYY-MM-DD
 ## Context and Problem Statement
 
 <Describe the problem and the forces that make a decision necessary. What is the 
-architectural challenge? Keep this factual and neutral — both proponents and opponents 
+architectural challenge? Keep this factual and neutral, both proponents and opponents 
 of any option should recognize this description as accurate.>
 
 ## Decision Drivers
@@ -98,7 +98,7 @@ Chosen option: **<Option X>**, because <one-sentence rationale summarizing how i
 
 ## Filing conventions
 
-Same as Nygard: `NNNN-<kebab-title>.md` in the project's ADR directory. MADR files can coexist with Nygard files in the same log — the format is per-file, not per-repository. However, mixing formats reduces readability; if the project starts with MADR, keep it consistent.
+Same as Nygard: `NNNN-<kebab-title>.md` in the project's ADR directory. MADR files can coexist with Nygard files in the same log, the format is per-file, not per-repository. However, mixing formats reduces readability; if the project starts with MADR, keep it consistent.
 
 ---
 

@@ -1,6 +1,6 @@
 # library/knowledge-base/
 
-Durable reference documentation for this repository. The things an engineer reads to understand the system. Not the place for requirements-in-flight — those live in `library/requirements/`.
+Durable reference documentation for this repository. The things an engineer reads to understand the system. Not the place for requirements-in-flight - those live in `library/requirements/`.
 
 ## Categories
 
@@ -27,7 +27,7 @@ All files here follow [`standards/documentation-framework.md`](standards/documen
 
 - Filename: kebab-case, no numeric prefix (those are for `requirements/`).
 - Every doc starts with the universal header (Title, Category, Version, Date, Status, one-line description, Related section).
-- Ground every claim in code — quote source with file path + line range.
+- Ground every claim in code - quote source with file path + line range.
 - One topic per document; split if over ~500 lines.
 - Mermaid for diagrams; no explicit colors.
 - Link out, don't duplicate.

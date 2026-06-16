@@ -1,4 +1,4 @@
-# Deterministic Scanning Tools — semgrep, eslint-plugin-security, npm audit
+# Deterministic Scanning Tools - semgrep, eslint-plugin-security, npm audit
 
 **Sources:**
 - https://semgrep.dev/p/javascript
@@ -15,14 +15,14 @@
 
 Three tools, each deterministic, each cheap to run as Phase 1 automation before the Bee spends judgment-cycles:
 
-1. **`npm audit`** — built-in, zero setup. Surfaces known CVEs in the dependency tree with severity. Fast. JSON output. Run `npm audit --json --audit-level=high` for the CI-friendly variant.
-2. **`semgrep --config p/javascript --config p/typescript --config p/eslint-plugin-security`** — pattern-based static analysis, catches SQLi, command injection, path traversal, hardcoded secrets, and ~200 other patterns with low false-positive rate on this stack.
-3. **`eslint-plugin-security`** — ESLint plugin, already likely in the project. Finds `fs.readFile` with user input, `eval`, `child_process.exec` with dynamic strings, etc.
+1. **`npm audit`** - built-in, zero setup. Surfaces known CVEs in the dependency tree with severity. Fast. JSON output. Run `npm audit --json --audit-level=high` for the CI-friendly variant.
+2. **`semgrep --config p/javascript --config p/typescript --config p/eslint-plugin-security`** - pattern-based static analysis, catches SQLi, command injection, path traversal, hardcoded secrets, and ~200 other patterns with low false-positive rate on this stack.
+3. **`eslint-plugin-security`** - ESLint plugin, already likely in the project. Finds `fs.readFile` with user input, `eval`, `child_process.exec` with dynamic strings, etc.
 
 ## Recommended invocation
 
 ```bash
-# one-shot — pipe outputs into a gitignored local scratch dir like .scan-output/
+# one-shot - pipe outputs into a gitignored local scratch dir like .scan-output/
 npm audit --json --audit-level=high > .scan-output/npm-audit.json
 npx semgrep --config p/javascript --config p/typescript --config p/eslint-plugin-security \
   --json --output .scan-output/semgrep.json \
@@ -32,14 +32,14 @@ npx eslint . --ext .ts,.tsx,.js,.jsx --plugin security --format json -o .scan-ou
 
 ## What the tools DON'T catch (Bee judgment required)
 
-- IDOR — they can't know which fields are "resource owner".
+- IDOR - they can't know which fields are "resource owner".
 - Business-logic price/quantity manipulation.
 - PII-in-logging (they find `console.log` but not whether the argument is PII).
 - Multi-tenant missing scope.
-- PCI DSS architectural violations (Stripe Elements vs. raw card) — tools see data-flow, not regulatory intent.
-- Server-components-leaking-to-client — requires understanding the Next.js data-serialization model.
+- PCI DSS architectural violations (Stripe Elements vs. raw card) - tools see data-flow, not regulatory intent.
+- Server-components-leaking-to-client - requires understanding the Next.js data-serialization model.
 
 ## Relevance to this stinger
 
-- `scripts/scan.sh` runs the three tools above and drops JSON reports into a local gitignored scratch dir (e.g. `.scan-output/`) — the Bee reads them, dedupes, and promotes findings into its own report.
-- The Bee's value is concentrated in the "DON'T catch" list — `guides/00-principles.md` says so explicitly so Bee time is spent on judgment, not on re-running grep.
+- `scripts/scan.sh` runs the three tools above and drops JSON reports into a local gitignored scratch dir (e.g. `.scan-output/`) - the Bee reads them, dedupes, and promotes findings into its own report.
+- The Bee's value is concentrated in the "DON'T catch" list - `guides/00-principles.md` says so explicitly so Bee time is spent on judgment, not on re-running grep.

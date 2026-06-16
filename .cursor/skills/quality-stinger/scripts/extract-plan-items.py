@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-extract-plan-items.py — parse a PRD markdown file and emit a skeleton
+extract-plan-items.py, parse a PRD markdown file and emit a skeleton
 traceability table with blank Status / Implementation Location columns
 for quality-worker-bee to fill in.
 
@@ -91,7 +91,7 @@ def parse(text: str, include_nongoals: bool) -> List[PlanItem]:
             ac_counter = 0
             continue
 
-        # 1. User stories — match anywhere, they follow a fixed shape
+        # 1. User stories, match anywhere, they follow a fixed shape
         us_match = USER_STORY_RE.match(raw.strip("-* ").rstrip())
         if us_match:
             us_counter += 1

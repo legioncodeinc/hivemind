@@ -19,9 +19,9 @@ A comprehensive January 2026 guide covering ADR anatomy, the full lifecycle (Dra
 - "Every ADR answers four fundamental questions: What was the context? What did we decide? What alternatives did we consider? What are the consequences?"
 - "A well-written ADR can answer all four in less than a page."
 - "Context is the most important section. Include specific numbers ('we process 50K orders per day'), constraints ('must comply with PCI-DSS'), and team factors ('three engineers have PostgreSQL experience, none have MongoDB experience')."
-- "Decision should be unambiguous. 'We will use PostgreSQL 16 as the primary data store for the order service' is good. 'We should probably consider a relational database' is not an ADR — it's a suggestion."
+- "Decision should be unambiguous. 'We will use PostgreSQL 16 as the primary data store for the order service' is good. 'We should probably consider a relational database' is not an ADR - it's a suggestion."
 - "Alternatives Considered is the section that saves the most time long-term. Without this section, teams relitigate the same debates endlessly."
-- "Importantly, you should never delete ADRs — even rejected decisions are valuable because they prevent future teams from reconsidering options that were already evaluated."
+- "Importantly, you should never delete ADRs - even rejected decisions are valuable because they prevent future teams from reconsidering options that were already evaluated."
 - Full lifecycle: Draft/Proposed -> Accepted -> Active -> Superseded -> Deprecated
 - Lightweight ADR (LADR) format: "In the context of [situation], we decided [decision], to achieve [goal], accepting [trade-off]."
 - Decision log table format: `| # | Date | Decision | Status |`

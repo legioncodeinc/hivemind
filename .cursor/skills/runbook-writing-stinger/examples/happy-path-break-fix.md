@@ -1,22 +1,22 @@
-# Example: Break-Fix Runbook — Database Connection Pool Exhaustion
+# Example: Break-Fix Runbook, Embeddings Daemon Stall
 
 > **Demonstrates:** `guides/01-runbook-types.md` (break-fix type), `guides/02-no-implied-context-audit.md`, `guides/03-escalation-path-architecture.md`, `guides/04-rollback-procedures.md`
 > **Template used:** `templates/break-fix-runbook.md`
 > **Research source:** `research/external/2026-03-08-incop-oncall-runbook-best-practices.md` (the postmortem-to-action-item pattern from `research/external/2026-03-29-devopsil-blameless-postmortems.md`)
 
-This is a fully worked break-fix runbook for "Payment service connection pool exhaustion." Use it as a model when authoring new break-fix runbooks.
+This is a fully worked break-fix runbook for "Embeddings daemon stall." Use it as a model when authoring new break-fix runbooks.
 
 ---
 
-# Payment Service — Database Connection Pool Exhaustion
+# Embeddings Daemon Stall
 
-**Runbook ID:** RBK-PAY-003
-**Alert:** `payments_db_connections_critical` (fires when active connections > 90% of pool max)
-**Service:** checkout-api (payments namespace)
+**Runbook ID:** RBK-EMB-003
+**Alert:** `hivemind_embeddings_queue_stalled` (fires when the embed queue depth is unchanged for > 5 minutes while items remain)
+**Service:** embeddings daemon (`@deeplake/hivemind` background worker)
 **Last updated:** 2026-04-15 by @sre-engineer
 **Status:** TESTED
 
-> ✅ TEST STATUS: Last tested 2026-04-15 in staging (Format: Staging Exercise)
+> TEST STATUS: Last tested 2026-04-15 in staging (Format: Staging Exercise)
 > Tested by: @sre-engineer-name
 > Game day score (runbook_accuracy): 5/5
 > Gaps found: None.
@@ -26,20 +26,20 @@ This is a fully worked break-fix runbook for "Payment service connection pool ex
 
 ## Summary
 
-The checkout-api service has exhausted its database connection pool. Active connections are at or near the configured maximum (default: 10 per pod, 5 pods = 50 total). New requests are queueing and timing out. This is a SEV-1 incident.
+The embeddings daemon has stopped draining its queue. Items are enqueued but the embed worker is not advancing, so retrieval falls back to BM25 and new library entries never gain vectors. This is a SEV-2 incident (retrieval still works degraded; no data loss).
 
 **Typical root causes (in order of frequency):**
-1. Long-running query holding connections open (80% of cases)
-2. Connection leak (no connection.close() in error path) (15% of cases)
-3. Traffic spike beyond expected load (5% of cases)
+1. The embeddings provider API key is expired or rate-limited (70% of cases)
+2. A single oversized document wedges the worker on a retryable error loop (20% of cases)
+3. The daemon process died but the lock file was not released (10% of cases)
 
 ---
 
 ## Severity
 
-**SEV-1** — Payment processing is degraded. SLA clock is running.
+**SEV-2**, retrieval degrades to BM25 lexical ranking. No data loss. SLA clock is running on freshness, not availability.
 
-Expected resolution time with this runbook: 20-30 minutes.
+Expected resolution time with this runbook: 15-25 minutes.
 
 ---
 
@@ -48,17 +48,17 @@ Expected resolution time with this runbook: 20-30 minutes.
 Set these variables before executing any step:
 
 ```
-NAMESPACE=payments         # Kubernetes namespace
-SERVICE=checkout-api       # Deployment name
-DB_HOST=prod-db.internal   # Database hostname (check: kubectl get configmap db-config -n payments -o yaml)
-DB_USER=checkout_app       # Database user (least privilege: read + write, no DROP)
-# DB_PASSWORD: Do not set this. Use: $(aws ssm get-parameter --name /prod/payments/db-password --with-decryption --query Parameter.Value --output text)
+DATASET=ds_hivemind_prod        # Deep Lake dataset name
+DAEMON=embeddings-daemon        # process name in the workspace
+QUEUE_DIR=.hivemind/queue       # on-disk embed queue
+# EMBED_API_KEY: Do not paste. Read from the secret store at run time:
+#   export EMBED_API_KEY=$(op read "op://Engineering/Hivemind-Prod/embeddings-api-key")
 ```
 
 Access requirements:
-- kubectl access to `payments` namespace
-- AWS SSM access for `/prod/payments/*` parameter paths
-- Database read access (for observation steps only; no schema changes in this runbook)
+- Shell access to the host running the daemon
+- Read access to the secret store entry `op://Engineering/Hivemind-Prod/embeddings-api-key`
+- Read access to the Deep Lake dataset (for observation steps only; no schema changes in this runbook)
 
 ---
 
@@ -66,108 +66,109 @@ Access requirements:
 
 Run these before executing remediation steps:
 
-- [ ] Confirm the alert is real: `kubectl exec -n $NAMESPACE deploy/$SERVICE -- wget -q -O- localhost:8080/health`
-  - Expected: `{"status":"degraded","db":"connection_pool_exhausted"}`
-  - If healthy, this alert may be a false positive. Check for a PagerDuty duplicate.
-- [ ] Confirm the namespace: `kubectl get pods -n $NAMESPACE -l app=$SERVICE`
-  - Expected: 5 pods running; 0 in CrashLoopBackOff
-- [ ] Check Grafana dashboard: https://grafana.internal.example.com/d/payments-db?var-env=production
-  - Confirm: `payments_db_active_connections` is > 45 (90% of max=50)
+- [ ] Confirm the alert is real: `npm run embeddings:status`
+  - Expected: `{"state":"stalled","queueDepth":<N>,"lastAdvance":"<timestamp>"}`
+  - If `state` is `running` and `queueDepth` is dropping, this alert may be a false positive. Check for a duplicate page.
+- [ ] Confirm the daemon process is alive: `npm run embeddings:status -- --pid`
+  - Expected: a live PID. If none, the process died; skip to Step 5 (Clear Stale Lock).
+- [ ] Check the queue depth trend over the last 5 minutes: `npm run embeddings:status -- --history 5m`
+  - Confirm: `queueDepth` is flat and non-zero.
 
 ---
 
 ## Steps
 
-### Step 1: Identify long-running queries (~2 minutes)
-
-```sql
--- Run via: psql "host=$DB_HOST dbname=payments user=$DB_USER password=$(aws ssm get-parameter --name /prod/payments/db-password --with-decryption --query Parameter.Value --output text)" -c "SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state FROM pg_stat_activity WHERE (now() - pg_stat_activity.query_start) > interval '30 seconds' ORDER BY duration DESC;"
-```
-
-Expected: A list of running queries.
-- If any query has been running > 5 minutes: proceed to Step 2 (Kill Long-Running Query).
-- If no queries > 5 minutes: proceed to Step 4 (Check for Connection Leaks).
-
----
-
-### Step 2: Capture original connection state before changes (~1 minute)
+### Step 1: Identify the stuck item (~2 minutes)
 
 ```bash
-# Capture current connection count (for rollback reference)
-psql "host=$DB_HOST ..." -c "SELECT count(*) as active_connections FROM pg_stat_activity WHERE state = 'active';"
-# Record the output as ORIGINAL_ACTIVE_CONNECTIONS
+# Print the head of the queue and the worker's current item
+npm run embeddings:inspect -- --head 5
 ```
+
+Expected: the current item and the next few queued items.
+- If the head item has `retries > 5`: proceed to Step 2 (Quarantine the Item).
+- If the head item looks normal: proceed to Step 4 (Check the Provider Key).
 
 ---
 
-### Step 3: Terminate long-running queries (state-changing — see rollback) (~1 minute)
-
-```sql
--- Terminate all queries running longer than 5 minutes
-SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE (now() - query_start) > interval '5 minutes' AND state != 'idle' AND pid <> pg_backend_pid();
-```
-
-Expected output: `pg_terminate_backend` returns `t` for each terminated connection.
-
-Watch Grafana: `payments_db_active_connections` should drop within 60 seconds.
-
-- If connections drop to < 40 (80% of max): monitor for 5 minutes; proceed to Step 10 (Monitor and Close).
-- If connections remain elevated: proceed to Step 4 (Check for Connection Leaks).
-
----
-
-### Step 4: Check for connection leaks (~3 minutes)
-
-```sql
-SELECT client_addr, count(*) FROM pg_stat_activity GROUP BY client_addr ORDER BY count DESC;
-```
-
-Expected: Even distribution across 5 pod IPs (`10.x.x.x`).
-- If one pod IP has >> the others: that pod has a connection leak. Proceed to Step 5 (Restart Leaking Pod).
-- If even distribution: proceed to Step 6 (Scale Up Temporarily).
-
----
-
-### Step 5: Restart the leaking pod (state-changing — see rollback) (~3 minutes)
+### Step 2: Capture the current queue state before changes (~1 minute)
 
 ```bash
-# Identify the pod name corresponding to the IP from Step 4
-kubectl get pods -n $NAMESPACE -o wide | grep <LEAKING_POD_IP>
-# Record the pod name as LEAKING_POD_NAME
-
-# Delete the pod (deployment will recreate it)
-kubectl delete pod $LEAKING_POD_NAME -n $NAMESPACE
+# Snapshot the queue for rollback reference
+cp -r "$QUEUE_DIR" "$QUEUE_DIR.bak-$(date +%s)"
+echo "Backup written. Record the path printed above as QUEUE_BACKUP."
 ```
-
-Expected: Pod is terminated and recreated within 90 seconds. `kubectl get pods -n $NAMESPACE` shows a new pod entering Running state.
-
-Watch Grafana: `payments_db_active_connections` should drop within 2 minutes.
 
 ---
 
-### Step 6: Scale up temporarily if leak is not isolated (state-changing — see rollback) (~2 minutes)
+### Step 3: Quarantine the stuck item (state-changing, see rollback) (~1 minute)
 
 ```bash
-# Capture original replica count
-ORIGINAL_REPLICAS=$(kubectl get deploy/$SERVICE -n $NAMESPACE -o jsonpath='{.spec.replicas}')
-echo "ORIGINAL_REPLICAS=$ORIGINAL_REPLICAS"  # Record this!
-
-# Scale up to distribute connections
-kubectl scale deploy/$SERVICE -n $NAMESPACE --replicas=8
+# Move the wedged item out of the live queue into the dead-letter folder
+npm run embeddings:quarantine -- --id <STUCK_ITEM_ID>
 ```
 
-Expected: 3 new pods start within 3 minutes. `payments_db_active_connections` drops as connections distribute.
+Expected output: `quarantined <STUCK_ITEM_ID> -> .hivemind/dead-letter/`.
 
-Note: This is a temporary fix. The connection leak must be identified and fixed in code. Open a SEV-2 ticket after the incident is resolved.
+Watch the status: `queueDepth` should begin dropping within 60 seconds.
+
+- If the queue drains below its starting depth: monitor for 5 minutes; proceed to Step 10 (Monitor and Close).
+- If the queue remains flat: proceed to Step 4 (Check the Provider Key).
+
+---
+
+### Step 4: Check the embeddings provider key (~3 minutes)
+
+```bash
+# Re-export the key from the secret store and probe the provider
+export EMBED_API_KEY=$(op read "op://Engineering/Hivemind-Prod/embeddings-api-key")
+npm run embeddings:probe
+```
+
+Expected: `provider OK, model reachable`.
+- If the probe returns `401`/`403`: the key is expired or revoked. Proceed to Step 5 (Restart with Fresh Key).
+- If the probe returns `429`: the provider is rate-limiting. Back off and proceed to Step 6 (Throttle and Resume).
+
+---
+
+### Step 5: Clear a stale lock and restart the daemon (state-changing, see rollback) (~3 minutes)
+
+```bash
+# Remove the stale lock left by a dead process, then restart
+rm -f "$QUEUE_DIR/.lock"
+npm run embeddings:restart
+```
+
+Expected: the daemon comes up Running within 30 seconds. `npm run embeddings:status` reports `state":"running"`.
+
+Watch the status: `queueDepth` should begin dropping within 2 minutes.
+
+---
+
+### Step 6: Throttle and resume if the provider is rate-limiting (state-changing, see rollback) (~2 minutes)
+
+```bash
+# Capture the current concurrency
+ORIGINAL_CONCURRENCY=$(npm run embeddings:config -- --get concurrency)
+echo "ORIGINAL_CONCURRENCY=$ORIGINAL_CONCURRENCY"  # Record this!
+
+# Lower concurrency to stay under the provider rate limit
+npm run embeddings:config -- --set concurrency=2
+npm run embeddings:resume
+```
+
+Expected: the daemon resumes at lower concurrency and the queue drains slowly without further `429`s.
+
+Note: This is a temporary fix. The provider rate limit must be raised or the embed batch reshaped. Open a SEV-3 ticket after the incident is resolved.
 
 ---
 
 ### Step 10: Monitor and close (~5 minutes)
 
-- Confirm `payments_db_active_connections` is < 40 (80% of max) for 5 consecutive minutes.
-- Confirm checkout-api is returning HTTP 200s: https://grafana.internal.example.com/d/payments-api
-- Notify #payments-incidents: "Connection pool exhaustion resolved. Root cause: [long-running query / connection leak / traffic spike]. Monitoring for 5 minutes."
-- If stable after 5 minutes: resolve the PagerDuty incident.
+- Confirm `queueDepth` trends to 0 (or to its normal steady-state) for 5 consecutive minutes.
+- Confirm retrieval is back on dense vectors: `npm run retrieval:mode` returns `embeddings`, not `bm25-fallback`.
+- Notify #hivemind-incidents: "Embeddings daemon stall resolved. Root cause: [stuck item / expired key / rate limit / stale lock]. Monitoring for 5 minutes."
+- If stable after 5 minutes: resolve the incident.
 - If not stable: escalate per the Escalation Path section.
 
 ---
@@ -176,16 +177,16 @@ Note: This is a temporary fix. The connection leak must be identified and fixed 
 
 Only execute rollback steps for action steps you ran.
 
-**Rollback for Step 3 (terminated queries):** No rollback. Terminated queries cannot be re-run. The client will retry automatically. If retry volume is abnormal, check application logs: `kubectl logs -n $NAMESPACE deploy/$SERVICE --since=10m | grep 'retry'`.
+**Rollback for Step 3 (quarantined item):** Restore it from the dead-letter folder if quarantine was wrong: `npm run embeddings:requeue -- --id <STUCK_ITEM_ID>`. If the item was genuinely poison, leave it quarantined and open a ticket.
 
-**Rollback for Step 5 (deleted pod):** The deployment controller already recreated the pod. No manual rollback needed.
+**Rollback for Step 5 (restart):** The restart is idempotent; no manual rollback needed. If the restart made things worse, restore the queue snapshot: `rm -rf "$QUEUE_DIR" && mv "$QUEUE_BACKUP" "$QUEUE_DIR"`.
 
-**Rollback for Step 6 (scaled up):**
+**Rollback for Step 6 (throttled concurrency):**
 ```bash
-kubectl scale deploy/$SERVICE -n $NAMESPACE --replicas=$ORIGINAL_REPLICAS
+npm run embeddings:config -- --set concurrency=$ORIGINAL_CONCURRENCY
 # Verify
-kubectl get deploy/$SERVICE -n $NAMESPACE
-# Expected: DESIRED matches ORIGINAL_REPLICAS
+npm run embeddings:config -- --get concurrency
+# Expected: matches ORIGINAL_CONCURRENCY
 ```
 
 ---
@@ -194,19 +195,17 @@ kubectl get deploy/$SERVICE -n $NAMESPACE
 
 **Tier 1 (you):** Exhaust the steps in this runbook.
 
-**Tier 2 (escalate if: 15 min no progress OR data loss risk):**
-- Team: Payments Team
-- Slack: #payments-oncall
-- PagerDuty: "Payments Team" schedule
+**Tier 2 (escalate if: 15 min no progress OR suspected data corruption):**
+- Team: Hivemind Platform Team
+- Slack: #hivemind-oncall
 - Expected response: 10 minutes
 
-**Tier 3 (escalate if: 30 min no resolution OR SEV-0):**
+**Tier 3 (escalate if: 30 min no resolution OR SEV-1):**
 - Team: Engineering Management
-- PagerDuty: "EM Escalation" policy
 - Expected response: 15 minutes
 
-**Database team (escalate if: connection leak confirmed in code):**
-- Slack: #database-team
+**Dataset team (escalate if: the Deep Lake dataset shows schema or version corruption):**
+- Slack: #deeplake-dataset
 - Response time: next business day for non-data-loss issues; 1 hour for data loss
 
 ---
@@ -215,8 +214,8 @@ kubectl get deploy/$SERVICE -n $NAMESPACE
 
 After resolution:
 1. Update the incident channel with root cause and resolution.
-2. If root cause was a code defect (connection leak): open a bug ticket in Linear/Jira.
-3. If the incident was SEV-1: schedule postmortem within 48 hours.
+2. If root cause was a poison document: open a bug ticket in Linear/Jira to harden the embed worker against it.
+3. If the incident was SEV-2 or worse: schedule a postmortem within 48 hours.
 4. Update this runbook's Postmortem history section with the incident and any improvements discovered.
 
 ---
@@ -225,7 +224,7 @@ After resolution:
 
 | Date | Incident ID | SEV | Summary | Runbook change |
 |---|---|---|---|---|
-| 2026-03-10 | INC-2041 | SEV-1 | DB connection pool exhausted; Step 6 command missing --timeout | Added `--replicas=8` with explicit explanation; added ORIGINAL_REPLICAS capture step |
+| 2026-03-10 | INC-2041 | SEV-2 | Embeddings daemon stalled on an expired provider key; Step 4 was missing the secret-store re-export | Added the `op read` re-export line and a `429` vs `401` branch |
 
 ---
 

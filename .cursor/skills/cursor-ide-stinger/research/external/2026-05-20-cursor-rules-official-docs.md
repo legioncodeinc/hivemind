@@ -33,10 +33,8 @@ Team Rules (Enterprise/Business plans) apply across all repositories, support gl
 - "Keep rules under 500 lines. Split large rules into multiple, composable rules."
 - "Reference files instead of copying their contents - this keeps rules short and prevents them from becoming stale."
 
-## Annotations for stinger-forge
+## Relevance to the stinger
 
-- This is the primary source for `guides/02-rule-file-authoring.md`. All frontmatter field specs should cite this doc.
-- The four-mode table (Always Apply / Apply Intelligently / Apply to Specific Files / Apply Manually) is the canonical taxonomy - use it verbatim in the guide.
-- The glob pattern table should be reproduced in the authoring guide with examples.
-- The `/create-rule` slash command should be mentioned in the "how to create a rule" workflow in guide 02.
-- Contrast with `.cursorrules` (legacy): docs mention it as still supported but not the preferred path.
+- Primary backing reference for `guides/01-principles.md` and `guides/02-rule-file-authoring.md`: the four activation modes (Always Apply / Apply Intelligently / Apply to Specific Files / Apply Manually) and the three frontmatter fields.
+- The glob pattern table backs the glob syntax section of guide 02.
+- Note: `.cursorrules` (legacy) is not used in this repo; the Army standardized on `.cursor/rules/*.mdc`.

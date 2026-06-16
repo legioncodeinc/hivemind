@@ -1,4 +1,4 @@
-# Shell Prompts — Research Note
+# Shell Prompts - Research Note
 
 **Source type:** community synthesis
 **Authority:** medium

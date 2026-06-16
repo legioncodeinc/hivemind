@@ -1,4 +1,4 @@
-# Research Trail — quality-stinger
+# Research Trail - quality-stinger
 
 The `research/` folder is the audit trail for every factual claim in the guides. Each dated note below backs specific guide sections.
 

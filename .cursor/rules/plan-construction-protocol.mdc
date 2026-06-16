@@ -13,7 +13,7 @@ The first step is always to pick a worktree of `main` and create a new feature b
 
 ## Model routing (every step after step 1)
 
-For each task and sub-agent in the plan, name the best-fit model based on the scored rubric and routing heuristic in `legion-shared/model-comparison-matrix.md`. Match the task profile (reasoning depth, code quality, tool use, cost, speed, context, multimodal) to the model. State the chosen model inline with each step and a one-line justification tied to the matrix.
+For each task and sub-agent in the plan, name the best-fit model based on the scored rubric and routing heuristic in `.cursor/model-comparison-matrix.md`. Match the task profile (reasoning depth, code quality, tool use, cost, speed, context, multimodal) to the model. State the chosen model inline with each step and a one-line justification tied to the matrix.
 
 Always use the most recent relevant version of each model. Map the matrix routing choice to one of these current spawnable slugs:
 

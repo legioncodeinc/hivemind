@@ -11,11 +11,11 @@ Two audiences. Two registers. Two templates. Never mix them.
 | Dimension | OSS README | Internal README |
 |---|---|---|
 | **Reader** | Skeptical developer evaluating alternatives | Trusting teammate with existing context |
-| **Time budget** | 10–30 seconds to decide | 2–5 minutes to get up and running |
+| **Time budget** | 10-30 seconds to decide | 2-5 minutes to get up and running |
 | **Goal** | Acquire a new user | Enable a teammate to operate the tool |
 | **First question** | "Is this worth my time vs. alternatives?" | "What does this do and how do I run it?" |
 | **Trust level** | Zero | High |
-| **Length** | 300–1,500 words | 200–600 words |
+| **Length** | 300-1,500 words | 200-600 words |
 
 ---
 
@@ -33,7 +33,7 @@ The OSS README competes with 10 open tabs. The goal of the first screen is to ma
 - Install command visible without scrolling
 - No paragraphs before the quickstart
 - One-liner pitch: one sentence, no jargon, states the value proposition for a developer who has never heard of this
-- Features list: 5–8 bullets, each a verifiable user-facing capability
+- Features list: 5-8 bullets, each a verifiable user-facing capability
 
 **Anti-patterns:**
 - Paragraph of context before the quickstart ("This project grew out of a hackathon in 2022...")
@@ -50,7 +50,7 @@ The internal README does not compete. The reader already knows the problem exist
 
 **Lead with:**
 1. Title (no tagline needed)
-2. "What problem this solves and why it exists here" (2–3 sentences)
+2. "What problem this solves and why it exists here" (2-3 sentences)
 3. Who owns this (team name + Slack channel)
 4. Where it runs (environments, URLs, cluster names)
 5. Setup / install (assume less implicit setup knowledge than you think)
@@ -87,7 +87,7 @@ Also signal: does the repo have a `LICENSE` file? If yes, it's OSS or OSS-destin
 
 **CLI tool:** OSS template, but elevate the `USAGE` block (flags, subcommands) above the `Install` section. A CLI reader often already knows how to install; they need the command syntax.
 
-**Monorepo root:** Acts as an index to sub-packages. Leads with "what is in here and how is it organized." Each sub-package has its own README. Length: 200–400 words maximum.
+**Monorepo root:** Acts as an index to sub-packages. Leads with "what is in here and how is it organized." Each sub-package has its own README. Length: 200-400 words maximum.
 
 > Open question: The `templates/monorepo-root-readme.md` template was proposed in the Command Brief but not covered in the shallow research pass. If monorepo READMEs are a frequent use case, open a `normal`-depth scripture-historian pass on "monorepo README patterns 2026".
 

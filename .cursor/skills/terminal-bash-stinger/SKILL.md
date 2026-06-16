@@ -1,6 +1,6 @@
 ---
 name: terminal-bash-stinger
-description: Terminal productivity specialist — Bash/Zsh/Fish configuration, modern CLI tools (ripgrep, fd, fzf, bat, eza, zoxide), shell scripting best practices, dotfile architecture, tmux/Zellij setup, and just/make task automation. Use when the user says "improve my dotfiles", "review this shell script", "set up tmux", "modern CLI tools", "bash best practices", "just vs make", or "help me with my terminal setup". Do NOT use for CI/CD pipelines running in containers (devops-worker-bee) or Python packaging builds (python-worker-bee).
+description: Terminal productivity specialist - Bash/Zsh/Fish configuration, modern CLI tools (ripgrep, fd, fzf, bat, eza, zoxide), shell scripting best practices, dotfile architecture, tmux/Zellij setup, and just/make task automation. Use when the user says "improve my dotfiles", "review this shell script", "set up tmux", "modern CLI tools", "bash best practices", "just vs make", or "help me with my terminal setup". Do NOT use for CI/CD pipelines running in containers (ci-release-worker-bee) or TypeScript/Node build and packaging (typescript-node-worker-bee).
 ---
 
 # terminal-bash Stinger
@@ -20,11 +20,11 @@ The procedural arsenal for `terminal-bash-worker-bee`. This stinger encodes the 
 - Dotfile architecture: XDG layout, bootstrap scripts, idempotency
 - Terminal multiplexers: tmux 3.4+, Zellij 0.40+
 - Task automation: just 1.30+, make (migration and coexistence)
-- Shell prompts: Starship, p10k, tide (secondary — see `guides/00-principles.md`)
+- Shell prompts: Starship, p10k, tide (secondary - see `guides/00-principles.md`)
 
 **Not in scope:**
-- CI/CD pipelines running inside containers → devops-worker-bee
-- Python packaging (`setup.cfg`, `pyproject.toml`, `tox`) → python-worker-bee
+- CI/CD pipelines running inside containers -> ci-release-worker-bee
+- TypeScript/Node build and packaging (`tsconfig.json`, `esbuild`, npm publish) -> typescript-node-worker-bee
 - OS-level system administration beyond a developer workstation
 
 ---
@@ -54,7 +54,7 @@ These are non-negotiables. Full justifications in `guides/00-principles.md`.
 3. **Quote every variable expansion.** `"$var"` not `$var`. Exception: arithmetic contexts `$((...))`.
 4. **Explain tool trade-offs.** ripgrep ignores hidden files by default. fd skips dotfiles. bat is not a drop-in pipe replacement. Always surface the gotcha when recommending.
 5. **Keep dotfile changes idempotent.** Bootstrap scripts run repeatedly; source-guarding and `mkdir -p` patterns prevent accumulation.
-6. **Escalate container scripts to devops-worker-bee.** Container environments may have different shell versions and missing tools. Overlapping silently produces fragile CI.
+6. **Escalate container scripts to ci-release-worker-bee.** Container environments may have different shell versions and missing tools. Overlapping silently produces fragile CI.
 
 ---
 
@@ -62,7 +62,7 @@ These are non-negotiables. Full justifications in `guides/00-principles.md`.
 
 ```text
 terminal-bash-stinger/
-├── SKILL.md                       (this file — master index)
+├── SKILL.md                       (this file - master index)
 ├── README.md                      (human overview)
 ├── guides/
 │   ├── 00-principles.md           (portability tiers, escalation rules, shellcheck policy)
@@ -80,7 +80,7 @@ terminal-bash-stinger/
 │   └── findings-report.md        (report shape for terminal audits)
 ├── reports/
 │   └── README.md                  (past run summaries accumulate here)
-└── research/                      (authored by scripture-historian — DO NOT MODIFY)
+└── research/                      (authored by scripture-historian - DO NOT MODIFY)
     ├── research-plan.md
     ├── research-summary.md
     ├── index.md
@@ -103,4 +103,4 @@ terminal-bash-stinger/
 
 ---
 
-*Forged by `stinger-forge` from `terminal-bash-worker-bee-command-brief.md` and research/. Part of the Legion AI Tools Factory by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*
+*Part of the Cursor IDE Army curated by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*

@@ -7,7 +7,7 @@ url: https://docs.github.com/en/repositories/managing-your-repositorys-settings-
 fetched: 2026-05-20
 ---
 
-# GitHub CODEOWNERS — Synthesis
+# GitHub CODEOWNERS - Synthesis
 
 ## File location (precedence order)
 

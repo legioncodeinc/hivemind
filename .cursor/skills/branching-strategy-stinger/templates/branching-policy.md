@@ -1,4 +1,4 @@
-# Branching Policy — [PROJECT NAME]
+# Branching Policy - [PROJECT NAME]
 
 > **Instructions for `branching-strategy-worker-bee`:** Replace every `[PLACEHOLDER]` with team-specific values. Delete sections that do not apply. Commit this document to `docs/engineering/branching-policy.md` (or equivalent). Route branch-protection ruleset changes to `github-repo-health-worker-bee`.
 
@@ -60,7 +60,7 @@
 [Delete this section if the team deploys directly from main without a release step.]
 
 1. **Cut release branch** from `[develop | main]` when entering release-candidate phase: `git checkout -b release/X.Y.Z`
-2. **Bug fixes only** on the release branch — no new features.
+2. **Bug fixes only** on the release branch - no new features.
 3. **Back-merge every fix** from the release branch to `[develop | main]`.
 4. **Tag on merge** to main: `git tag -a vX.Y.Z -m "Release X.Y.Z"`
 5. **Delete after EOL.**
@@ -110,14 +110,14 @@ Rules:
 
 ## Model-specific addendum
 
-[GitFlow only — delete for other models:]
+[GitFlow only - delete for other models:]
 
 ### GitFlow branch map
 
 | Branch | Source | Merges into | Lifetime |
 |---|---|---|---|
-| `main` | — | — | Permanent |
-| `develop` | `main` | — | Permanent |
+| `main` | - | - | Permanent |
+| `develop` | `main` | - | Permanent |
 | `feature/X` | `develop` | `develop` | ≤ [2 working days] |
 | `release/X.Y.Z` | `develop` | `main` + `develop` | Duration of release candidate phase |
 | `hotfix/X` | `main` (tag) | `main` + `develop` | Hours |

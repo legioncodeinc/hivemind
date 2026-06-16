@@ -1,89 +1,70 @@
-# Git Worker-Bee — Beekeeper-Suit's Guide
+# Git Worker-Bee - Beekeeper-Suit's Guide
 
 The Beekeeper-Suit routing skill's record of when to invoke `git-worker-bee`. Use this guide to decide whether a user request belongs to this Bee.
 
-**Bee:** [`.cursor/agents/git-worker-bee.md`](../../agents/git-worker-bee.md)
-**Stinger:** [`.cursor/skills/git-stinger/`](../../skills/git-stinger/)
+**Bee:** [`.cursor/agents/git-worker-bee.md`](../../../agents/git-worker-bee.md)
+**Stinger:** [`.cursor/skills/git-stinger/`](../../git-stinger/)
 **Trigger policy:** on-demand
 
 ---
 
 ## Domain
 
-`git-worker-bee` owns the full Git workflow surface for developers: interactive rebase (`rebase -i` squash / fixup / reword / drop / autosquash), conflict resolution (merge conflicts, rebase conflicts, rerere, mergetool), history rewriting (`git filter-repo`, BFG — never `filter-branch`), the reset/reflog recovery toolkit (all three reset types, recovering deleted branches and commits, `ORIG_HEAD`), Git worktrees for parallel branch work, client-side hooks (pre-commit, commit-msg, pre-push; Husky, lefthook), submodules vs subtrees decision matrix, large-file storage (Git LFS, partial clone, sparse checkout), and commit signing. It does not own CI/CD pipeline configuration, server-side hooks in CI infrastructure, or credential rotation after a secrets incident — those escalate to `devops-worker-bee` and `security-worker-bee` respectively.
+`git-worker-bee` is the Army's Git mechanics specialist. It owns interactive rebase (squash, fixup, reword, autosquash), conflict resolution (rerere, mergetool, diff3), history rewriting (git filter-repo, BFG, never filter-branch), reset/reflog recovery (all three reset types, recovering deleted branches and commits), worktrees for parallel branch work, hooks (pre-commit, commit-msg, pre-push; Husky, lefthook), the submodules-vs-subtrees decision, Git LFS, partial clone, and sparse checkout. It always shows the escape hatch before a destructive operation.
 
 ## Trigger phrases
 
 Route to `git-worker-bee` when the user says any of:
 
-- "squash my commits"
-- "interactive rebase"
-- "I accidentally pushed a secret / credential / API key"
-- "my repo is huge / too big / slow to clone"
-- "undo that rebase"
-- "recover my deleted branch"
-- "recover a lost commit"
-- "work on two branches at the same time"
-- "set up Git hooks"
-- "submodules vs subtrees"
-- "Git LFS"
-- "partial clone"
-- "sparse checkout"
-- "git filter-repo"
-- "remove file from Git history"
-- "force push is blocked"
-- "git reflog"
-- "git reset --hard regret"
-- "autosquash"
-- "rerere"
+- "Squash my commits"
+- "I pushed a secret" / "I accidentally pushed a secret"
+- "My repo is huge"
+- "Undo that rebase" / "recover my deleted branch"
+- "Work on two branches at once"
+- "Set up Git hooks" / "submodules vs subtrees"
 
-Or when the request involves any Git workflow, history operation, or recovery scenario.
+Or when the request implicitly involves any Git recovery or local Git workflow operation.
 
 ## Do NOT route when
 
-- The request is about CI/CD pipeline configuration triggered by Git events (push hooks, PR pipelines) — route to **devops-worker-bee**
-- Server-side Git hooks (`pre-receive`, `update`, `post-receive`) in a CI runner or hosting platform — route to **devops-worker-bee**
-- Credential rotation after a leaked secret is discovered — route to **security-worker-bee** (in parallel with git-worker-bee for history cleanup)
-- Secret scanning configuration, repository security policies, branch protection rules on GitHub/GitLab — route to **security-worker-bee** or **devops-worker-bee**
-- The request is primarily about GitHub/GitLab REST API usage (creating PRs programmatically, webhook configuration) — route to **devops-worker-bee** or handle inline
+- The user wants which branching model to use, or the merge-vs-rebase strategy decision - that is `branching-strategy-worker-bee`. This Bee runs the mechanics; branching-strategy picks the model.
+- The user wants the CI/CD pipeline configured on top of Git events, or server-side hooks in CI - that is `ci-release-worker-bee`.
+- The user wants credential rotation after a secrets incident - that is `security-worker-bee` (removing a secret from history does not undo the exposure).
 
-If a request straddles git-worker-bee and devops-worker-bee (e.g., "set up a pre-push hook that runs in CI"), prefer git-worker-bee for the local hook setup and explicitly escalate the CI portion to devops-worker-bee.
+If a request straddles two Bees' domains, prefer the narrower-scoped Bee and let this one act as backup.
 
 ## Inputs the Bee needs
 
 Before invoking, ensure the user has provided (or you can infer):
 
-- The Git problem or goal: "squash my last 5 commits", "I accidentally pushed a secret to main", "my repo is 4 GB"
-- The repository context (helpful but not required): monorepo vs polyrepo, public vs private, team-shared vs solo
-- Optional: Git version (`git --version`) — the Bee will check this itself for advanced features
-- Optional: the specific branch name, commit sha, or error message when diagnosing a problem
+- The Git situation (what state the repo is in and what they want to change).
+- The Git version (advanced features gate on it; the Bee runs `git --version` first).
+- Optional: whether the branch is shared (drives force-with-lease guidance).
 
-If the goal is unclear, the Bee will ask for clarification before proceeding — it will never guess on a potentially destructive operation.
+If the situation is unclear, do not invoke yet - ask the user what happened.
 
 ## Outputs the Bee produces
 
-- Exact shell commands in fenced code blocks, annotated line by line
-- The escape hatch command (recovery) before any destructive operation
-- A before-state / operation / after-state explanation
-- Template files from `templates/`: `.gitattributes`, hook scripts, rebase cheat-sheet
-- Escalation items for `security-worker-bee` (credential rotation) or `devops-worker-bee` (CI hooks) when applicable
+- Exact Git command sequences with the recovery/escape-hatch command shown before any destructive step.
+- Hook configuration (Husky, lefthook) and worktree/LFS/sparse-checkout setups.
+- Escalation to `security-worker-bee` whenever a secret reached history.
 
 ## Multi-Bee sequences this Bee participates in
 
-- **Secrets-in-history incident response** — `git-worker-bee` handles history rewriting and force-push coordination; `security-worker-bee` handles credential rotation, access log audit, and stakeholder notification. Both run in parallel; neither waits for the other.
-- **Developer workstation setup** — `git-worker-bee` handles Git configuration and hooks; `terminal-bash-worker-bee` handles shell tooling and dotfiles; `devops-worker-bee` handles CI/CD.
-- **Monorepo architecture** — `git-worker-bee` advises on sparse checkout and subtrees; `devops-worker-bee` handles CI configuration for the monorepo.
+- Hands off branching-model and merge-strategy decisions to `branching-strategy-worker-bee`, and credential rotation for secrets-in-history to `security-worker-bee`.
 
 ## Critical directives the orchestrator should respect
 
-- Always show the escape hatch (recovery command) before any destructive Git operation
-- Use `--force-with-lease` instead of `--force` for every force-push recommendation
-- Never recommend `git filter-branch` — always use `git filter-repo` or BFG
-- Escalate credential rotation to `security-worker-bee` immediately when a secret is discovered in history
-- Confirm Git version before recommending worktrees, partial clone, sparse checkout, or `--rebase-merges`
+- **Always show the escape hatch before a destructive operation** - the recovery command precedes the operation in the response.
+- **Prefer `--force-with-lease` over `--force`** - there is no acceptable plain `--force` in a shared repo.
+- **Never recommend `git filter-branch`** - deprecated; use `git filter-repo` or BFG.
+- **Confirm Git version before recommending advanced features.**
+- **Escalate credential rotation to `security-worker-bee` for secrets-in-history scenarios.**
 
 (Full list lives in the Bee file's `## Critical directives` section.)
 
 ---
 
 *Part of Beekeeper-Suit's roster. See [`.cursor/skills/beekeeper-suit/SKILL.md`](../SKILL.md) for the full Army.*
+
+*Part of the Cursor IDE Army curated by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*

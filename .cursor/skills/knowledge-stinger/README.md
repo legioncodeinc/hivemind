@@ -1,11 +1,11 @@
 # knowledge-stinger
 
-Companion skill to `library-stinger` for authoring **narrative knowledge documentation** — the technically deep, human-readable domain docs under `library/knowledge/private/<domain>/`.
+Companion skill to `library-stinger` for authoring **narrative knowledge documentation** - the technically deep, human-readable domain docs under `library/knowledge/private/<domain>/`.
 
 ## Purpose
 
 `library-stinger` + `library-worker-bee` own PRDs, IRDs, and the documentation lifecycle.  
-`knowledge-stinger` + `knowledge-worker-bee` own the knowledge/ domain — everything from system overviews to SQL schema references to coding standards.
+`knowledge-stinger` + `knowledge-worker-bee` own the knowledge/ domain - everything from system overviews to SQL schema references to coding standards.
 
 ## Directory map
 
@@ -14,9 +14,9 @@ knowledge-stinger/
   SKILL.md                          ← skill entry point (read this first)
   README.md                         ← this file
   guides/
-    01-domain-taxonomy.md           ← what belongs in each of the 15 standard domains
-    02-document-format.md           ← exact document format spec with annotated examples
-    03-analysis-workflow.md         ← step-by-step workflow for building a full knowledge base
+    01-domain-taxonomy.md           <- what belongs in each domain this repo uses
+    02-document-format.md           <- exact document format spec with annotated examples
+    03-analysis-workflow.md         <- step-by-step workflow for building a full knowledge base
   templates/
     knowledge-doc-template.md       ← blank template (copy this to start a new doc)
   examples/

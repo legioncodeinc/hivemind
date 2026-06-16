@@ -1,77 +1,58 @@
-# Guide 03: MCP Integration
+# Guide 03: Registering the Hivemind MCP Server in Cursor
 
-How to register, configure, and build MCP (Model Context Protocol) servers for Cursor.
+How to make Hivemind's MCP tools available inside Cursor. The server itself is `src/mcp/server.ts`; this guide covers registering it, not authoring it.
 
-## What is MCP in Cursor?
+## What the server exposes
 
-MCP is the protocol Cursor uses to let agents call external tools — think of it as a plugin system for the agent's action space. An MCP server exposes `tools` (functions the agent can call), `resources` (read-only data sources), and `prompts` (reusable prompt templates). Cursor ships with several built-in MCP servers and lets you add your own.
+`src/mcp/server.ts` is a stdio MCP server that surfaces Hivemind's shared org memory as three tools:
+
+| Tool | Purpose |
+|---|---|
+| `hivemind_search` | Keyword/regex search across summaries + sessions (one ranked SQL query) |
+| `hivemind_read` | Read full content at a memory path (e.g. `/summaries/alice/abc.md`) |
+| `hivemind_index` | List summary entries (one row per session) |
+
+Auth: the server loads `~/.deeplake/credentials.json`. With no credentials it returns a clear "Not authenticated. Run `hivemind login`" message rather than crashing.
+
+The tool definitions, Zod schemas, and transport are owned by `mcp-protocol-worker-bee`. This Bee only wires the server into Cursor.
+
+## Two ways Cursor gets these tools
+
+1. **The hooks harness already gives recall via the bundle.** After `hivemind cursor install`, the `session-start` and `pre-tool-use` hooks inject and fast-path memory recall without any MCP registration. For many users that is enough.
+2. **Direct MCP registration** gives the agent first-class `hivemind_search` / `hivemind_read` / `hivemind_index` tool calls inside Cursor. This is a `mcp.json` entry, covered below.
 
 ## Config file hierarchy
 
-Cursor reads MCP config from two places:
+Cursor reads MCP config from two places and merges them at startup:
 
 | File | Scope | Priority |
 |---|---|---|
-| `.cursor/mcp.json` | Project-specific; commit to git for team sharing | Higher (project wins on name conflict) |
+| `.cursor/mcp.json` | Project; commit for team sharing | Higher (project wins on name conflict) |
 | `~/.cursor/mcp.json` | Global; applies to all projects | Lower |
 
-Both files are merged at startup. Restart Cursor after editing either file (unlike Claude Code, Cursor does not hot-reload MCP configs).
+Restart Cursor after editing either file; it does not hot-reload MCP config.
 
-## `mcp.json` schema
+## The `mcp.json` entry
 
-### STDIO server (process spawned by Cursor)
+The Hivemind MCP server is a stdio server. Point Cursor at the built entrypoint:
 
 ```json
 {
   "mcpServers": {
-    "my-tool": {
+    "hivemind": {
       "command": "node",
-      "args": ["${workspaceFolder}/scripts/my-mcp-server.js"],
-      "env": {
-        "API_KEY": "${env:MY_API_KEY}"
-      }
+      "args": ["${userHome}/.hivemind/.../dist/mcp/server.js"],
+      "env": {}
     }
   }
 }
 ```
 
-Required fields: `command`. Optional: `args`, `env`, `envFile` (path to a `.env` file).
-
-### Remote server (HTTP/SSE)
-
-```json
-{
-  "mcpServers": {
-    "remote-tool": {
-      "url": "https://my-mcp.example.com/sse",
-      "headers": {
-        "Authorization": "Bearer ${env:REMOTE_TOKEN}"
-      }
-    }
-  }
-}
-```
-
-### Remote server with OAuth (2026 addition)
-
-```json
-{
-  "mcpServers": {
-    "oauth-tool": {
-      "url": "https://my-oauth-mcp.example.com/sse",
-      "auth": {
-        "clientId": "${env:MCP_CLIENT_ID}",
-        "clientSecret": "${env:MCP_CLIENT_SECRET}",
-        "scopes": ["read", "write"]
-      }
-    }
-  }
-}
-```
+If running from a global install of `@deeplake/hivemind`, prefer invoking through the package's published bin or `npx` rather than hardcoding a path. The server reads `~/.deeplake/credentials.json` itself, so no secrets belong in `mcp.json`.
 
 ### Config interpolation variables
 
-These variables are resolved in `command`, `args`, `env`, `url`, and `headers`:
+Resolved in `command`, `args`, and `env`:
 
 | Variable | Value |
 |---|---|
@@ -79,89 +60,20 @@ These variables are resolved in `command`, `args`, `env`, `url`, and `headers`:
 | `${userHome}` | User home directory |
 | `${workspaceFolder}` | Project root (where `.cursor/mcp.json` lives) |
 | `${workspaceFolderBasename}` | Project folder name only |
-| `${pathSeparator}` or `${/}` | OS path separator |
 
-**Never hardcode secrets in `mcp.json`.** Always use `${env:NAME}` and store the value in your shell environment or a `.env` file (referenced via `envFile`).
+Never hardcode secrets. The server authenticates via the credentials file, not via `mcp.json`.
 
-## Authoring an MCP tool (TypeScript)
+## Auto-approval
 
-A minimal MCP server using the `@modelcontextprotocol/sdk` package:
-
-```typescript
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-
-const server = new Server({ name: "my-tool", version: "1.0.0" });
-
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [{
-    name: "run_security_scan",
-    description: "Runs a security scan on the specified file and returns findings.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        filePath: { type: "string", description: "Absolute path to the file to scan." }
-      },
-      required: ["filePath"]
-    }
-  }]
-}));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name === "run_security_scan") {
-    const { filePath } = request.params.arguments as { filePath: string };
-    // ... your logic here
-    return { content: [{ type: "text", text: `Scan complete for ${filePath}` }] };
-  }
-  throw new Error(`Unknown tool: ${request.params.name}`);
-});
-
-const transport = new StdioServerTransport();
-await server.connect(transport);
-```
-
-### Tool schema requirements
-
-Cursor validates tool schemas strictly. Common failure patterns (silently rejected, no UI error):
-
-| Problem | Fix |
-|---|---|
-| Missing `inputSchema` | Add `inputSchema: { type: "object", properties: {}, required: [] }` even for zero-param tools |
-| `properties` is an array instead of an object | Use `{ "paramName": { "type": "string" } }` format |
-| Tool name contains spaces or special chars | Use kebab-case: `run-scan`, `fetch-data` |
-| Tool name > ~60 characters | Keep names short and namespaced: `secuity.run-scan` |
-
-### Auto-approval
-
-By default, Cursor asks the user before calling any MCP tool. To enable auto-approval (agent calls tools without prompting):
-
-Settings > Cursor Settings > MCP > "Allow Agent to run tools without asking" > enable per-tool or globally.
-
-## Programmatic registration (Extension API)
-
-For enterprise plugins or automated setup workflows, use the `vscode.cursor.mcp` Extension API to register servers without editing `mcp.json`:
-
-```typescript
-import * as vscode from "vscode";
-
-// In your extension's activate() function:
-const mcpApi = vscode.extensions.getExtension("cursor.cursor")?.exports?.mcp;
-if (mcpApi) {
-  mcpApi.registerServer("my-enterprise-tool", {
-    command: "node",
-    args: ["/path/to/server.js"]
-  });
-}
-```
-
-Unregister with `mcpApi.unregisterServer("my-enterprise-tool")`. Useful for:
-- Enterprise onboarding tools that add team-standard MCP servers automatically.
-- Cursor plugins/extensions that bundle their own MCP server.
+By default Cursor asks before calling any MCP tool. To let the agent call the Hivemind tools without prompting: Cursor Settings > MCP > "Allow Agent to run tools without asking" (enable per-tool or globally). The Hivemind tools are read-only recall, so per-tool auto-approval is reasonable.
 
 ## Troubleshooting checklist
 
-- **Tool not appearing in agent:** check `mcp.json` JSON syntax (a single trailing comma breaks the file); restart Cursor; verify the server process starts without errors.
-- **Tool call silently fails:** validate `inputSchema` against the JSON Schema spec; check server logs in Output panel > "Cursor MCP".
-- **Auth errors on remote server:** confirm env vars are set in your shell before launching Cursor; try `echo ${MY_API_KEY}` in a terminal first.
-- **Server spawned multiple times:** Cursor spawns one process per project. If the server is also registered globally, you may get two processes — prefix the name differently to avoid conflicts.
+- **Tools not appearing:** check `mcp.json` syntax (a single trailing comma breaks the file); restart Cursor; confirm `node` can run the server entrypoint without errors.
+- **"Not authenticated" responses:** run `hivemind login` so `~/.deeplake/credentials.json` exists.
+- **Tool call errors:** check Output > "Cursor MCP" for the server's stderr.
+- **Server spawned twice:** Cursor spawns one process per registration. If `hivemind` is registered both globally and per-project under the same name, you may see two; keep it in one place.
+
+## Handoff boundary
+
+Registering the server in Cursor is this Bee's job. The server's tool schemas, search logic, and transport are `mcp-protocol-worker-bee`'s. Harness wiring for other agents (Hermes registers these same tools) is `harness-integration-worker-bee`'s.

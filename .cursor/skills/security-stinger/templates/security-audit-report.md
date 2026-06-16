@@ -3,15 +3,16 @@
 **Audit date:** {{YYYY-MM-DD}}
 **Auditor:** security-worker-bee subagent
 **Scope:** {{list of files / directories reviewed}}
-**Next.js version audited:** {{x.y.z from package.json}}
-**React version audited:** {{x.y.z from package-lock.json}}
-**CVE watchlist last refreshed:** {{date from research/cve-watchlist.md — flag if >120 days old}}
+**Node version audited:** {{x.y from package.json engines / runtime}}
+**`npm audit` result:** {{clean / N High / N Critical from package-lock.json}}
+**OpenClaw bundle scan:** {{clean / flagged - from `npm run audit:openclaw`}}
+**CVE watchlist last refreshed:** {{date from research/cve-watchlist.md - flag if >120 days old}}
 
 ---
 
 ## Executive Summary
 
-{{2–3 sentences covering: overall security posture, counts by severity, and the financial/PII risk level. Name the single most important finding first. If running out of order (after quality-worker-bee), state that here.}}
+{{2-3 sentences covering: overall security posture, counts by severity, and the financial/PII risk level. Name the single most important finding first. If running out of order (after quality-worker-bee), state that here.}}
 
 ---
 
@@ -19,13 +20,13 @@
 
 | Category | Status | Findings |
 |---|---|---|
-| Financial / Payment Security | {{OK / ATTN / FAIL}} | {{count}} |
-| PII Exposure | {{OK / ATTN / FAIL}} | {{count}} |
-| Authentication & Authorization | {{OK / ATTN / FAIL}} | {{count}} |
-| Injection Vulnerabilities | {{OK / ATTN / FAIL}} | {{count}} |
-| Dependency Security | {{OK / ATTN / FAIL}} | {{count}} |
-| Configuration & Headers | {{OK / ATTN / FAIL}} | {{count}} |
-| Data Handling | {{OK / ATTN / FAIL}} | {{count}} |
+| Credential / Token Exposure | {{OK / ATTN / FAIL}} | {{count}} |
+| Captured-Trace PII (sessions/memory) | {{OK / ATTN / FAIL}} | {{count}} |
+| Authentication & Org RBAC / Scope | {{OK / ATTN / FAIL}} | {{count}} |
+| Injection (Deep Lake SQL API) | {{OK / ATTN / FAIL}} | {{count}} |
+| Dependency & OpenClaw Bundle | {{OK / ATTN / FAIL}} | {{count}} |
+| Configuration (cred modes, capture opt-out, client hardening) | {{OK / ATTN / FAIL}} | {{count}} |
+| Pre-Tool-Use Gate & Prompt Injection | {{OK / ATTN / FAIL}} | {{count}} |
 
 Legend: **OK** = zero findings · **ATTN** = Medium/Low findings documented · **FAIL** = Critical/High findings (fixed in this session).
 
@@ -34,7 +35,7 @@ Legend: **OK** = zero findings · **ATTN** = Medium/Low findings documented · *
 ## Critical Findings (fixed in this session)
 
 {{For each Critical finding:}}
-- [x] **{{CATEGORY / CVE}}** `path/to/file.ts:LINE` — {{vulnerability description in one sentence; fix applied in one sentence}}
+- [x] **{{CATEGORY / CVE}}** `path/to/file.ts:LINE` - {{vulnerability description in one sentence; fix applied in one sentence}}
 
 {{If none: "None detected."}}
 
@@ -43,7 +44,7 @@ Legend: **OK** = zero findings · **ATTN** = Medium/Low findings documented · *
 ## High Findings (fixed in this session)
 
 {{For each High finding:}}
-- [x] **{{CATEGORY}}** `path/to/file.ts:LINE` — {{vulnerability description; fix applied}}
+- [x] **{{CATEGORY}}** `path/to/file.ts:LINE` - {{vulnerability description; fix applied}}
 
 {{If none: "None detected."}}
 
@@ -51,8 +52,8 @@ Legend: **OK** = zero findings · **ATTN** = Medium/Low findings documented · *
 
 ## Medium Findings (follow-up required)
 
-{{For each Medium finding — use [ ] unless fixed in-session under the 5-line exception, then [x]:}}
-- [ ] **{{CATEGORY}}** `path/to/file.ts:LINE` — {{description; recommended fix}}
+{{For each Medium finding - use [ ] unless fixed in-session under the 5-line exception, then [x]:}}
+- [ ] **{{CATEGORY}}** `path/to/file.ts:LINE` - {{description; recommended fix}}
 
 {{If none: "None detected."}}
 
@@ -61,7 +62,7 @@ Legend: **OK** = zero findings · **ATTN** = Medium/Low findings documented · *
 ## Low Findings (documentation only)
 
 {{For each Low finding:}}
-- [ ] **{{CATEGORY}}** `path/to/file.ts:LINE` — {{description}}
+- [ ] **{{CATEGORY}}** `path/to/file.ts:LINE` - {{description}}
 
 {{If none: "None detected."}}
 
@@ -70,21 +71,24 @@ Legend: **OK** = zero findings · **ATTN** = Medium/Low findings documented · *
 ## Dependency Audit
 
 ```text
-{{paste summary of `npm audit --json --audit-level=high` — just the severity counts and top 5 advisories}}
+{{paste summary of `npm audit --json --audit-level=high` - just the severity counts and top 5 advisories}}
 ```
 
 Full output: ephemeral local scan scratch (e.g., `.scan-output/npm-audit.json`).
 
 ---
 
-## Next.js Version Check
+## Surface Integrity Check
 
-| CVE | Patched threshold | Current project | Status |
+| Check | Expected | Observed | Status |
 |---|---|---|---|
-| **CVE-2025-29927** (middleware bypass) | 14.2.25 / 15.2.3 | {{version}} | {{patched / UNPATCHED — CRITICAL}} |
-| **CVE-2025-55182** (React2Shell RCE) | React 19.0.1 / 19.1.2 / 19.2.1 | {{react version}} | {{patched / UNPATCHED — CRITICAL}} |
-| **CVE-2025-66478** (Next.js companion) | latest 14.x / 15.x / 16.x | {{next version}} | {{patched / UNPATCHED — CRITICAL}} |
-| **CVE-2026-27978** (null-origin CSRF) | latest | {{next version}} | {{patched / UNPATCHED}} |
+| **SQL guards** (`src/utils/sql.ts`) | `sqlIdent` regex `[A-Za-z_][A-Za-z0-9_]*`; every interpolation wrapped | {{observed}} | {{OK / FAIL - CRITICAL}} |
+| **Config table names via `sqlIdent`** | `HIVEMIND_RULES_TABLE` etc. wrapped | {{observed}} | {{OK / FAIL - CRITICAL}} |
+| **Pre-tool-use gate** (`src/hooks/pre-tool-use.ts`) | literal paths only; VFS-confined | {{observed}} | {{OK / FAIL}} |
+| **Credential file modes** | `0600` file / `0700` dir, explicit | {{observed}} | {{OK / FAIL - HIGH}} |
+| **Capture opt-out** (`HIVEMIND_CAPTURE=false`) | zero INSERTs | {{observed}} | {{OK / FAIL - HIGH}} |
+| **OpenClaw bundle scan** (`npm run audit:openclaw`) | clean; only the documented `gate-runner` bypass | {{observed}} | {{OK / FAIL}} |
+| **No token in logs / traces** | `safeLog` redaction on sensitive paths | {{observed}} | {{OK / FAIL - CRITICAL}} |
 
 ---
 
@@ -100,16 +104,4 @@ Run `git diff` to review every change; diff reviewed and confirmed security-scop
 
 ## Recommended Follow-Up (architectural)
 
-{{Larger refactors flagged but not implemented in this session. Each item names the finding that motivated it.}}
-
-- {{e.g., "Migrate raw-SQL query layer to Prisma across `src/legacy/db/**` — motivated by B1.1 SQL injection finding at `src/legacy/db/users.ts:42`."}}
-
----
-
-## Ordering Note
-
-{{If this audit ran BEFORE quality-worker-bee as required — delete this section. If it ran after — name the QA report file, state that its verification predates these security fixes, and recommend re-running quality-worker-bee.}}
-
----
-
-*Generated by `security-worker-bee` using `security-stinger`. See `.cursor/skills/security-stinger/` for methodology.*
+{{Larger refactors flagged but not implemented in this sessio

@@ -1,4 +1,4 @@
-# Research Index — github-repo-health-stinger
+# Research Index - github-repo-health-stinger
 
 | File | Source type | Authority | Relevance | Topic |
 |---|---|---|---|---|

@@ -16,27 +16,27 @@
 ## Expansion queries (authored by scripture-historian)
 
 ### Branch from "On-call runbook template 2026"
-- "on-call runbook template best practices 2026 SRE engineering" — broad retrieval of current 7-section frameworks
-- "incident runbook structure sections required 2026" — narrowed to the structural requirements question
-- "runbook anti-patterns five-minute rule no-implied-context 2026" — targets the exact-command discipline the stinger must encode
+- "on-call runbook template best practices 2026 SRE engineering" - broad retrieval of current 7-section frameworks
+- "incident runbook structure sections required 2026" - narrowed to the structural requirements question
+- "runbook anti-patterns five-minute rule no-implied-context 2026" - targets the exact-command discipline the stinger must encode
 
 ### Branch from "Runbook automation Notion Slab 2026"
-- "runbook automation Notion Slab Confluence wiki tool comparison 2026" — tool-vs-tool decision guidance
-- "runbook storage version control git Backstage 2026" — where runbooks live and how they stay current
+- "runbook automation Notion Slab Confluence wiki tool comparison 2026" - tool-vs-tool decision guidance
+- "runbook storage version control git Backstage 2026" - where runbooks live and how they stay current
 
 ### Branch from "Incident response runbook 2026"
-- "incident response runbook structure sections required 2026" — overlaps with query 1 branch, used for cross-validation
-- "escalation path design on-call engineering tier PagerDuty OpsGenie 2026" — escalation architecture sub-topic
-- "PagerDuty three-tier escalation policy on-call schedule best practices" — PagerDuty official guidance
+- "incident response runbook structure sections required 2026" - overlaps with query 1 branch, used for cross-validation
+- "escalation path design on-call engineering tier PagerDuty OpsGenie 2026" - escalation architecture sub-topic
+- "PagerDuty three-tier escalation policy on-call schedule best practices" - PagerDuty official guidance
 
 ### Branch from "Postmortem blameless template 2026"
-- "blameless postmortem template incident review 2026" — template content and structure
-- "postmortem to runbook linkage closed loop incident learning action items 2026 SRE" — the closed-loop question the stinger must answer
-- "Google SRE book on-call chapter runbook 2026" — primary reference anchor
+- "blameless postmortem template incident review 2026" - template content and structure
+- "postmortem to runbook linkage closed loop incident learning action items 2026 SRE" - the closed-loop question the stinger must answer
+- "Google SRE book on-call chapter runbook 2026" - primary reference anchor
 
 ### Branch from "Runbook test exercise 2026"
-- "runbook testing game day exercise schedule methodology 2026 SRE" — game day process and cadence
-- "AWS FIS game day exercise runbook validation" — practitioner case study from AWS team
+- "runbook testing game day exercise schedule methodology 2026 SRE" - game day process and cadence
+- "AWS FIS game day exercise runbook validation" - practitioner case study from AWS team
 
 ## Rationale for each query
 

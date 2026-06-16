@@ -12,7 +12,7 @@ stinger: readme-writing-stinger
 
 ## Summary
 
-Practitioner guide on badge strategy for GitHub READMEs, covering optimal quantity, placement, content selection, and maintenance. The consensus position: 3-5 badges maximum in the header, positioned immediately after title and tagline. Badges should communicate health and status (CI, coverage, version, downloads, license) — not decorate the page. The guide draws a hard line between "status badges" (which earn their place by informing the reader) and "vanity badges" ("made with love", "PRs welcome" without evidence) which add noise without signal. Shields.io is the canonical badge provider. GitHub Actions can automate badge data currency.
+Practitioner guide on badge strategy for GitHub READMEs, covering optimal quantity, placement, content selection, and maintenance. The consensus position: 3-5 badges maximum in the header, positioned immediately after title and tagline. Badges should communicate health and status (CI, coverage, version, downloads, license) - not decorate the page. The guide draws a hard line between "status badges" (which earn their place by informing the reader) and "vanity badges" ("made with love", "PRs welcome" without evidence) which add noise without signal. Shields.io is the canonical badge provider. GitHub Actions can automate badge data currency.
 
 ## Key quotations / statistics
 
@@ -28,5 +28,5 @@ Practitioner guide on badge strategy for GitHub READMEs, covering optimal quanti
 
 - **`guides/02-badges.md`**: This is the primary source for the badge guide. Structure the guide around: (1) the 3-5 rule, (2) approved categories, (3) anti-pattern catalog, (4) Shields.io URL patterns, (5) dynamic vs static badge choice, (6) automated currency via GitHub Actions.
 - The vanity badge anti-pattern list ("made with ❤️", "PRs welcome" without substance) should become a "do not add" checklist item in `guides/05-done-checklist.md`.
-- Shields.io URL pattern for CI: `https://img.shields.io/github/actions/workflow/status/{user}/{repo}/{workflow}.yml` — include this concrete pattern in the badge guide.
+- Shields.io URL pattern for CI: `https://img.shields.io/github/actions/workflow/status/{user}/{repo}/{workflow}.yml` - include this concrete pattern in the badge guide.
 - Placement rule (after title, before description) is a structural constraint that should propagate to `guides/01-structure-checklist.md`.

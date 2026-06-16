@@ -25,7 +25,7 @@
 | History rewriting (git filter-repo, BFG) | git-worker-bee |
 | Git hook script authoring (Husky, lefthook) | git-worker-bee |
 | Branch protection ruleset configuration in GitHub/GitLab UI | github-repo-health-worker-bee |
-| CI/CD pipeline topology and pipeline-as-code authoring | devops-worker-bee |
+| CI/CD pipeline topology and pipeline-as-code authoring | ci-release-worker-bee |
 | Feature flag platform setup and SDK integration | (generic platform setup) |
 | Release communication / changelogs | changelog-release-notes-worker-bee |
 
@@ -33,12 +33,12 @@
 
 - `git-worker-bee` stinger: for rebase/merge mechanics that feed into merge strategy decisions
 - `github-repo-health-worker-bee` stinger: for branch protection ruleset setup that enforces the chosen model
-- `devops-worker-bee` stinger: for CI/CD pipeline shape that enables TBD (fast tests, deployment gates)
+- `ci-release-worker-bee` stinger: for CI/CD pipeline shape that enables TBD (fast tests, deployment gates)
 - `changelog-release-notes-worker-bee` stinger: for the release communication step downstream of the release branch lifecycle
 
 ## Routing rules in the SKILL.md
 The stinger must include explicit routing rules:
 1. "If the user asks HOW to rebase or resolve a conflict → route to git-worker-bee"
 2. "If the user asks HOW to configure branch protection in GitHub settings → route to github-repo-health-worker-bee"
-3. "If the user asks HOW to speed up their CI pipeline → route to devops-worker-bee"
+3. "If the user asks HOW to speed up their CI pipeline → route to ci-release-worker-bee"
 4. "If the user asks WHICH branch protection settings to use → answer using this stinger, then hand off to github-repo-health-worker-bee for implementation"

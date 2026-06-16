@@ -5,9 +5,9 @@
 Enqueues a background job that gathers all of the authenticated user's profile data and emails them a signed download URL. One export per user per 24 hours.
 
 **Related:**
-- [prd-feature-007-user-profile-export.md](../../requirements/completed/prd-007-user-profile-export/prd-007-user-profile-export-index.md) — spec
-- `api/src/routes/user-export.ts` — handler
-- `api/src/workers/user-export-worker.ts` — worker
+- [prd-feature-007-user-profile-export.md](../../requirements/completed/prd-007-user-profile-export/prd-007-user-profile-export-index.md) - spec
+- `api/src/routes/user-export.ts` - handler
+- `api/src/workers/user-export-worker.ts` - worker
 
 ---
 
@@ -20,7 +20,7 @@ POST /api/users/me/export
 ## Authentication
 
 - Bearer token required (see [authentication-flow.md](../architecture/authentication-flow.md)).
-- No additional role or scope required — any authenticated user may request their own data.
+- No additional role or scope required - any authenticated user may request their own data.
 
 ## Request
 
@@ -148,8 +148,8 @@ One export per user per rolling 24-hour window. Counted by `COUNT(*)` on `export
 
 ## Related endpoints
 
-- [GET /api/users/me/export/:id](get-user-export-by-id.md) — status poll for a specific request.
+- [GET /api/users/me/export/:id](get-user-export-by-id.md) - status poll for a specific request.
 
 ## Changelog
 
-- v1.0 (2026-05) — Initial version shipped with feature-007.
+- v1.0 (2026-05) - Initial version shipped with feature-007.

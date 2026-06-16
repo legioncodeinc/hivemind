@@ -1,100 +1,41 @@
-# Guide 07 — Wiki Sync Contract
+# Guide 07 - Wiki Pages and `library/`
 
-Explains the relationship between a repository's `library/` folder and the suite-level `legion-wiki/` Obsidian vault.
+Explains how `library-worker-bee`'s `library/` folder relates to the pages produced by `wiki-worker-bee`.
 
 ---
 
 ## The core rule
 
-**Per-repo `library/` is the source of truth. `legion-wiki/` is derived.**
+**`library/` is the source of truth. You write here. You never edit another Bee's output in place.**
 
-Never edit files inside `legion-wiki/<repo>/library/`. They are overwritten by `legion-sync` on every run.
-
----
-
-## How the sync works
-
-`legion-sync` (at `legion-suite/scripts/legion-sync.ts`) mirrors markdown files from each repo's `library/` into a matching folder inside `legion-wiki/`:
-
-```
-<repo>/library/**/*.md  --[legion-sync]-->  legion-wiki/<repo>/library/**/*.md
-```
-
-Special cases:
-- `legion-shim/`: root architecture `.md` files mirror to `legion-wiki/legion-shim/library/knowledge-base/architecture/`
-- `legion-shared/standards/`: mirrors to `legion-wiki/legion-shared/library/standards/`
+`library-worker-bee` owns the `library/` lifecycle (PRDs, IRDs, folder invariants). `knowledge-worker-bee` owns the narrative docs under `library/knowledge/private/<domain>/`. `wiki-worker-bee` is the tree-sitter-based Bee that extracts code-entity pages from the source tree and files them under `library/knowledge/`. All three write into the same `library/` tree; none overwrites another's files.
 
 ---
 
-## v2 path mapping in the wiki
+## What `wiki-worker-bee` produces
 
-The wiki mirrors v2 paths exactly. No path transformation is needed: the wiki layout matches the repo layout.
+`wiki-worker-bee` walks the repo with tree-sitter, extracts symbols (modules, exported functions, types), and writes one knowledge page per significant entity. Those pages land under `library/knowledge/` (public or private depending on audience), following the same path and header conventions every other knowledge doc uses. There is no separate Obsidian vault and no external mirror - the pages live in this repo's `library/` like everything else.
 
-```
-<repo>/library/knowledge/public/overview/what-is-X.md
-  -> legion-wiki/<repo>/library/knowledge/public/overview/what-is-X.md
-
-<repo>/library/requirements/backlog/prd-007-user-export/prd-007-user-export-index.md
-  -> legion-wiki/<repo>/library/requirements/backlog/prd-007-user-export/prd-007-user-export-index.md
-```
-
----
-
-## Injected frontmatter
-
-Every mirrored file gets these fields prepended:
-
-```yaml
----
-# DO NOT EDIT — this file is synced from <repo>/library/path/to/file.md
-source: "<repo>/library/..."
-synced_at: "<ISO timestamp>"
----
-```
-
----
-
-## Running the sync
-
-From `legion-suite/`:
-
-```bash
-pnpm legion-sync                 # incremental (only changed files)
-pnpm legion-sync --full          # force re-copy everything
-pnpm legion-sync --status        # health report (all repos should show OK)
-pnpm legion-sync --watch         # file-watch mode (opt-in for dev sessions)
-```
+Example: the symbols in `src/shell/grep-core.ts` (the hybrid recall pipeline) become a page at `library/knowledge/private/ai/hybrid-recall-pipeline.md`, cross-linked from the architecture overview.
 
 ---
 
 ## What `library-worker-bee` does
 
-- Writes to per-repo `library/` folders (the sources of truth).
-- Never touches `legion-wiki/`.
-- When a user asks to "update the wiki", interpret that as updating the source `library/` and instructing them to run `pnpm legion-sync`.
+- Writes to `library/` (the source of truth) per the path conventions in `SKILL.md`.
+- Owns folder invariants, PRD/IRD numbering, and lifecycle moves (`backlog/` -> `in-work/` -> `completed/`).
+- Does not author the narrative knowledge pages themselves - those are `knowledge-worker-bee`'s and `wiki-worker-bee`'s domain. When a user asks to "document how X works" or "regenerate the wiki", route to the right Bee rather than writing the page yourself.
 
 ---
 
-## Pre-commit hook
+## Coexistence rules
 
-The pre-commit hook in `legion-suite` runs `pnpm legion-sync` automatically when any `**/library/**/*.md` is staged. This includes staging the updated wiki files in the same commit.
-
-Bypass: `SKIP_LEGION_SYNC=1 git commit -m "..."`
-
----
-
-## Wiki vs entity wiki
-
-```
-legion-wiki/<repo>/
-  library/    <- library/ mirror (populated by legion-sync)
-  wiki/       <- code entity extraction (populated by wiki-worker-bee, future)
-```
-
-`legion-sync` only touches `library/`. The `wiki/` subfolder is managed by `wiki-worker-bee` independently.
+- One `library/` per repo. Every Bee writes into it; no Bee owns it exclusively.
+- Never delete or rewrite a page another Bee authored unless the user explicitly asks. Prefer additive edits and cross-links.
+- A page that no longer has a backing entity (the code was deleted) is stale. Flag it in a drift report (see `guides/06-maintenance.md`) rather than silently removing it.
 
 ---
 
-## Stale cleanup
+## Drift between code and pages
 
-`legion-sync` automatically removes wiki mirror files when the source file no longer exists. This handles migrations (e.g., when v1 paths were renamed to v2 — old wiki entries are pruned on next `--full` run).
+Because `wiki-worker-bee` derives pages from the source tree, those pages can drift when code changes and the wiki is not re-run. During a sync audit (`guides/06-maintenance.md`), note any knowledge page whose cited source path no longer exists, and recommend re-running `wiki-worker-bee` rather than hand-patching the page.

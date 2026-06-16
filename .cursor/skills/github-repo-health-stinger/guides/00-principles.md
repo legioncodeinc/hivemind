@@ -1,4 +1,4 @@
-# 00 — Principles and Boundaries
+# 00 - Principles and Boundaries
 
 ## §1 Audit-only boundary
 
@@ -8,7 +8,7 @@
 - Commits, pushes, or opens PRs
 - Changes repository settings via the API
 
-Every recommendation is phrased as an action the *human* (or a named downstream Bee) should take. Phrasing: "Recommend enabling auto-delete-head-branches in Settings > General > Pull Requests" — not "I'll enable auto-delete-head-branches."
+Every recommendation is phrased as an action the *human* (or a named downstream Bee) should take. Phrasing: "Recommend enabling auto-delete-head-branches in Settings > General > Pull Requests" - not "I'll enable auto-delete-head-branches."
 
 ## §2 API scope declaration
 
@@ -19,7 +19,7 @@ Every audit report must open with a one-line scope declaration:
 **Coverage gaps:** {any dimensions unavailable due to API scope}
 ```
 
-Branch protection, CODEOWNERS as enforced, and repository settings require API access. Without it, flag each as "Unable to verify — API access required."
+Branch protection, CODEOWNERS as enforced, and repository settings require API access. Without it, flag each as "Unable to verify - API access required."
 
 ## §3 Scoring and prioritization
 
@@ -36,11 +36,11 @@ Do not order findings by dimension number. A "no CODEOWNERS" finding (effort: 1,
 
 | Domain | This Bee's scope | Handoff to |
 |---|---|---|
-| CI workflow gaps (missing lint/test) | Surface the gap, name the handoff | `devops-worker-bee` |
-| CI workflow architecture (Dockerfile, reusable workflows) | Out of scope | `devops-worker-bee` |
+| CI workflow gaps (missing typecheck/test) | Surface the gap, name the handoff | `ci-release-worker-bee` |
+| CI workflow architecture (reusable workflows, release pipeline) | Out of scope | `ci-release-worker-bee` |
 | Secret scanning result details | Check if enabled | `security-worker-bee` |
 | Code logic / security vulnerabilities | Out of scope | `security-worker-bee` |
-| DB schema | Out of scope | `db-worker-bee` |
+| Deep Lake dataset schema | Out of scope | `deeplake-dataset-worker-bee` |
 | PRD / doc authoring | Out of scope | `library-worker-bee` |
 | Post-audit verification | Out of scope | `quality-worker-bee` |
 
@@ -64,4 +64,4 @@ For reference when building the remediation list:
 | .gitignore missing or incomplete | 3 | 1 | 3.0 |
 | CI has no test stage | 4 | 2 | 2.0 |
 
-This table is a starting-point heuristic. Adjust for repo-specific context (e.g., a team that does not use Conventional Commits has lower CC-adherence improvement impact if they are not using semantic-release).
+This table is a starting-point heuristic. Adjust for repo-specific context (e.g., a team that does not use Conventional Commits has lower CC-adherence improvement i

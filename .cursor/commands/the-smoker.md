@@ -13,7 +13,7 @@ You are an orchestrator. You do not write the specialist code yourself; you rout
 1. Read every in-scope PRD end to end. Extract every acceptance criterion into a master AC Ledger at the repo root (e.g. `EXECUTION_LEDGER.md`): each entry gets an ID, source PRD, exact criterion text, status (OPEN / IN PROGRESS / DONE / VERIFIED), and the owning Bee. This ledger is the single source of truth and survives context loss.
 2. Map dependencies. Independent criteria run in parallel waves; dependent ones run after their dependency is VERIFIED (not merely DONE).
 3. Produce a wave plan (Mermaid or list): each wave names its Bees, what each owns, and its exit criteria. Maximize parallelism for shortest wall-clock time.
-4. Route each task to a Bee via the roster: read `.cursor/skills/beekeeper-suit/SKILL.md` and match each work item to a worker-bee. Pick the best model per task (strong reasoning for architecture/gnarly refactors, strong coding model for standard features, fast cheap model for mechanical work); write the model choice next to each Bee in the plan.
+4. Route each task to a Bee via the roster: read `.cursor/skills/beekeeper-suit/SKILL.md` and match each work item to a worker-bee. For each Bee, pick the best model using the scored rubric in `.cursor/model-comparison-matrix.md`: match the task profile (reasoning depth, code quality, tool use, cost, speed, context) to the model and write the choice with a one-line justification next to each Bee in the wave plan.
 
 Show the user the wave plan and AC Ledger, then execute without waiting for further approval.
 

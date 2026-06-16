@@ -16,26 +16,27 @@ Or use with Husky (`.husky/<hook-name>`) or lefthook (`lefthook.yml`).
 
 ---
 
-## pre-commit: lint + fast tests
+## pre-commit: type-check + duplication + fast tests
+
+Hivemind has no ESLint/Prettier. The quality gate is `tsc --noEmit` plus `jscpd` duplication, wired through husky + lint-staged.
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Staged TypeScript/JavaScript files only
-STAGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|tsx|js|jsx)$' || true)
+# Staged TypeScript files only
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(ts|mts|cts)$' || true)
 
 if [ -n "$STAGED" ]; then
-  echo "ESLint..."
-  npx eslint --fix $STAGED
-  git add $STAGED  # re-stage auto-fixed files
-
   echo "TypeScript type-check..."
-  npx tsc --noEmit
+  npm run typecheck   # tsc --noEmit
+
+  echo "Duplication check..."
+  npx jscpd $STAGED
 fi
 
 echo "Unit tests..."
-npm run test:unit --silent
+npx vitest run --silent
 ```
 
 ---
@@ -57,7 +58,7 @@ if ! echo "$MSG" | grep -qE "$PATTERN"; then
   echo "ERROR: commit message must follow Conventional Commits."
   echo "Pattern: type(scope): description (max 100 chars)"
   echo "Types: feat fix docs style refactor perf test build ci chore revert"
-  echo "Example: feat(auth): add Google OAuth login"
+  echo "Example: feat(retrieval): add Deep Lake recall filter"
   exit 1
 fi
 ```
@@ -100,13 +101,13 @@ exit 0
 pre-commit:
   parallel: true
   commands:
-    lint:
-      glob: "*.{ts,tsx,js,jsx}"
-      run: npx eslint --fix {staged_files} && git add {staged_files}
     typecheck:
-      run: npx tsc --noEmit
+      run: npm run typecheck   # tsc --noEmit
+    duplication:
+      glob: "*.{ts,mts,cts}"
+      run: npx jscpd {staged_files}
     test:
-      run: npm run test:unit --silent
+      run: npx vitest run --silent
 
 commit-msg:
   commands:
@@ -116,5 +117,5 @@ commit-msg:
 pre-push:
   commands:
     tests:
-      run: npm run test --silent
+      run: npx vitest run --silent
 ```

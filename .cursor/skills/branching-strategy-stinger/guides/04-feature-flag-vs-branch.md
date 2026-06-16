@@ -8,7 +8,7 @@
 
 ## The core rule
 
-> If a feature cannot be merged to `main` in ≤ 2 working days, it needs a feature flag — not a longer-lived branch.
+> If a feature cannot be merged to `main` in ≤ 2 working days, it needs a feature flag - not a longer-lived branch.
 
 The inverse is NOT "therefore all features need feature flags." Short-lived branches (≤ 2 days) that are reviewed and merged cleanly are fine without flags.
 
@@ -21,10 +21,10 @@ A long-lived branch exhibits the following failure mode:
 1. Feature starts on a branch. Day 1: clean diff, no conflicts.
 2. Other engineers merge work to main. Day 3: first conflicts appear.
 3. More merges happen. Day 5: the branch owner spends half a day on merge resolution.
-4. The feature is still not done. Day 8: the branch is now "risky to touch" — no one is sure what the full impact of merging is. The branch is put on ice.
+4. The feature is still not done. Day 8: the branch is now "risky to touch" - no one is sure what the full impact of merging is. The branch is put on ice.
 5. Eventually, a big-bang merge creates a production incident.
 
-"Branches older than 3 days generate exponentially more merge conflicts." — `research/external/2026-03-31-tbd-vs-gitflow-comparison-novvista.md`
+"Branches older than 3 days generate exponentially more merge conflicts." - `research/external/2026-03-31-tbd-vs-gitflow-comparison-novvista.md`
 
 The trap is caused by feature scope, not the branch model. The branch model is just where the symptoms appear.
 
@@ -36,12 +36,12 @@ The canonical four-category framework from Pete Hodgson's article on martinfowle
 
 | Type | Purpose | Expected lifetime | Cleanup discipline |
 |---|---|---|---|
-| **Release toggle** | Deploy incomplete features to production hidden from users | Days to weeks | Remove within 2 weeks of full rollout — MANDATORY |
+| **Release toggle** | Deploy incomplete features to production hidden from users | Days to weeks | Remove within 2 weeks of full rollout - MANDATORY |
 | **Experiment toggle** | A/B or multivariate testing | Days to weeks | Remove when experiment concludes |
 | **Ops toggle** | Kill switches, circuit breakers, operational behavior control | Weeks to months | Remove when the operational risk it guards against is resolved |
 | **Permission toggle** | Gate features by user role, plan tier, or beta group | Potentially permanent | Manage as a product feature, not technical debt |
 
-**Management rule:** Release and Experiment toggles are transient — clean up aggressively. Ops and Permission toggles are longer-lived — manage as product configuration.
+**Management rule:** Release and Experiment toggles are transient - clean up aggressively. Ops and Permission toggles are longer-lived - manage as product configuration.
 
 ---
 
@@ -54,7 +54,7 @@ The canonical four-category framework from Pete Hodgson's article on martinfowle
 | **Partial rollout** | Not possible | Percentage rollout, user targeting |
 | **Rollback speed** | Revert commit + redeploy (minutes) | Toggle off in seconds |
 | **Technical debt** | Branch divergence (resolved on merge) | Stale flags in codebase (ongoing) |
-| **Schema change support** | Full — any migration runs on merge | Limited — non-additive changes cannot be hidden behind a flag |
+| **Schema change support** | Full - any migration runs on merge | Limited - non-additive changes cannot be hidden behind a flag |
 
 *Adapted from `research/external/2026-03-29-branching-strategies-hotfix-codelit.md`*
 
@@ -92,6 +92,6 @@ Most vendor-authored content underplays flag costs. The research corpus provides
 
 ## Feature flag platform selection
 
-> TODO: open question — the research corpus mentions LaunchDarkly, Unleash, Rollout.io, and Statsig but does not compare them in depth. (`research/research-summary.md` open question 4). The Command Brief does not specify a platform. Keep guide platform-agnostic; if the team asks for a platform recommendation, note that this is out of scope for `branching-strategy-worker-bee` and that implementation routes to `react-worker-bee` or `python-worker-bee` depending on the stack.
+> TODO: open question - the research corpus mentions LaunchDarkly, Unleash, Rollout.io, and Statsig but does not compare them in depth. (`research/research-summary.md` open question 4). The Command Brief does not specify a platform. Keep guide platform-agnostic; if the team asks for a platform recommendation, note that this is out of scope for `branching-strategy-worker-bee` and that implementation routes to `typescript-node-worker-bee`.
 
 The decision principle that applies regardless of platform: a flag is only as clean as its lifecycle management. A flag system with no cleanup process will accumulate debt faster than long-lived branches ever did.

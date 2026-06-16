@@ -1,59 +1,71 @@
-# Guide: security-worker-bee
+# Security Worker-Bee - Beekeeper-Suit's Guide
 
-Security audit specialist for React, Next.js, TypeScript, and Node.js codebases.
+The Beekeeper-Suit routing skill's record of when to invoke `security-worker-bee`. Use this guide to decide whether a user request belongs to this Bee.
+
+**Bee:** [`.cursor/agents/security-worker-bee.md`](../../../agents/security-worker-bee.md)
+**Stinger:** [`.cursor/skills/security-stinger/`](../../security-stinger/)
+**Trigger policy:** proactive (second-to-last step of every implementation plan, before `quality-worker-bee`)
 
 ---
 
-## What this Bee owns
+## Domain
 
-Finding and fixing every Critical and High severity security issue in the codebase, with a primary focus on financial exposure and PII leakage. `security-worker-bee` is armed with pre-researched vulnerability intelligence covering:
+`security-worker-bee` is the security audit and remediation specialist for the Hivemind surface (TypeScript / Node >=22 / ESM CLI + MCP server + Deep Lake persistence + six harness integrations). It wields three pre-researched 2025-2026 catalogs (AI-generated code failure patterns, OWASP Top 10:2025 mapped to Hivemind's real attack surface, and captured-trace PII/credential exposure) plus canonical remediation playbooks. Its remit: SQL injection into the Deep Lake API (`sqlIdent`/`sqlStr`/`sqlLike`), the string-based pre-tool-use VFS gate and its dynamic-path weakness, credentials/JWT/org-RBAC, PII in captured traces, prompt injection via recalled memory, and the npm/OpenClaw supply chain. It runs immediately before `quality-worker-bee` and remediates Critical and High findings in place.
 
-- **Vibe-coding pitfalls** — the systematic vulnerabilities that AI-augmented development tends to introduce (authentication/authorization confusion, over-permissioned tokens, unsafe deserialization, missing input validation on generated endpoints, etc.).
-- **OWASP Top 10 manifestations** — how the canonical list actually shows up in React/Next/Node codebases in 2025–2026.
-- **PII and financial data exposure patterns** — logging, tracing, error messages, URL parameters, cache keys, third-party telemetry leaks.
+## Trigger phrases
 
-The Bee both audits and remediates. Critical and High findings get fixed, not just reported.
+Route to `security-worker-bee` when the user says any of:
 
-## When to invoke
+- "Audit for security" / "security audit this branch"
+- "Check for vulnerabilities" / "scan for vulnerabilities"
+- "Check the Deep Lake query layer for injection"
+- "Audit the pre-tool-use gate"
+- "Scan for PII in traces"
+- "OWASP review" / "fix this Critical finding"
 
-Delegate to `security-worker-bee`:
+Or as the proactive second-to-last step of every implementation plan, just before `quality-worker-bee`.
 
-- Automatically as the **second-to-last** step of every implementation plan, immediately before `quality-worker-bee`.
-- On demand when the user says "audit for security", "check for vulnerabilities", "scan for PII exposure", or similar.
-- Whenever new code touches authentication, authorization, PII handling, financial flows, or external API calls.
+## Do NOT route when
 
-Do **not** invoke after `quality-worker-bee` has already run. If the ordering has been violated, this Bee will flag it and ask for a re-run of QA after security fixes land.
+- The user wants implementation-matches-plan verification - that is `quality-worker-bee`, which runs after this Bee.
+- The user wants new architecture drafted - that is `library-worker-bee`.
+- `quality-worker-bee` has already produced a report for this branch - alert the developer and recommend re-running QA after these fixes land (do not run security after QA silently).
 
-## Paired Stinger
+If a request straddles two Bees' domains, prefer the narrower-scoped Bee and let this one act as backup.
 
-`.cursor/skills/security-stinger/` (when forged) — contains the vibe-coding vulnerability catalog, OWASP mapping for React/Next/TS/Node, PII/financial pattern library, and remediation playbooks. Until the Stinger is formally forged, the Bee's body contains the baked-in intelligence directly.
+## Inputs the Bee needs
 
-## Expected input
+Before invoking, ensure the user has provided (or you can infer):
 
-- The branch or commit range to audit.
-- Any explicit areas the user wants focused attention on.
-- The plan document that guided the implementation (so the Bee understands the intended behavior).
+- The branch or files to audit.
+- The implementation context (what changed and which surface it touches).
+- Confirmation that `quality-worker-bee` has not already run for this branch.
 
-## Expected output
+If the scope is missing, do not invoke yet - ask the user which branch to audit.
 
-- A findings report listing Critical and High issues with file/line citations, severity, and rationale.
-- Code-level fixes applied for every Critical and High finding.
-- A remediation summary describing what was fixed and what was left for human review.
-- Medium and Low findings listed separately — documented, not auto-fixed.
+## Outputs the Bee produces
 
-## Critical directives to respect when routing
+- A security findings report, each finding citing `path/to/file.ts:LINE` and the vulnerable pattern, classified by severity.
+- In-session remediation of Critical and High findings with a minimal-blast-radius diff, verified via `git diff`.
+- A full report even on a clean pass (no silent passes).
 
-- **Step ordering is strict.** Run `security-worker-bee` before `quality-worker-bee`. Violating this produces wasted QA work.
-- **Auto-remediation scope is Critical and High only.** Do not expect or ask for auto-fixes on Medium/Low findings.
-- **React/Next/TS/Node scope.** For other stacks, flag to the user that the Stinger was forged for a specific stack and the Bee may miss stack-specific patterns.
-- **PII and financial exposure are the top priorities.** If the Bee reports a PII leak, treat it as a blocker regardless of other findings.
+## Multi-Bee sequences this Bee participates in
 
-## Typical failure modes
+- **Plan execution loop** - after the implementation Bee produces the change, `security-worker-bee` audits the Hivemind surface and remediates Critical/High findings in place; `quality-worker-bee` then verifies the final implementation against the plan.
 
-- Invoked on a stack outside React/Next/TS/Node without acknowledgment — partial coverage.
-- Invoked after `quality-worker-bee` — Bee will flag and ask for re-run.
-- Invoked before an implementation is complete — there's nothing to audit; ask the user to finish first.
+## Critical directives the orchestrator should respect
 
-## Orchestration notes
+- **Step ordering is non-negotiable - run before `quality-worker-bee`, never after.**
+- **Credential and captured-trace PII findings are always Critical or High** (cross-tenant blast radius).
+- **Evidence over opinion** - every finding cites `file.ts:LINE`.
+- **Fix, don't just flag** - Critical and High issues are remediated in-session.
+- **Minimal blast radius per fix**, verified with `git diff`; **never silent pass.**
+- **Ordering check on entry** - if QA already ran for this branch, alert and recommend re-running it after fixes land.
 
-Step 3 in the canonical plan→implement→security→QA loop. `security-worker-bee` is always the second-to-last step. After its fixes land, `quality-worker-bee` verifies the whole implementation (now including the security fixes) against the original plan.
+(Full list lives in the Bee file's `## Critical directives` section.)
+
+---
+
+*Part of Beekeeper-Suit's roster. See [`.cursor/skills/beekeeper-suit/SKILL.md`](../SKILL.md) for the full Army.*
+
+*Part of the Cursor IDE Army curated by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*

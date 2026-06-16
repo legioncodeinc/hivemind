@@ -28,10 +28,10 @@ If you are unsure, use break-fix. It is the most complete template and covers th
 **When:** An alert fired. A service is degraded or down. An on-call engineer is paged and needs to restore service.
 
 **Distinctive sections:**
-- **Triage checklist** at the top — quick yes/no questions to confirm the alert is real before taking action.
-- **Decision tree** — branching steps based on observed symptoms.
-- **Explicit escalation path** — when to escalate and to whom.
-- **Rollback** — every state-changing step has an undo.
+- **Triage checklist** at the top, quick yes/no questions to confirm the alert is real before taking action.
+- **Decision tree**, branching steps based on observed symptoms.
+- **Explicit escalation path**, when to escalate and to whom.
+- **Rollback**, every state-changing step has an undo.
 - **TEST STATUS** header.
 
 **One scenario per runbook rule:** A break-fix runbook covers exactly one alert or failure mode. If "Payment service degraded" can mean three different root causes, write three runbooks and a parent router runbook that routes to each.
@@ -48,11 +48,11 @@ If you are unsure, use break-fix. It is the most complete template and covers th
 **When:** A planned maintenance window, deployment procedure, DR drill, database migration, or other time-bounded operation that requires coordination and has a defined success criterion.
 
 **Distinctive sections:**
-- **Prerequisites checklist** — everything that must be true before starting. Missing a prerequisite is a go/no-go blocker.
-- **Go/no-go decision point** — explicit checkpoint before irreversible steps begin.
-- **Communication plan** — who to notify at which step (start, mid-point, completion, rollback).
-- **Rollback window** — time within which rollback is possible. After this window, document consequences.
-- **Verification steps** — how to confirm the operation succeeded.
+- **Prerequisites checklist**, everything that must be true before starting. Missing a prerequisite is a go/no-go blocker.
+- **Go/no-go decision point**, explicit checkpoint before irreversible steps begin.
+- **Communication plan**, who to notify at which step (start, mid-point, completion, rollback).
+- **Rollback window**, time within which rollback is possible. After this window, document consequences.
+- **Verification steps**, how to confirm the operation succeeded.
 
 **Template:** `templates/scheduled-operation-runbook.md`
 
@@ -63,10 +63,10 @@ If you are unsure, use break-fix. It is the most complete template and covers th
 **When:** The system is behaving oddly (slow, elevated error rate, unusual resource usage) but no alert has fired or the alert does not have a known root cause. The goal is root-cause identification, not immediate service restoration.
 
 **Distinctive sections:**
-- **Observation collection** — commands to gather data without changing state. This section comes before any action steps.
-- **Hypothesis tree** — structured hypotheses ordered by probability based on observed data.
-- **Evidence protocol** — what to capture and where to save it for postmortem.
-- **Escalation at diagnosis** — when to escalate because diagnosis requires deeper expertise.
+- **Observation collection**, commands to gather data without changing state. This section comes before any action steps.
+- **Hypothesis tree**, structured hypotheses ordered by probability based on observed data.
+- **Evidence protocol**, what to capture and where to save it for postmortem.
+- **Escalation at diagnosis**, when to escalate because diagnosis requires deeper expertise.
 - No rollback section (diagnostic runbooks are read-only by design; if diagnosis produces a remediation action, a break-fix runbook is authored or referenced for that action).
 
 **Template:** `templates/diagnostic-runbook.md`
@@ -75,9 +75,9 @@ If you are unsure, use break-fix. It is the most complete template and covers th
 
 ## Out of scope: Runbook-as-code
 
-Several 2026 tools (Rundeck, AWS SSM Documents, Shoreline, Jupyter notebooks with live queries) blur the line between manual runbooks and automated remediation. This stinger covers **manual runbooks only**. Automated runbooks are an extension of infrastructure-as-code owned by `devops-worker-bee`. If the user's organization uses runbook automation, flag the boundary: `runbook-writing-worker-bee` authors the human-readable procedure; `devops-worker-bee` implements the automation that optionally executes it.
+Several 2026 tools (Rundeck, AWS SSM Documents, Shoreline, Jupyter notebooks with live queries) blur the line between manual runbooks and automated remediation. This stinger covers **manual runbooks only**. Automated runbooks are an extension of infrastructure-as-code owned by `ci-release-worker-bee`. If the user's organization uses runbook automation, flag the boundary: `runbook-writing-worker-bee` authors the human-readable procedure; `ci-release-worker-bee` implements the automation that optionally executes it.
 
-> TODO: open question — a future `runbook-automation-worker-bee` could bridge this gap if demand surfaces.
+> TODO: open question, a future `runbook-automation-worker-bee` could bridge this gap if demand surfaces.
 
 ---
 

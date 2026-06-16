@@ -1,4 +1,4 @@
-# Bug Severity Levels — Industry Standard Definitions
+# Bug Severity Levels - Industry Standard Definitions
 
 **Sources:**
 - https://blog.qatestlab.com/2015/03/10/software-bugs-severity-levels/
@@ -37,7 +37,7 @@ The Command Brief specifies three tiers (Critical / Warning / Suggestion). Map t
 
 | Brief tier | Industry tier(s) | Rubric |
 |---|---|---|
-| Critical (must fix — blocks ship) | Critical (S1) + High (S2) | Plan requirement missing, contract broken, security/authz gap, data corruption risk, or regression on existing behavior. Workaround does not exist or is unacceptable for ship. |
+| Critical (must fix - blocks ship) | Critical (S1) + High (S2) | Plan requirement missing, contract broken, security/authz gap, data corruption risk, or regression on existing behavior. Workaround does not exist or is unacceptable for ship. |
 | Warning (should fix) | Medium (S3) | Plan requirement partially met, implied-but-missing behavior, validation gap, or performance anti-pattern that is not immediately user-visible. Workaround exists. |
 | Suggestion (consider improving) | Low (S4) / Trivial | Cosmetic, naming, minor refactor opportunity. The plan neither requires nor prohibits the change; the code works as specified. |
 
@@ -45,4 +45,4 @@ The Command Brief specifies three tiers (Critical / Warning / Suggestion). Map t
 
 This is the source for `guides/05-severity-classification.md`. The mapping table above resolves the Command Brief's open question: "Should the Stinger include a rubric for deciding when a Warning becomes a Critical?" Answer: use the industry-standard criterion of "blocks ship / workaround exists / cosmetic only" rather than an ad-hoc scale.
 
-Anchor the rubric to **user-facing impact** (does the user hit this?) combined with **plan fidelity** (did the plan require this?). The Bee's audit is explicitly plan-relative, so a missing plan requirement is Critical even if the code path is rarely hit — because the plan is the contract.
+Anchor the rubric to **user-facing impact** (does the user hit this?) combined with **plan fidelity** (did the plan require this?). The Bee's audit is explicitly plan-relative, so a missing plan requirement is Critical even if the code path is rarely hit - because the plan is the contract.

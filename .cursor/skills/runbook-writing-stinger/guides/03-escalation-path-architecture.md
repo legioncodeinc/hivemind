@@ -13,7 +13,7 @@ PagerDuty's recommended structure for most services (see `research/external/2026
 
 | Tier | Who | When to escalate | Contact method | Expected response |
 |---|---|---|---|---|
-| Tier 1 | On-call engineer (current) | N/A — this is you | N/A | N/A |
+| Tier 1 | On-call engineer (current) | N/A, this is you | N/A | N/A |
 | Tier 2 | Domain team on-call | 15 min no progress OR any SEV-1 | Named Slack channel + PagerDuty schedule | 10 min |
 | Tier 3 | Engineering Manager on-call | 30 min OR SEV-0 (full outage) | PagerDuty "EM Escalation" policy | 15 min |
 
@@ -31,9 +31,9 @@ Every runbook must include an `## Escalation Path` section with this minimum inf
 **Tier 1 (you):** Exhaust the steps in this runbook.
 
 **Tier 2 (escalate if: 15 min no progress OR any data loss OR SEV-1):**
-- Team: Payments Team
-- Slack: #payments-oncall
-- PagerDuty: "Payments Team" schedule
+- Team: Hivemind Platform Team
+- Slack: #hivemind-oncall
+- PagerDuty: "Hivemind Platform" schedule
 - Expected response: 10 minutes
 
 **Tier 3 (escalate if: 30 min no resolution OR full service outage OR SEV-0):**
@@ -42,8 +42,8 @@ Every runbook must include an `## Escalation Path` section with this minimum inf
 - Expected response: 15 minutes
 
 **External escalation (if vendor issue suspected):**
-- Stripe status: https://stripe.com/support (dashboard link, not just the homepage)
-- AWS status: https://health.aws.amazon.com/health/status
+- Embeddings provider status: https://status.openai.com (dashboard link, not just the homepage)
+- npm registry status: https://status.npmjs.org
 - Open a vendor support ticket and paste the ticket URL in the incident channel.
 ```
 
@@ -61,7 +61,7 @@ Every runbook must include an `## Escalation Path` section with this minimum inf
 
 ### Anti-pattern 2: Names instead of roles
 
-**Why it fails:** "Page Aisha" — Aisha changed teams three months ago. The runbook is now pointing to the wrong person.
+**Why it fails:** "Page Aisha", Aisha changed teams three months ago. The runbook is now pointing to the wrong person.
 
 **Correction:** Use team names, Slack channels, and PagerDuty schedule names. People rotate; teams persist.
 
@@ -111,10 +111,10 @@ Runbooks triggered by SEV-0 and SEV-1 alerts must have an escalation path define
 Before marking the runbook ready, confirm:
 
 - [ ] At least two tiers defined (you + someone else).
-- [ ] Every tier names a team, channel, and PagerDuty schedule — no personal names.
+- [ ] Every tier names a team, channel, and PagerDuty schedule, no personal names.
 - [ ] Every tier has an expected response time.
 - [ ] At least one backup escalation channel per tier.
 - [ ] External dependency escalation links are populated for every dependency.
-- [ ] Escalation triggers are explicit (time, symptom, severity) — not "if needed."
+- [ ] Escalation triggers are explicit (time, symptom, severity), not "if needed."
 
 This checklist is reproduced in `guides/07-done-checklist.md`.

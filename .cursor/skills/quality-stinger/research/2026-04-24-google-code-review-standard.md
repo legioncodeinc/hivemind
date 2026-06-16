@@ -1,4 +1,4 @@
-# Google Engineering Practices — Code Review Standard
+# Google Engineering Practices - Code Review Standard
 
 **Source:** https://google.github.io/eng-practices/review/reviewer/standard.html (and the wider `https://google.github.io/eng-practices/review/` site)
 **Retrieved:** 2026-04-24
@@ -9,10 +9,10 @@
 
 Google's public Engineering Practices documents the mental model the `quality-worker-bee` Bee should operate under. Two documents matter:
 
-1. "How To Do A Code Review" — reviewer's guide
-2. "The CL Author's Guide" — author's guide
+1. "How To Do A Code Review" - reviewer's guide
+2. "The CL Author's Guide" - author's guide
 
-The reviewer's guide enumerates the categories a reviewer checks: design, functionality, complexity, tests, naming, comments, style, and documentation. The guiding principle is that the primary purpose of code review is to keep overall code health improving — "there is no such thing as perfect code, only better code." Reviewers balance forward progress against the value of requested changes.
+The reviewer's guide enumerates the categories a reviewer checks: design, functionality, complexity, tests, naming, comments, style, and documentation. The guiding principle is that the primary purpose of code review is to keep overall code health improving - "there is no such thing as perfect code, only better code." Reviewers balance forward progress against the value of requested changes.
 
 ## Key quotations
 
@@ -24,14 +24,14 @@ The reviewer's guide enumerates the categories a reviewer checks: design, functi
 
 ## Checklist derived from the guide ("what to look for")
 
-- Design — does the change belong, and does it integrate well with the rest of the system?
-- Functionality — does the code do what the author intended, for the users?
-- Complexity — could it be simpler? Are there speculative features (YAGNI violations)?
-- Tests — appropriate unit/integration tests, well-designed and likely to actually fail when the code breaks?
-- Naming — are names clear and consistent?
-- Comments — useful, necessary, and explain "why" rather than "what"?
-- Style — matches the project's style guide?
-- Documentation — if the CL changes behavior, is the user-facing documentation updated?
+- Design - does the change belong, and does it integrate well with the rest of the system?
+- Functionality - does the code do what the author intended, for the users?
+- Complexity - could it be simpler? Are there speculative features (YAGNI violations)?
+- Tests - appropriate unit/integration tests, well-designed and likely to actually fail when the code breaks?
+- Naming - are names clear and consistent?
+- Comments - useful, necessary, and explain "why" rather than "what"?
+- Style - matches the project's style guide?
+- Documentation - if the CL changes behavior, is the user-facing documentation updated?
 
 ## Relevance to this stinger
 
@@ -42,4 +42,4 @@ This is the canonical source for `guides/00-principles.md` (severity balance) an
 - Naming + Comments + Style + Documentation → **Alignment** axis.
 - Anything not covered by the spec but flagged → **Detrimental Patterns** axis.
 
-Cite this in `guides/00-principles.md` when explaining why `quality-worker-bee` does not demand "perfect" implementations — only implementations that faithfully execute the plan without regressing code health.
+Cite this in `guides/00-principles.md` when explaining why `quality-worker-bee` does not demand "perfect" implementations - only implementations that faithfully execute the plan without regressing code health.

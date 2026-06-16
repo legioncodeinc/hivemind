@@ -1,4 +1,4 @@
-# PRD Template — Schema v2
+# PRD Template - Schema v2
 
 > Canonical blank template for a PRD index file.
 > Copy to: `library/requirements/backlog/prd-<###>-<slug>/prd-<###>-<slug>-index.md`

@@ -68,7 +68,7 @@
 
 ## Recommended actions
 
-1. {Priority 1 — usually: add `set -euo pipefail` to scripts}
+1. {Priority 1 - usually: add `set -euo pipefail` to scripts}
 2. {Priority 2}
 3. {Priority 3}
 
@@ -76,8 +76,8 @@
 
 ## Escalation
 
-{If any findings require devops-worker-bee or python-worker-bee, note them here:}
-- {Finding X} → escalate to {peer Bee} because {reason}
+{If any findings require ci-release-worker-bee or typescript-node-worker-bee, note them here:}
+- {Finding X} -> escalate to {peer Bee} because {reason}
 
 ---
 
@@ -86,5 +86,4 @@
 {Copy-paste the key configs/fixes here so the developer can apply them immediately.}
 
 ```bash
-{ready-to-apply configuration or script}
-```
+{ready-to-apply configuration or sc

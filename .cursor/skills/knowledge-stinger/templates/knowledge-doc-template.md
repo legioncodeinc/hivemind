@@ -34,11 +34,11 @@ flowchart TD
 {The ground-truth technical content: SQL DDL, TypeScript interfaces, configuration, command-line examples.}
 
 ```sql
--- Example schema
+-- Example Deep Lake table (mirror the column lists in src/deeplake-schema.ts)
 CREATE TABLE {table_name} (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  {col_name}  {TYPE} NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  id          TEXT NOT NULL DEFAULT '',
+  {col_name}  TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT ''
 );
 ```
 

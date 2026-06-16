@@ -1,6 +1,6 @@
 # Supersession and Deprecation Workflow
 
-ADRs are permanent — they are never deleted. When a decision changes, the old ADR enters a new status, and a new ADR records the replacement decision. The bidirectional link between the two is mandatory.
+ADRs are permanent, they are never deleted. When a decision changes, the old ADR enters a new status, and a new ADR records the replacement decision. The bidirectional link between the two is mandatory.
 
 ---
 
@@ -24,7 +24,7 @@ Proposed ──→ Accepted ──→ Superseded by ADR-NNNN
 
 ## Supersession: step-by-step
 
-### Step 1 — Write the new ADR
+### Step 1, Write the new ADR
 
 Author the new ADR (call it ADR-0025) as a normal Nygard or MADR record. In its header, add a `Supersedes` line after the Status:
 
@@ -38,9 +38,9 @@ Supersedes ADR-0012
 
 In the Context section, briefly explain why the old decision no longer holds:
 
-> ADR-0012 adopted PostgreSQL via Supabase. We have since exceeded Supabase's connection limits at scale, and the team has evaluated Neon as a drop-in replacement with native serverless connection pooling.
+> ADR-0012 chose in-place UPDATE of embedding vectors. We have since lost the ability to reproduce which model version produced a given retrieval result, and the team has adopted append-only version bumps to preserve every historical vector.
 
-### Step 2 — Update the superseded ADR
+### Step 2, Update the superseded ADR
 
 Open the old ADR (ADR-0012) and change its Status section:
 
@@ -52,7 +52,7 @@ Superseded by ADR-0025
 
 Do not modify any other content in the old ADR. The superseded record must remain readable as a historical artifact.
 
-### Step 3 — Update the ADR log index
+### Step 3, Update the ADR log index
 
 If the project uses `adr-log.md` or a Log4brains `config.yml`, update the entry for ADR-0012 to reflect its new status. Log4brains does this automatically when it regenerates the site.
 
@@ -61,7 +61,7 @@ If the project uses `adr-log.md` or a Log4brains `config.yml`, update the entry 
 ## Deprecation (no direct replacement)
 
 Use Deprecated when:
-- The feature the decision supported was removed ("we deprecated the mobile app, so the React Native ADR is no longer relevant")
+- The feature the decision supported was removed ("we dropped the legacy skillify worker, so the ADR for its queue is no longer relevant")
 - The decision became moot due to external changes (a third-party service discontinued)
 - The technology was retired without a replacement decision recorded (legacy cleanup)
 
@@ -72,7 +72,7 @@ In the deprecated ADR:
 
 Deprecated
 
-Rationale: The mobile app was sunset in Q1 2026. This decision no longer applies.
+Rationale: The legacy skillify worker was removed in Q1 2026. This decision no longer applies.
 ```
 
 ---
@@ -86,20 +86,20 @@ Use Rejected for a `Proposed` ADR that was explicitly voted down. Always record 
 
 Rejected
 
-Rationale: The proposal to adopt GraphQL federation was rejected in the architecture review on 2025-11-10. Primary objections: operational complexity of the federation gateway and the team's limited GraphQL experience. The proposal can be revisited if team GraphQL expertise grows or if the public API surface requires it.
+Rationale: The proposal to parse every tool payload into a structured AST for the pre-tool-use gate was rejected in the architecture review on 2025-11-10. Primary objections: parse latency on the dispatch hot path and coupling the gate to every tool's schema. The proposal can be revisited if the string-based gate proves too coarse.
 ```
 
-A rejected ADR is valuable — it prevents the same proposal from being re-raised without new evidence.
+A rejected ADR is valuable, it prevents the same proposal from being re-raised without new evidence.
 
 ---
 
 ## adr-tools supersession command
 
 ```bash
-adr new -s 12 "Use Neon instead of Supabase"
+adr new -s 12 "Append-only version-bump for embedding rows"
 ```
 
-This creates the new ADR and automatically appends `Supersedes: 0012` to its header. It does NOT update ADR-0012 — you must do that manually (or use Log4brains which handles it in the UI).
+This creates the new ADR and automatically appends `Supersedes: 0012` to its header. It does NOT update ADR-0012, you must do that manually (or use Log4brains which handles it in the UI).
 
 ---
 

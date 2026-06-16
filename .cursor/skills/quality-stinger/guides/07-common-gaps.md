@@ -1,4 +1,4 @@
-# 07 — Common Gaps Catalog
+# 07, Common Gaps Catalog
 
 A catalog of "implied but missing" patterns that recur across audits. Check these proactively on every Gaps-axis evaluation (see `04-five-axis-evaluation.md`).
 
@@ -9,31 +9,31 @@ Each pattern below lists:
 
 ---
 
-## UI and state gaps
+## CLI and output gaps
 
-### Missing empty state
-- **Gap:** List view that renders nothing when the data set is empty, leaving a blank screen.
-- **Signature:** `data.map(...)` in a component with no `if (data.length === 0)` branch.
-- **Severity:** Warning. Critical if plan explicitly described empty state.
+### Missing empty-result handling
+- **Gap:** A retrieval or list command that prints nothing (or crashes) when the result set is empty.
+- **Signature:** `results.map(...)` or `for (const r of results)` with no `if (results.length === 0)` branch.
+- **Severity:** Warning. Critical if plan explicitly described the empty case.
 
-### Missing loading state
-- **Gap:** Async UI with no skeleton, spinner, or `Suspense` boundary.
-- **Signature:** Client component with `useEffect`/SWR fetch but no `isLoading` branch; server component with a slow `await` but no sibling `loading.tsx` in the route.
-- **Severity:** Warning.
+### Missing degraded-mode handling
+- **Gap:** A read path that assumes embeddings are available, with no BM25 fallback branch.
+- **Signature:** A dense-similarity call with no `catch` or `if (!embeddingsAvailable)` path to BM25.
+- **Severity:** Warning. Critical if the plan required graceful degradation.
 
-### Missing error state
-- **Gap:** Fetch or mutation with no UI path for the error case.
-- **Signature:** `try/catch` that swallows to `console.error`; no sibling `error.tsx` in the route.
-- **Severity:** Warning. Critical if an unhandled error crashes the page.
+### Missing error handling on a write
+- **Gap:** A dataset or daemon mutation with no path for the error case.
+- **Signature:** `try/catch` that swallows to `console.error`; an `await` on a dataset write with no rejection handling.
+- **Severity:** Warning. Critical if an unhandled error corrupts the Deep Lake dataset.
 
-### Missing unauthenticated-user flow
-- **Gap:** Page or route that assumes a logged-in user but doesn't redirect or show a signed-out variant.
-- **Signature:** `session.user.id` accessed without a null check; route outside `(auth)` segment without middleware guard.
-- **Severity:** Critical (if protected route) or Warning (if a view leaks to logged-out state).
+### Missing gate on a new tool call
+- **Gap:** A new tool dispatch path that bypasses the pre-tool-use gate.
+- **Signature:** A tool call constructed and dispatched without routing through the gate that the plan implies.
+- **Severity:** Critical (if the call is state-changing) or Warning.
 
 ### Missing feature-flag guard
 - **Gap:** Plan describes a staged rollout but the feature ships unflagged.
-- **Signature:** New public route or UI without `useFeatureFlag`, `FeatureGate`, or equivalent wrapper.
+- **Signature:** New command or runtime path without the flag check the plan specified.
 - **Severity:** Warning. Critical if the plan said "behind flag until Xth."
 
 ---
@@ -42,52 +42,51 @@ Each pattern below lists:
 
 ### Missing input validation
 - **Gap:** User input (form, query param, request body) used without schema validation.
-- **Signature:** `request.json()` or `req.body` accessed directly without `zod` / `yup` / `valibot` parse.
-- **Severity:** Warning on a form; Critical when input reaches a DB query or file path.
+- **Signature:** A tool-call payload, CLI arg, or request body accessed directly without a `zod` / `valibot` parse (Hivemind uses TS schema validation, not runtime guesswork).
+- **Severity:** Warning in general; Critical when input reaches a dataset write or file path.
 
-### Missing tenant scoping (multi-tenant app)
-- **Gap:** Query touches a tenanted table without filtering by `tenantId` / `orgId` / `workspaceId`.
-- **Signature:** `prisma.X.findMany({ where: { ...} })` on a tenanted model where `where` lacks a tenant filter. Grep the schema for `tenantId` to find tenanted models.
-- **Severity:** **Always Critical.** Tenant leak is a security-grade data bug.
-- **(Multi-tenant repos)**: this rule is especially load-bearing in any codebase that hosts multiple tenants behind a shared schema.
+### Missing scope filter on a dataset read
+- **Gap:** A dataset query touches more rows than the plan authorizes (e.g., reads all versions when only the latest is wanted, or all libraries when scoped to one).
+- **Signature:** A `dataset.query`/`findMany`-style read with no `embedding_version` or scope filter where the plan implies one.
+- **Severity:** **Critical** when it leaks or mixes unrelated data; Warning for over-reads on a cold path.
 
-### Missing authz check
-- **Gap:** Route performs a write but doesn't verify the user owns the resource.
-- **Signature:** `PUT/DELETE/POST` handler that reads `session.user.id` but doesn't compare it to the resource's owner.
+### Missing gate check
+- **Gap:** A state-changing tool path runs without the pre-tool-use gate verifying it.
+- **Signature:** A dispatch that reaches `harness-integration-worker-bee` without passing the gate.
 - **Severity:** Critical.
 
-### Missing pagination
-- **Gap:** List endpoint returns the entire table.
-- **Signature:** `findMany` without `take` or cursor; `SELECT * FROM` without `LIMIT`; API response shape has no `nextCursor` / `hasMore` / `page`.
-- **Severity:** Warning. Critical if the table grows unbounded with user content.
+### Missing pagination / limit
+- **Gap:** A list or scan returns the entire dataset.
+- **Signature:** A `findMany`/scan without `take`, limit, or cursor; an output shape with no `nextCursor` / `hasMore` / `page`.
+- **Severity:** Warning. Critical if the dataset grows unbounded with user content.
 
 ---
 
 ## Performance gaps
 
-### N+1 queries
-See `research/2026-04-24-prisma-n-plus-one.md`.
-- **Gap:** One query for a list, then one query per item for related data.
-- **Signature (Prisma):**
-  - `for/map` over a list calling `findUnique` / `findFirst`.
-  - `findMany` without `include` followed by `.posts` access in a render loop.
-  - GraphQL resolver that fetches parent then walks children without dataloader.
-- **Severity:** Critical on a hot path; Warning on cold paths.
+### N+1 dataset reads
+See `research/2026-04-24-prisma-n-plus-one.md` for the general ORM/dataset pattern.
+- **Gap:** One read for a list, then one read per item for related data.
+- **Signature:**
+  - `for/map` over a list of ids calling a single-record `get`/`findUnique` per element.
+  - A batch read followed by a per-item lookup in a loop instead of one batched query.
+  - Re-embedding the same document inside a loop instead of one batch embed.
+- **Severity:** Critical on a hot path (retrieval, embeddings daemon); Warning on cold paths.
 
-### Missing index on FK used in where/include/orderBy
-- **Gap:** Prisma schema relation column has no `@@index` / `@index`.
-- **Signature:** Grep `schema.prisma` for relation fields; any field used in a query filter or ordering that lacks an index line is a candidate.
+### Re-embedding when unchanged
+- **Gap:** A document is re-embedded even though its content hash is unchanged, wasting provider calls.
+- **Signature:** An embed call with no content-hash or `embedding_version` short-circuit.
 - **Severity:** Warning.
 
-### Waterfall fetches
-- **Gap:** Server component sequentially awaits N independent fetches.
-- **Signature:** Multiple `const x = await fetch(...)` in a row where the fetches don't depend on each other.
+### Waterfall awaits
+- **Gap:** Sequentially awaiting N independent dataset or embeddings calls.
+- **Signature:** Multiple `const x = await ...` in a row where the calls don't depend on each other; should be `Promise.all`.
 - **Severity:** Warning.
 
-### Unnecessary `"use client"`
-- **Gap:** Client component directive on a file that doesn't need it (increases bundle size).
-- **Signature:** `"use client"` at top of a file with no hooks, no event handlers, no browser-only APIs.
-- **Severity:** Suggestion.
+### CommonJS require in an ESM module
+- **Gap:** A `require(...)` in an ESM file, or a missing import extension the build needs.
+- **Signature:** `require(` or a relative import with no extension in an ESM source file.
+- **Severity:** Suggestion (Warning if it breaks the build).
 
 ---
 
@@ -105,8 +104,8 @@ See `research/2026-04-24-prisma-n-plus-one.md`.
 
 ### Silent catch
 - **Gap:** `try/catch` that logs or swallows, losing errors.
-- **Signature:** `catch (e) { console.error(e) }` with no re-throw, Sentry capture, or user-facing error.
-- **Severity:** Warning. Critical if inside a financial or data-mutation path.
+- **Signature:** `catch (e) { console.error(e) }` with no re-throw, structured log, or surfaced error.
+- **Severity:** Warning. Critical if inside a dataset-mutation or embeddings-write path.
 
 ---
 
@@ -135,7 +134,7 @@ See `research/2026-04-24-prisma-n-plus-one.md`.
 ### Out-of-scope change
 - **Gap:** Files changed that the plan didn't authorize.
 - **Signature:** Cross-reference Files Changed against the plan's scope section.
-- **Severity:** Warning; Critical if the out-of-scope file is high-risk (`middleware.ts`, `schema.prisma`, auth modules).
+- **Severity:** Warning; Critical if the out-of-scope file is high-risk (the pre-tool-use gate, dataset schema/migration code, the embeddings daemon core).
 
 ### Missing .env.example update
 - **Gap:** New env var required by the code but not documented in `.env.example`.
@@ -165,4 +164,4 @@ Add new patterns to this file as they recur across audits. The file is a living 
 ## See also
 
 - Examples: `examples/02-blocker-heavy-audit.md` demonstrates several patterns from this catalog.
-- Research: `research/2026-04-24-react-nextjs-review-checklist.md`, `research/2026-04-24-prisma-n-plus-one.md`, `research/2026-04-24-regression-without-tests.md`.
+- Research: `research/2026-04-24-react-nextjs-review-checklist.md`, `research/2026-04-24-prisma-n-plus-one.md`, `research/2026-04-24-regression-without-tests.md` (external source notes; the detection patterns are applied here to the TypeScript/Deep Lake stack).

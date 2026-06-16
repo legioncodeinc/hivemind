@@ -1,4 +1,4 @@
-# 04 — CODEOWNERS Audit
+# 04 - CODEOWNERS Audit
 
 *Research basis: `research/external/03-codeowners-docs.md`*
 
@@ -7,8 +7,8 @@
 1. **Presence:** Does `CODEOWNERS` exist at `./CODEOWNERS`, `.github/CODEOWNERS`, or `docs/CODEOWNERS`?
 2. **Syntax validity:** Any malformed patterns or non-existent team/user references?
 3. **Coverage:** What percentage of source paths have a matching owner?
-4. **Ownership type:** Team ownership (`@org/team`) vs. individual (`@username`) — teams are more resilient.
-5. **Security-sensitive path coverage:** `.github/workflows/`, `secrets/`, `config/`, `terraform/` — do they have restricted owners?
+4. **Ownership type:** Team ownership (`@org/team`) vs. individual (`@username`) - teams are more resilient.
+5. **Security-sensitive path coverage:** `.github/workflows/`, `config/`, `.env.example`, `package.json` - do they have restricted owners?
 6. **Monorepo patterns:** Do all sub-packages have explicit owners?
 
 ## Data collection
@@ -73,12 +73,11 @@ See `research/external/03-codeowners-docs.md` for full rubric. Summary:
 **Security-sensitive paths:**
 | Path | Owner | Appropriate? |
 |---|---|---|
-| `.github/workflows/` | @org/devops-team | ✅ |
+| `.github/workflows/` | @org/release-team | ✅ |
 | `config/` | @username | ⚠️ Individual, not team |
-| `terraform/` | Not covered | ❌ |
+| `package.json` | Not covered | ❌ |
 
 **Findings:**
-- RECOMMEND: Add `terraform/` to CODEOWNERS assigned to @org/platform-team (effort: 5 minutes).
+- RECOMMEND: Add `package.json` to CODEOWNERS assigned to @org/platform-team @org/release-team (effort: 5 minutes).
 - RECOMMEND: Change `config/` ownership from @username to @org/platform-team (team resilience).
-- RECOMMEND: Add wildcard catch-all `* @org/engineering-leads` at top of file to cover unowned paths.
-```
+- RECOMMEND: Add wildcard catch-all `* @org/engineering-leads` at top of file to co

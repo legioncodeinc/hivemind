@@ -55,7 +55,7 @@ MIT License.
 | Title | ✅ pass | |
 | One-liner tagline | ❌ fail | Missing; "About" section is a paragraph, not a one-liner |
 | Badges | ❌ fail | No badges at all |
-| Hero/demo | — | N/A for a library |
+| Hero/demo |, | N/A for a library |
 | Quickstart | ❌ fail | Install present but usage example is prose, not runnable |
 | Features | ❌ fail | Missing |
 | Install | ⚠️ warn | Node version mentioned but not as prerequisite header |
@@ -160,7 +160,7 @@ Licensed under the [MIT](LICENSE) License.
 
 | Change | Principle |
 |---|---|
-| Added one-liner tagline under title | Visitor converts in 30 seconds — tagline is the first signal |
+| Added one-liner tagline under title | Visitor converts in 30 seconds, tagline is the first signal |
 | Added 4 badges (CI, version, coverage, license) | `guides/02-badges.md` approved types only |
 | Moved Quickstart before Features and Install | Quickstart is the hero section |
 | Replaced prose usage with runnable code + output | Every example must be copy-paste demonstrable |

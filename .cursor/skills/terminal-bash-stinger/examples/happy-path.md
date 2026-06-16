@@ -1,4 +1,4 @@
-# Happy Path — Terminal Productivity Setup from Scratch
+# Happy Path - Terminal Productivity Setup from Scratch
 
 A worked example of `terminal-bash-worker-bee` setting up a complete terminal productivity environment on a new macOS machine.
 
@@ -22,7 +22,7 @@ zsh --version       # zsh 5.9
 cat ~/.zshrc        # minimal, mostly empty
 ```
 
-Finding: Zsh 5.9 (good — ships with macOS 14+). `.zshrc` has only a PATH addition, no modern tools.
+Finding: Zsh 5.9 (good - ships with macOS 14+). `.zshrc` has only a PATH addition, no modern tools.
 
 ### 2. Install modern CLI tools via Homebrew
 
@@ -138,7 +138,7 @@ ln -sfn ~/.config/tmux/tmux.conf ~/.tmux.conf
 git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
 ```
 
-### 6. Set up justfile for the Node.js project
+### 6. Set up justfile for the TypeScript/Node project
 
 ```bash
 cat > justfile <<'EOF'
@@ -152,24 +152,25 @@ default:
 install:
     npm ci
 
-## Build
-build env="development":
-    npm run build:{{env}}
+## Build (tsc types + esbuild bundle)
+build:
+    npm run build
 
 ## Test
 test *args:
-    npm test -- {{args}}
+    npx vitest run {{args}}
 
-## Lint
-lint:
-    npm run lint
+## Quality gate (tsc --noEmit + duplication)
+check:
+    npm run typecheck
+    npx jscpd src
 
 ## Clean
 clean:
-    rm -rf dist node_modules .next
+    rm -rf dist node_modules coverage
 
-## CI: lint + test + build
-ci: lint test (build "production")
+## CI: quality gate + test + build
+ci: check test build
 EOF
 ```
 
@@ -178,6 +179,6 @@ EOF
 Bee delivers the above configurations as a findings report plus copy-paste snippets. Developer runs the install commands and copies in the config files. On restarting Zsh, all six modern tools are active, tmux has session persistence, and the justfile provides a self-documenting task runner.
 
 **Gotchas surfaced:**
-- `bat` on macOS is installed as `bat` (not `batcat` — that's Debian).
+- `bat` on macOS is installed as `bat` (not `batcat` - that's Debian).
 - `eza --icons` requires a Nerd Font terminal; add `--no-icons` if icons render as boxes.
-- After installing zoxide, the `z` command requires visiting directories at least once before fuzzy-jumping works.
+- After installing zoxide, the `z` command 

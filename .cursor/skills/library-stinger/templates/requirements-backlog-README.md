@@ -17,7 +17,7 @@ human_description: |
   Move to in-work/ when implementation begins.
 ---
 
-# Requirements — Backlog
+# Requirements - Backlog
 
 Planned PRDs not yet in implementation. All new PRD folders are created here.
 

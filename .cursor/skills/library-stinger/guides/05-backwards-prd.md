@@ -1,4 +1,4 @@
-# Guide 05 — Backwards-PRD Generation
+# Guide 05 - Backwards-PRD Generation
 
 Covers reverse-engineering existing code into a PRD that documents what was built.
 
@@ -40,9 +40,9 @@ The backwards-PRD is placed in `backlog/` on creation. If the code is fully ship
 # PRD-<###>: <Module Name> *(Retroactive)*
 
 > **Status:** Shipped
-> **Priority:** — *(retroactive — work is done)*
+> **Priority:** - *(retroactive - work is done)*
 > **Written:** <Month YYYY>
-> **Retroactive:** Yes — this PRD was written after implementation.
+> **Retroactive:** Yes - this PRD was written after implementation.
 
 ## What was built
 

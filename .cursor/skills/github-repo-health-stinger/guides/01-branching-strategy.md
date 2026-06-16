@@ -1,4 +1,4 @@
-# 01 — Branching Strategy Audit
+# 01 - Branching Strategy Audit
 
 *Research basis: `research/external/09-trunk-based-development.md`*
 
@@ -45,7 +45,7 @@ gh pr list --state open --json title,createdAt --jq '.[] | {title, age: (now - (
 **Branch inventory:**
 - Total branches: 12
 - Open feature branches: 4 (avg age: 3 days)
-- Stale branches (> 30 days): 2 (oldest: 47 days — `feat/old-analytics-refactor`)
+- Stale branches (> 30 days): 2 (oldest: 47 days - `feat/old-analytics-refactor`)
 
 **Assessment:** Practice is consistent with GitHub Flow. Two stale branches warrant cleanup.
 **Recommendations:**

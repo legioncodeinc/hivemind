@@ -1,4 +1,4 @@
-# Next.js Server Actions — Origin Validation & CSRF
+# Next.js Server Actions - Origin Validation & CSRF
 
 **Sources:**
 - https://nextjs.org/docs/app/guides/data-security
@@ -13,9 +13,9 @@
 
 ## Summary
 
-Next.js's built-in CSRF protection for Server Actions compares `Origin` to `Host` (or `X-Forwarded-Host`). Rejects cross-origin invocations. But this is NOT sufficient for authorization — origin validation answers "is this my site?", not "is this user allowed?". The Server Action must still call `auth()` / `verifySession()` internally.
+Next.js's built-in CSRF protection for Server Actions compares `Origin` to `Host` (or `X-Forwarded-Host`). Rejects cross-origin invocations. But this is NOT sufficient for authorization - origin validation answers "is this my site?", not "is this user allowed?". The Server Action must still call `auth()` / `verifySession()` internally.
 
-## GHSA-mq59-m269-xvcx / CVE-2026-27978 — `null` origin bypass
+## GHSA-mq59-m269-xvcx / CVE-2026-27978 - `null` origin bypass
 
 A 2025 advisory: Next.js treated `Origin: null` as "missing", i.e., same-origin for the purposes of CSRF. Opaque contexts (sandboxed iframes, some data: URL flows, privacy-mode browsers) send `Origin: null`, which let attackers bypass CSRF validation on Server Actions.
 
@@ -42,7 +42,7 @@ export async function updateProfile(input: unknown) {
     throw new Error('Cross-origin request rejected');
   }
 
-  // 3) Validate with Zod .strict() — mitigates prototype pollution
+  // 3) Validate with Zod .strict() - mitigates prototype pollution
   const parsed = ProfileSchema.strict().parse(input);
 
   // 4) Do the work
@@ -52,6 +52,6 @@ export async function updateProfile(input: unknown) {
 
 ## Relevance to this stinger
 
-- `guides/02-vibe-coding-patterns.md` A6 — server actions without auth are High, not Medium, because framework-level CSRF is about origin, not identity.
+- `guides/02-vibe-coding-patterns.md` A6 - server actions without auth are High, not Medium, because framework-level CSRF is about origin, not identity.
 - `guides/05-remediation-playbooks.md` includes the hardened template above.
 - `guides/06-cve-tracker.md` tracks the null-origin advisory as a second-tier Next.js CVE.

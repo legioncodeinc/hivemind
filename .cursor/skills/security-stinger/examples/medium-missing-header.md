@@ -1,72 +1,54 @@
-# Worked Example — Medium: Missing Security Header (HSTS)
+# Worked Example - Medium: Missing API-Client Hardening (No Retry / Concurrency Cap)
 
-Demonstrates: `guides/03-owasp-top-10.md` B5 · `guides/01-scan-procedure.md` Step 4 · `guides/05-remediation-playbooks.md` §Security headers · Medium-severity "fix if cheap" judgment call.
+Demonstrates: `guides/03-owasp-top-10.md` B5 · `guides/01-scan-procedure.md` Step 4 · `guides/05-remediation-playbooks.md` §API client hardening · Medium-severity "fix if cheap" judgment call.
 
 ---
 
 ## Scenario
 
-Routine audit of a Next.js 15 project. No code change in the branch touches configuration, but the scan procedure requires checking `next.config.js` for baseline security headers.
+Routine audit of the Deep Lake client. No code change in the branch touches the request path, but the scan procedure requires checking `src/deeplake-api.ts` for the baseline hardening (retry on 429/5xx, concurrency cap, 402 detection).
 
 ## Vulnerable configuration discovered
 
-`next.config.js`:
+`src/deeplake-api.ts` (a new helper added in a prior branch):
 
-```js
-/** @type {import('next').NextConfig} */
-module.exports = {
-  reactStrictMode: true,
-  images: {
-    remotePatterns: [{ protocol: 'https', hostname: 'cdn.example.com' }],
-  },
-  // no headers() export
-};
+```ts
+async bulkUpsert(rows: Row[]) {
+  // fires every request at once, no retry, no backoff
+  return Promise.all(rows.map(r => this._fetch(this.buildUpsert(r))));
+}
 ```
 
-The project is deployed over HTTPS (production domain uses a wildcard cert), but there is no `Strict-Transport-Security` header. On first visit, a downgrade attacker could MITM the initial HTTP → HTTPS redirect. Also missing: `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options`, CSP.
+The main `query()` path goes through the `Semaphore(5)` and `RETRYABLE_CODES` retry logic - but this `bulkUpsert` helper bypasses both. On a large memory sync it floods the Deep Lake API: every request fires concurrently, a 429 is treated as a hard failure, and a 402 balance-exhausted response is not detected (so the loop can keep paying into an exhausted balance).
 
 ## Finding text (report-ready)
 
-> - [ ] **Security Misconfiguration — Missing HSTS header** `next.config.js` — No `Strict-Transport-Security` header configured. First-visit downgrade / MITM risk on initial navigation. Additional missing baseline headers: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Content-Security-Policy`.
+> - [ ] **Security Misconfiguration - Missing API-client hardening** `src/deeplake-api.ts:bulkUpsert` - Helper bypasses the `Semaphore(5)` concurrency cap and the 429/5xx retry/backoff used by the main `query()` path, and does not detect a 402 balance-exhausted response. On a large sync this floods the Deep Lake API and can burn balance against an already-exhausted account.
 
 ## Severity rationale
 
-**Medium.** No direct data leak or bypass, but a well-known defense-in-depth gap. The Medium threshold says: **document; fix only if the patch is under ~5 lines** — here it is. Fixing in this session.
+**Medium.** No data leak or auth bypass, but a real cost/DoS-amplification gap. The Medium threshold says: **document; fix only if the patch is under ~5 lines** - here routing through the existing semaphore is a few lines. Fixing in this session.
 
 ## Remediation diff (applied in-session)
 
 ```diff
---- a/next.config.js
-+++ b/next.config.js
-@@ -1,7 +1,27 @@
- /** @type {import('next').NextConfig} */
-+const securityHeaders = [
-+  { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
-+  { key: 'X-Content-Type-Options', value: 'nosniff' },
-+  { key: 'X-Frame-Options', value: 'DENY' },
-+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-+  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-+];
-+
- module.exports = {
-   reactStrictMode: true,
-   images: {
-     remotePatterns: [{ protocol: 'https', hostname: 'cdn.example.com' }],
-   },
-+  async headers() {
-+    return [{ source: '/:path*', headers: securityHeaders }];
-+  },
- };
+--- a/src/deeplake-api.ts
++++ b/src/deeplake-api.ts
+@@ async bulkUpsert(rows: Row[]) {
+-  return Promise.all(rows.map(r => this._fetch(this.buildUpsert(r))));
++  // route through the same hardened call path: Semaphore(5) + retry + 402 detect
++  return Promise.all(rows.map(r => this.call(this.buildUpsert(r))));
+ }
 ```
 
-CSP is deliberately not set here — a proper CSP requires nonces generated in `middleware.ts`, which is >5 lines and carries a real risk of breaking third-party scripts. Document as follow-up.
+`this.call(...)` is the existing wrapper that holds the `Semaphore(5)` slot, retries on `RETRYABLE_CODES` (429/5xx) with backoff, and throws `BalanceExhaustedError` on 402. The fix is to stop bypassing it.
 
 ## What goes in the audit report
 
-Since the Medium was fixed in-session (under the 5-line threshold), promote it into the "Medium Findings — fixed in this session" sub-list:
+Since the Medium was fixed in-session (under the 5-line threshold), promote it into the "Medium Findings - fixed in this session" sub-list:
 
-- [x] **Security Misconfiguration — Missing baseline headers** `next.config.js` — Added HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy via `headers()` export. CSP deferred (requires nonce flow in middleware).
+- [x] **Security Misconfiguration - Missing API-client hardening** `src/deeplake-api.ts:bulkUpsert` - Routed the bulk path through the existing hardened `call()` wrapper (Semaphore(5), 429/5xx retry+backoff, 402 detection) instead of raw `Promise.all(_fetch)`.
 
 Under **Recommended Follow-Up (architectural):**
 
-- Implement Content-Security-Policy with per-request nonces via `middleware.ts`. Requires an audit of third-party scripts (analytics, tag manager) to ensure they function under a strict CSP.
+- Make `_fetch` private / lint-banned outside `call()` so no future helper can bypass the hardening again.

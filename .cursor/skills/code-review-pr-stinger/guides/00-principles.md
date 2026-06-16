@@ -60,9 +60,9 @@ Every PR description the Bee produces contains exactly these six elements. See `
 | Request | Route to |
 |---|---|
 | Security vulnerabilities found in the diff | `security-worker-bee` |
-| Logic correctness issues in Python/Django code | `python-worker-bee` |
-| Logic correctness issues in React/Next.js code | `react-worker-bee` |
-| CI pipeline design or CI failure investigation | `devops-worker-bee` |
+| Logic correctness issues in TypeScript/Node code | `typescript-node-worker-bee` |
+| Deep Lake dataset schema or recall query issues | `deeplake-dataset-worker-bee` |
+| CI pipeline design or CI failure investigation | `ci-release-worker-bee` |
 | Branch protection rules, CODEOWNERS, PR template enforcement | `github-repo-health-worker-bee` |
 
 ---

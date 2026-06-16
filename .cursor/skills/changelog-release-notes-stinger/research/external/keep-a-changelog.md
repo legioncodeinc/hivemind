@@ -23,22 +23,20 @@ url: https://keepachangelog.com
 
 ## Guiding philosophy (from the site)
 
-> "Don't let your friends dump git logs into changelogs." — the canonical anti-pattern.
+> "Don't let your friends dump git logs into changelogs." - the canonical anti-pattern.
 
 - Changelogs are FOR humans, not machines.
 - Every version should be linkable.
 - Latest always at top.
-- Use ISO dates (YYYY-MM-DD) — unambiguous internationally.
+- Use ISO dates (YYYY-MM-DD) - unambiguous internationally.
 - Use semantic versioning.
 
 ## Limitations / when NOT to follow
 
-- Keep a Changelog is format-only; it says nothing about distribution, widgets, or engagement.
-- Prescribes categories (Added/Changed/etc.) which work well for libraries but can feel over-engineered for product SaaS announcements where "what changed for me as a user" is a better organizing principle.
-- No tooling for email digests, in-app widgets, or analytics.
+- Keep a Changelog is format-only; it says nothing about distribution or how the version is cut. For @deeplake/hivemind, distribution is GitHub Releases (cut by `release.yaml`) plus README/Slack for breaks, and the version is single-sourced by `package.json` -> `scripts/sync-versions.mjs`.
+- The prescribed categories (Added/Changed/Deprecated/Removed/Fixed/Security) fit a CLI/library well; within a section, organize by the surface the user touches (CLI, library API, harness contract, MCP tool, Deep Lake schema).
+- It is format-only - pair it with Semantic Versioning (`semver.md`) for the bump decision.
 
 ## Applicability to stinger guides
 
-- `guides/00-principles.md` — cite the "not for machines" philosophy.
-- `guides/03-copy-craft.md` — the category vocabulary (Added/Changed/Fixed/Security) is the canonical skeleton even when the final format differs.
-- `templates/changelog-entry.md` — the skeleton should follow Keep a Changelog section ordering.
+- `guides/00-principles.md` - cite the "not for machines" philosophy (pri

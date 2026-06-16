@@ -44,19 +44,19 @@ A complete comment names (a) what the issue is, (b) what tier it is, and (c) why
 
 ### Aggressive comment
 **Before:** "Why would you use a raw SQL query here? That's dangerous."
-**After:** `blocker:` This raw SQL query concatenates `userId` directly into the query string, which creates a SQL injection vector if `userId` ever comes from user input. Suggest using the ORM's parameterized query: `db.query('SELECT * FROM users WHERE id = $1', [userId])`. See `guides/python-stinger/SKILL.md` for the ORM usage pattern.
+**After:** `blocker:` This Deep Lake SQL string concatenates `userId` directly into the query, which creates a SQL injection vector if `userId` ever comes from recalled memory or tool input. Suggest routing the value through the repo's SQL guards: `sqlStr(userId)` (or `sqlIdent` / `sqlLike` as appropriate) before interpolation. See `typescript-node-worker-bee` for the SQL-guarding pattern.
 
 ---
 
 ### Ambiguous tier comment
 **Before:** "Consider using a constant for this magic number."
-**After:** `nit:` The `432000` in `session_ttl = 432000` is not self-documenting. Suggest extracting to `SESSION_TTL_SECONDS = 60 * 60 * 24 * 5` (5 days) for readability. Not a merge gate — happy to leave this for a follow-up if it's out of scope.
+**After:** `nit:` The `432000` in `session_ttl = 432000` is not self-documenting. Suggest extracting to `SESSION_TTL_SECONDS = 60 * 60 * 24 * 5` (5 days) for readability. Not a merge gate - happy to leave this for a follow-up if it's out of scope.
 
 ---
 
 ### Demand rewritten as question
 **Before:** "You need to add error handling here."
-**After:** `blocker:` If `fetchUserProfile` rejects (e.g., network timeout), the unhandled promise rejection will crash the handler. Have you considered adding a try/catch here, or would a `Promise.allSettled` pattern fit better given the surrounding code? Either works — flagging because this is a merge gate.
+**After:** `blocker:` If `fetchUserProfile` rejects (e.g., network timeout), the unhandled promise rejection will crash the handler. Have you considered adding a try/catch here, or would a `Promise.allSettled` pattern fit better given the surrounding code? Either works - flagging because this is a merge gate.
 
 ---
 
@@ -74,7 +74,7 @@ When in doubt, frame the comment as a question. "Have you considered X?" is less
 - Invites dialogue rather than compliance
 - Reduces the emotional cost of receiving the comment
 
-Apply this heuristic for `suggestion:` and `nit:` tier comments. For `blocker:` comments, be direct — the merge is at stake and clarity matters more than softness.
+Apply this heuristic for `suggestion:` and `nit:` tier comments. For `blocker:` comments, be direct - the merge is at stake and clarity matters more than softness.
 
 ---
 

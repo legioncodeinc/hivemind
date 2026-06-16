@@ -1,4 +1,4 @@
-# Research Plan — security-stinger
+# Research Plan - security-stinger
 
 **Forge date:** 2026-04-24
 **Bee:** security-worker-bee
@@ -6,7 +6,7 @@
 
 ## Objective
 
-Verify and extend the pre-researched vulnerability intelligence in the existing Bee body (`.cursor/agents/security-worker-bee.md`, 333 lines) with authoritative 2025–2026 sources. The Stinger's guides must trace every factual claim to a source in this folder.
+Verify and extend the pre-researched vulnerability intelligence in the existing Bee body (`.cursor/agents/security-worker-bee.md`, 333 lines) with authoritative 2025-2026 sources. The Stinger's guides must trace every factual claim to a source in this folder.
 
 ## Search queries to run
 
@@ -44,7 +44,7 @@ Pulled from the brief's REFERENCE MATERIAL and the existing Bee body:
 
 ## Open questions carried from brief IDEAS section
 
-These are tracked in `research/open-questions.md` — they should be resolved by the user, not by research:
+These are tracked in `research/open-questions.md` - they should be resolved by the user, not by research:
 
 - Should the Stinger track a local `research/cve-watchlist.md` with dates? (90-day refresh cadence)
 - Should a host-repo-specific section (tenantId scoping, requireRole("admin")) exist separately from the generic catalog?
@@ -52,7 +52,7 @@ These are tracked in `research/open-questions.md` — they should be resolved by
 
 ## Target output
 
-- 8–12 dated research notes in `research/YYYY-MM-DD-<topic>.md`.
+- 8-12 dated research notes in `research/YYYY-MM-DD-<topic>.md`.
 - `research/cve-watchlist.md` as a living file with patched-version data.
 - `research/open-questions.md` for user resolution.
 - Every factual claim in `guides/*.md` traceable to one of these files.

@@ -12,7 +12,7 @@ See also: `examples/happy-path.md` for the full bootstrap script.
 
 | Legacy | Modern | Install | Key gotcha |
 |---|---|---|---|
-| `grep` | `rg` (ripgrep) | `brew install ripgrep` / `apt install ripgrep` | Ignores hidden files; respects `.gitignore` — use `--hidden --no-ignore` to bypass |
+| `grep` | `rg` (ripgrep) | `brew install ripgrep` / `apt install ripgrep` | Ignores hidden files; respects `.gitignore` - use `--hidden --no-ignore` to bypass |
 | `find` | `fd` | `brew install fd` / `apt install fd-find` (binary: `fdfind` on Debian) | Skips dotfiles; use `-H` flag |
 | `cat` | `bat` | `brew install bat` / `apt install bat` (binary: `batcat` on Debian) | Not drop-in for pipes; use `--plain --no-pager` |
 | `ls` | `eza` | `brew install eza` / `cargo install eza` | May not be in distro repos; use `--icons` only in terminals that support Nerd Fonts |

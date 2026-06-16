@@ -1,55 +1,42 @@
-# Lockfile Discipline
+# Lockfile Discipline (package-lock.json + tree-sitter pins)
 
 > **Research sources:** `research/external/01-renovate-vs-dependabot-2026.md` (HIGH), `research/external/04-npm-provenance-sigstore-2026.md` (HIGH)
 
-The lockfile is the first line of defense in supply-chain security. A team that runs `npm install` in CI instead of `npm ci`, or that does not commit their lockfile, has no reproducible builds and no defense against a compromised registry serving a different package than what was tested.
+`package-lock.json` is the first line of defense in this package's supply chain. A repo that runs `npm install` in CI instead of `npm ci`, or that does not commit the lockfile, has no reproducible builds and no defense against a compromised registry serving a different package than what was tested. For `@deeplake/hivemind` the lockfile also pins the native tree-sitter grammars, which makes its integrity doubly important.
 
 ---
 
 ## The five lockfile rules
 
-### Rule 1: Always commit the lockfile
+### Rule 1: Always commit `package-lock.json`
 
-- `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `poetry.lock`, `uv.lock`, `Cargo.lock`
-- Do NOT add lockfiles to `.gitignore` (a surprisingly common mistake on Node projects)
-- Exception: published library packages on npm — the lockfile in the repo is for development; consumers get their own resolution
+- It is committed and must stay committed - never add it to `.gitignore`.
+- Even though this is a published library, the lockfile pins the dev/build/native-grammar resolution that CI and contributors depend on.
 
-### Rule 2: Use `npm ci` (or equivalent) in CI, never `npm install`
+### Rule 2: Use `npm ci` in CI, never `npm install`
 
 ```yaml
-# Correct
+# Correct - installs exactly from package-lock.json, fails on drift
 - run: npm ci
 
-# Wrong - allows the resolver to upgrade within semver ranges
+# Wrong - lets the resolver upgrade within semver ranges
 - run: npm install
 ```
 
-| Command | What it does |
+| Command | Behavior |
 |---|---|
-| `npm install` | Resolves dependencies, may update `package-lock.json` |
-| `npm ci` | Installs exactly from `package-lock.json`; fails if file is missing or inconsistent |
-| `pnpm install --frozen-lockfile` | pnpm equivalent of `npm ci` |
-| `yarn install --frozen-lockfile` | yarn equivalent |
-| `uv sync --frozen` | uv equivalent |
+| `npm install` | Resolves dependencies, may rewrite `package-lock.json` |
+| `npm ci` | Installs exactly from `package-lock.json`; fails if it is missing or inconsistent |
 
-### Rule 3: Enforce `npm ci` via a pre-push hook
+`ci.yaml` already does a cross-node install - confirm it uses `npm ci` on every node version it tests.
 
-```json
-// package.json - using husky
-{
-  "husky": {
-    "hooks": {
-      "pre-commit": "node -e \"const l=require('./package-lock.json');const p=require('./package.json');Object.keys(p.dependencies||{}).concat(Object.keys(p.devDependencies||{})).forEach(d=>{if(!l.packages['node_modules/'+d]) throw new Error('Lockfile out of sync for '+d)})\""
-    }
-  }
-}
-```
+### Rule 3: Catch lockfile drift before it lands
 
-Or more simply: run `npm ci --dry-run` in a pre-commit hook and fail if the lockfile would be modified.
+Run `npm ci` (or `npm install --package-lock-only` and diff) in a pre-commit hook or PR check, and fail if `package-lock.json` would change unexpectedly. This package already uses `husky` + `lint-staged`, so the hook plumbing exists - add a lockfile-drift check there.
 
 ### Rule 4: Use Renovate `lockFileMaintenance`
 
-Renovate's `lockFileMaintenance` opens a weekly PR that updates the lockfile (resolving within declared semver ranges) without changing `package.json`. This prevents lockfile drift accumulating silently.
+Renovate's `lockFileMaintenance` opens a weekly PR that refreshes `package-lock.json` within declared semver ranges without touching `package.json`. This stops lockfile drift accumulating silently.
 
 ```json
 {
@@ -60,19 +47,28 @@ Renovate's `lockFileMaintenance` opens a weekly PR that updates the lockfile (re
 }
 ```
 
-### Rule 5: Set `minimumReleaseAge` to protect against XZ-style attacks
+### Rule 5: Set `minimumReleaseAge` to protect against rush-the-window attacks
 
-The XZ backdoor (2024) succeeded partly because the malicious version was merged before maintainers had time to react. Setting a minimum release age delays Renovate PRs for packages published less than N days ago:
+The XZ backdoor (2024) and the axios hijack (2026) both succeeded partly because malicious versions reached consumers before the community reacted. Delay Renovate PRs for packages published less than N days ago:
 
 ```json
-{
-  "minimumReleaseAge": "7 days"
-}
+{ "minimumReleaseAge": "7 days" }
 ```
 
-This gives the security community time to detect and report malicious packages before your CI automatically merges them. Source: `research/external/01-renovate-vs-dependabot-2026.md`.
+This is the most valuable single control for this package's native-dependency surface: a tampered tree-sitter or `@huggingface/transformers` release sits for a week before Renovate will even open the PR, giving socket.dev and the community time to flag it. For genuinely urgent security packages you can override `minimumReleaseAge` per package.
 
-A 7-day delay catches the majority of "rush the window" attacks; 14 days provides more coverage at the cost of slower security updates. For critical security packages, you can override `minimumReleaseAge` at the package level.
+---
+
+## The optionalDependencies / tree-sitter discipline
+
+This package's `optionalDependencies` carry the real native risk: `@huggingface/transformers` and the tree-sitter grammar set, with `tree-sitter-c`, `tree-sitter-python`, and `tree-sitter-rust` pinned exactly in `overrides`. The `postinstall` hook runs `scripts/ensure-tree-sitter.mjs` to heal native ABI / arm64 build failures.
+
+**Rules:**
+
+- **Do not let Renovate auto-bump the pinned grammars.** `templates/renovate-base-config.json` includes a guarded rule that disables automerge for `tree-sitter-c`, `tree-sitter-python`, and `tree-sitter-rust` and keeps them aligned with the `overrides` block. Any bump there is a manual, reviewed change.
+- **Keep `overrides` and `optionalDependencies` in sync.** If you bump a pinned grammar, update both places in the same PR, or `npm ci` resolution and the override diverge.
+- **Never bypass `scripts/ensure-tree-sitter.mjs`.** It is the heal path for native build failures; removing it to "fix" a flaky install replaces a known control with silent breakage.
+- **A failing tree-sitter postinstall is a triage event,** not just a CI annoyance - confirm the failure is an ABI/build issue (expected, healed by the script) and not an unexpected source or behavior change.
 
 ---
 
@@ -80,27 +76,10 @@ A 7-day delay catches the majority of "rush the window" attacks; 14 days provide
 
 | Context | Strategy | Reason |
 |---|---|---|
-| Production `dependencies` | Pin exact version (e.g., `"1.2.3"`) | Reproducible builds; no surprise resolutions |
-| Development `devDependencies` | Semver range (e.g., `"^1.2.0"`) | Acceptable drift; Renovate manages updates |
-| Framework / runtime | Pin + use `minimumReleaseAge` | High-impact, high-risk upgrade path |
-| Internal packages | Pin exact + Renovate grouping | Prevents cross-package version skew |
-
----
-
-## pnpm v11 specifics (2026)
-
-pnpm v11 (released late 2025) changed audit behavior:
-
-- Uses **GHSA identifiers** instead of CVE IDs (GHSA is GitHub's Advisory Database)
-- Added `--fix=update` mode: more precise than npm's approach, updates only the vulnerable package
-- Added registry signature verification by default
-- `pnpm install --frozen-lockfile` is unchanged and still the recommended CI mode
-
-Source: `research/external/04-npm-provenance-sigstore-2026.md`.
-
----
-
-> **OQ-4:** For Python projects: recommend `uv lock` + `uv sync --frozen` as the default, or remain tool-agnostic? The research shows `uv` as the 2026 standard but this choice should be confirmed by the user. See `research/research-summary.md` OQ-4.
+| Pinned native grammars (`tree-sitter-c/python/rust`) | Exact pin via `overrides` | ABI stability + supply-chain control; the highest-risk surface |
+| Other `optionalDependencies` (transformers, remaining grammars) | Range + `minimumReleaseAge` | Updatable, but held for the release-age window |
+| Runtime `dependencies` | Range as declared, validated by `npm ci` | Reproducible via the lockfile |
+| `devDependencies` | Range, Renovate automerge for patch/minor | Acceptable drift; build/test only |
 
 ---
 

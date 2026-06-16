@@ -1,78 +1,67 @@
-# Runbook Writing Worker-Bee — Beekeeper-Suit's Guide
+# Runbook Writing Worker-Bee - Beekeeper-Suit's Guide
 
 The Beekeeper-Suit routing skill's record of when to invoke `runbook-writing-worker-bee`. Use this guide to decide whether a user request belongs to this Bee.
 
-**Bee:** [`.cursor/agents/runbook-writing-worker-bee.md`](../../agents/runbook-writing-worker-bee.md)
-**Stinger:** [`.cursor/skills/runbook-writing-stinger/`](../../skills/runbook-writing-stinger/)
+**Bee:** [`.cursor/agents/runbook-writing-worker-bee.md`](../../../agents/runbook-writing-worker-bee.md)
+**Stinger:** [`.cursor/skills/runbook-writing-stinger/`](../../runbook-writing-stinger/)
 **Trigger policy:** proactive
 
 ---
 
 ## Domain
 
-`runbook-writing-worker-bee` owns the authoring, auditing, and maintenance of operational runbooks — the exact-command, decision-tree documents that on-call engineers execute when alerts fire. Its defining principle is the no-implied-context rule: a runbook is only valid if an engineer who has never seen the system can execute it blind in under five minutes. It enforces exact-command discipline (every flag, namespace, and service name must be explicit), mandatory escalation paths (named contact, channel, and SLA — never "escalate if needed"), rollback for every state-changing step, and the runbook-as-test mandate (untested runbooks are prominently flagged as hypotheses). Its scope is the document itself: structure, content, testability, and freshness. Incident management tooling and infrastructure provisioning belong to `devops-worker-bee`; documentation culture beyond the runbook format belongs to `library-worker-bee`.
+`runbook-writing-worker-bee` is the operational runbook authorship specialist. It owns the canonical templates (break-fix, scheduled operation, diagnostic), the no-implied-context audit protocol, exact-command discipline, escalation-path architecture, rollback-procedure standards, runbook-as-test (game day) methodology, and postmortem-to-runbook linkage. For Hivemind, the operational surfaces that get runbooks are the embeddings daemon, schema-heal, and npm release ops. Every command is exactly copy-pasteable, every state-changing step has a rollback, and every runbook names an escalation contact.
 
 ## Trigger phrases
 
 Route to `runbook-writing-worker-bee` when the user says any of:
 
-- "Write a runbook for [service/alert]"
-- "Audit this runbook"
-- "Our runbooks are out of date"
+- "Write a runbook"
+- "Audit this runbook" / "our runbooks are out of date" / "our on-call docs are weak"
 - "We need a runbook for this alert"
 - "Turn this postmortem into a runbook"
-- "Schedule a game day / exercise our runbooks"
-- "Our on-call docs are weak / missing / wrong"
-- "The runbook has never been tested"
-- "Add rollback steps to this runbook"
-- "Our escalation path in this runbook is wrong"
+- "Schedule a game day"
 
-Or when a postmortem action item explicitly calls for a new or updated runbook.
+Or when the request implicitly involves authoring or auditing operational runbooks.
 
 ## Do NOT route when
 
-- The user wants to configure PagerDuty, OpsGenie, or another incident management tool → `devops-worker-bee`
-- The user wants to provision infrastructure or write deployment procedures → `devops-worker-bee` owns the infrastructure knowledge; this Bee documents it only after the user confirms the procedure
-- The user wants to design blameless postmortem process, retro culture, or psychological safety norms → `library-worker-bee`
-- The user wants to design a general documentation site, knowledge base, or wiki structure → `library-worker-bee`
-- The runbook involves PCI/HIPAA compliance review of the commands themselves → after authoring, surface to `security-worker-bee` for audit
+- The user wants incident-management tooling setup (PagerDuty/OpsGenie) or infrastructure provisioning decisions - route to `ci-release-worker-bee`.
+- The user wants documentation culture or process design beyond the runbook format - route to `library-worker-bee`.
+- The user wants the writing-craft review of prose quality - that is `technical-writing-craft-worker-bee`.
 
-If a request straddles runbook authorship and infrastructure decisions, prefer `runbook-writing-worker-bee` to produce the document and embed a `[TODO: validate with devops-worker-bee]` placeholder where infrastructure knowledge is needed.
+If a request straddles two Bees' domains, prefer the narrower-scoped Bee and let this one act as backup.
 
 ## Inputs the Bee needs
 
 Before invoking, ensure the user has provided (or you can infer):
 
-- An alert name, symptom description, or service name identifying what the runbook covers (required)
-- Optionally: an existing runbook draft or stub to audit or rewrite
-- Optionally: a link to the service's architecture docs, deployment repo, or monitoring dashboard
-- Optionally: a postmortem report that triggered the runbook request
-- Target audience signal: senior SRE, junior on-call rotation member, or mixed (defaults to mixed if not specified)
+- The operation or alert the runbook covers (and the exact commands/queries/scripts it runs).
+- The escalation contact (person, team, or channel) and a response-time expectation.
+- Optional: the postmortem to convert, and whether the procedure has been tested.
 
-If the alert name or service is missing and cannot be inferred from context, ask the user to supply it before proceeding.
+If the exact commands are unknown, do not invoke yet - ask for them; implied steps are not a runbook.
 
 ## Outputs the Bee produces
 
-- **Primary deliverable:** A markdown runbook document written to the user's designated runbook folder (typically `docs/runbooks/`, `runbooks/`, or a wiki page)
-- **Audit report:** When auditing an existing runbook, an inline diff or annotated version with every no-implied-context violation flagged
-- **Test status tag:** A `## TEST STATUS` header in every runbook indicating last-exercised date, environment, and outcome (or `UNTESTED` if never exercised)
-- **Postmortem links:** Cross-references to relevant postmortem documents embedded in the runbook
+- A runbook in the right canonical template with exact copy-pasteable commands, a named escalation path, and rollback for every state-changing step.
+- A prominent `## TEST STATUS: UNTESTED` header when the procedure has not been exercised.
 
 ## Multi-Bee sequences this Bee participates in
 
-- **On-call readiness audit** — `runbook-writing-worker-bee` authors or audits runbooks; `devops-worker-bee` validates the infrastructure commands embedded in those runbooks; `security-worker-bee` reviews runbooks touching PCI/HIPAA-sensitive operations.
-- **Postmortem action item closure** — When a postmortem produces a "write/update runbook" action item, `runbook-writing-worker-bee` authors the document; `library-worker-bee` may archive the postmortem in the knowledge base.
+- Routes tooling setup and provisioning to `ci-release-worker-bee`, and documentation-process design to `library-worker-bee`.
 
 ## Critical directives the orchestrator should respect
 
-- Never use implied commands; every step must be exactly copy-pasteable
-- Never skip the escalation path; every runbook must name a contact, channel, and SLA
-- Always include rollback for every state-changing step, or an explicit irreversibility acknowledgment
-- Mark untested runbooks with a prominent `## TEST STATUS: UNTESTED` header
-- Apply the five-minute rule: a runbook requiring more than five minutes to parse well enough to execute is too long
+- **Never use implied commands** - exact flags, dataset paths, and daemon names.
+- **Never skip the escalation path** - a named contact with a response-time expectation.
+- **Always include rollback for every state-changing step** (or a documented irreversibility acknowledgment).
+- **Mark untested runbooks prominently** with the `## TEST STATUS: UNTESTED` header.
 
 (Full list lives in the Bee file's `## Critical directives` section.)
 
 ---
 
 *Part of Beekeeper-Suit's roster. See [`.cursor/skills/beekeeper-suit/SKILL.md`](../SKILL.md) for the full Army.*
+
+*Part of the Cursor IDE Army curated by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*

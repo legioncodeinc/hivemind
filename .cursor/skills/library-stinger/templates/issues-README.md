@@ -2,12 +2,12 @@
 ai_description: |
   This folder contains all reactive bug and incident work (IRDs).
   It is a PEER of requirements/, not nested under it.
-  Sub-folders: backlog/, in-work/, completed/ — same lifecycle as requirements/.
+  Sub-folders: backlog/, in-work/, completed/ - same lifecycle as requirements/.
   IRD folder naming: ird-<###>-<kebab-slug>/
   IRD numbers match the GitHub issue number for this repo.
-  Never invent IRD numbers — a GitHub issue must exist first.
+  Never invent IRD numbers - a GitHub issue must exist first.
   IRDs are single-scope: one issue per IRD, no sub-IRDs.
-  Do NOT put PRDs here — those go in requirements/.
+  Do NOT put PRDs here - those go in requirements/.
 human_description: |
   Reactive bug and incident work (IRDs), organized by lifecycle stage.
   - backlog/: tracked issues with a fix plan, not yet started

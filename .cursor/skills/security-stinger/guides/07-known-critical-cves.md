@@ -1,190 +1,157 @@
-# 07 — Known Critical CVEs (upgrade-immediately catalog)
+# 07 - Known Critical Issues (upgrade / config-only catalog)
 
 **Last refreshed:** 2026-04-25
-**Refresh cadence:** every 90 days, or immediately on any new Next.js / React advisory.
+**Refresh cadence:** every 90 days, or immediately on any new advisory affecting a production dependency or the OpenClaw bundle.
 
-This guide tracks CVEs whose remediation is **upgrade now** rather than "patch in code." It complements `06-cve-tracker.md` — that guide is the live patch matrix the Bee skims on every run; this guide is the deeper "here is what each CVE actually does and how the Bee detects it" reference. Read this when a `pnpm audit` or `npm audit` finding lands on a CVE in the catalog below.
+This guide tracks issues whose remediation is **upgrade or reconfigure**, not "patch a code pattern." It complements `06-cve-tracker.md` - that guide is the live matrix the Bee skims on every run; this guide is the deeper "here is what each issue actually does and how the Bee detects it" reference. Read this when an `npm audit`, `npm run audit:openclaw`, or CodeQL finding lands on something in the catalog below.
 
 If `Last refreshed` above is more than **120 days** stale, surface this in the audit report's Executive Summary and recommend re-running `forge-stinger` for `security-worker-bee`.
 
 ---
 
-## Why a separate "upgrade-immediately" catalog?
+## Why a separate "upgrade/config-only" catalog?
 
-`05-remediation-playbooks.md` covers **code-pattern fixes** (sanitize input, pin JWT algorithm, redact PII in logs). Some CVEs cannot be fixed in code — the framework itself is broken and only an upgrade closes the hole. This guide lists those, with version ranges and detection steps.
-
----
-
-## Tier 0 — Active exploitation, CVSS ≥ 9, no code fix possible
-
-### CVSS 10.0 — React Server Components RCE (CVE-2025-55182, "React2Shell")
-
-- **Component:** `react`, `react-server`, plus `react-server-dom-webpack` / `react-server-dom-parcel` / `react-server-dom-turbopack`.
-- **Affected:** React 19.0.0, 19.0.1, 19.1.0, 19.1.1, 19.1.2, 19.2.0, 19.2.1.
-- **Patched:** **19.0.2 / 19.1.3 / 19.2.2** (or later in each line).
-- **CVSS:** 10.0.
-- **Companion CVE in Next.js:** CVE-2025-66478 (next package bundling vulnerable React) — covered in `06-cve-tracker.md`.
-- **Exploitation surface:** any default `create-next-app` deployment that uses the App Router or RSC. No developer code required for exposure.
-- **Observed impact:** shell establishment, environment-variable exfiltration, AWS IMDS credential theft, China-nexus actors observed in the wild.
-- **Source:** `research/2026-04-24-cve-2025-55182-react2shell.md`; React advisory <https://react.dev/blog/2025/12/11/denial-of-service-and-source-code-exposure-in-react-server-components>.
-
-Detection: see "Audit procedure" below. Upgrade target: latest patched within your React minor.
+`05-remediation-playbooks.md` covers **code-pattern fixes** (escape SQL, scope a query, redact a token, harden the credential file). Some issues cannot be fixed in application code - a vulnerable transitive dependency, a misconfigured CI scan, or a credential-file mode that umask silently weakened. This guide lists those, with detection steps.
 
 ---
 
-## Tier 1 — Next.js 2025 catalog (upgrade required)
+## Tier 0 - Production dependency advisories (upgrade required)
 
-### CVE-2025-55184 — Next.js Denial of Service via React Server Components
+### Critical/High `npm audit` advisory in a production dependency
 
-- **Component:** `next` (App Router; React Server Components deserialization path).
-- **Affected versions:**
-  - `>= 13.3` (Pages Router unaffected — confirm App Router usage before downgrading severity)
-  - 14.x (all)
-  - 15.0.x, 15.1.x, 15.2.x, 15.3.x, 15.4.x, 15.5.x
-  - 16.0.x
-  - 15.x and 16.x canary builds
-- **First patched:** 14.2.34, 15.0.6, 15.1.10, 15.2.7, 15.3.7, 15.4.9, 15.5.8, 16.0.9, 15.6.0-canary.59, 16.1.0-canary.17. (Some sources also reference a follow-up incomplete-patch CVE-2025-67779 — confirm the upgrade target includes that fix; Vercel's bulletin lists the consolidated targets as 14.2.35 / 15.0.7 / 15.1.11 / 15.2.8 / 15.3.8 / 15.4.10 / 15.5.9 / 16.0.10 / 15.6.0-canary.60.)
-- **CVSS:** 7.5 (High).
-- **Exploitation surface:** a malicious HTTP request to any App Router endpoint can hang the server process and exhaust CPU. No developer code needed beyond having the App Router enabled.
-- **Why no code fix:** the bug is in React Flight protocol deserialization, which the framework owns. Application code cannot work around it.
-- **Source:** Vercel Security Bulletin <https://vercel.com/kb/bulletin/security-bulletin-cve-2025-55184-and-cve-2025-55183>; GitHub advisory GHSA-mwv6-3258-q52c <https://github.com/vercel/next.js/security/advisories/GHSA-mwv6-3258-q52c>; Aikido write-up <https://www.aikido.dev/blog/react-next-js-dos-vulnerability-cve-2025-55184>.
-
-### CVE-2025-55183 — Next.js Source Code Exposure via Server Functions
-
-- **Component:** `next` Server Actions / Server Functions; `react-server-dom-*` packages.
-- **Affected versions:** Next.js 15.0.x, 15.1.x, 15.2.x, 15.3.x, 15.4.x, 15.5.x, 16.0.x (and matching canaries). **14.x is NOT affected** by 55183 — only 55184 applies there.
-- **First patched:** 15.0.6, 15.1.10, 15.2.7, 15.3.7, 15.4.9, 15.5.8, 16.0.9, 16.1.0-canary.19. (Consolidated targets per Vercel: 15.0.7 / 15.1.11 / 15.2.8 / 15.3.8 / 15.4.10 / 15.5.9 / 16.0.10.)
-- **CVSS:** 5.3 (Medium).
-- **Exploitation surface:** a crafted HTTP request to a vulnerable Server Function can return the function's compiled source code. Triggered when the Server Function reference is implicitly or explicitly stringified (template literals, error paths, log lines, query-builder coercion). Pages Router unaffected.
-- **What leaks:** business logic, hardcoded constants, and any literal secrets baked into Server Action source. **`process.env.SECRET` runtime values are NOT exposed**, but secrets hardcoded into source are.
-- **Why no code fix:** React's fix installs a `toString()` override on server references. Application code cannot reliably patch this surface.
-- **Source:** Vercel Security Bulletin (same URL as above); NVD <https://nvd.nist.gov/vuln/detail/CVE-2025-55183>; Snyk <https://security.snyk.io/vuln/SNYK-JS-NEXT-14400644>.
+- **Component:** any package reachable from `dependencies` in `package-lock.json`.
+- **Why it matters here:** Hivemind is a long-lived Node process holding an Activeloop JWT. A compromised dependency runs with that token in scope - the worst case is silent token exfiltration to the dataset's owning account.
+- **Detection:** `npm audit --json --audit-level=high`. The lockfile (not `package.json`) is the source of truth - it shows the resolved version actually installed.
+- **Remediation:** `npm audit fix`, review the diff, commit the updated `package-lock.json`. If no fix is available, evaluate whether the vulnerable code path is reachable from Hivemind; document the reasoning if you downgrade severity.
+- **Source:** GitHub Security Advisories <https://github.com/advisories> filtered by npm ecosystem.
 
 ---
 
-## Audit procedure — detect affected versions in this codebase
+## Tier 1 - OpenClaw bundle / supply-chain (scan + config)
+
+### OpenClaw bundle flags a new pattern (ClawHub parity)
+
+- **Component:** the OpenClaw harness bundle.
+- **Affected:** any change that introduces a `child_process`, `eval`-shaped, or network-callout pattern the static scanner flags.
+- **Detection:** `npm run audit:openclaw` (`scripts/audit-openclaw-bundle.mjs`). Compare against the known-good deliberate bypass.
+- **Known-good (do NOT "fix"):** the `createRequire` + renamed `execFileSync` handle in `src/skillify/gate-runner.ts`, and the matching `spawn` bypass in `harnesses/openclaw/src/index.ts`. These are intentional, documented, and exist so the scanner's literal-symbol regex does not match while still spawning the gate agent CLI with a fixed argv.
+- **Remediation:** if the flag is a NEW pattern, treat it as **High** (Critical if it spawns input-built commands) and revert / re-shape per `guides/05-remediation-playbooks.md` §gate-runner bypass. If it is the known-good pattern, confirm it is unchanged and document it as expected.
+
+### Hidden Unicode in AI rules files (Rules File Backdoor)
+
+- **Component:** `.cursor/rules/**`, `.cursorrules`, `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`.
+- **Detection:** the Unicode scan in `scripts/scan.sh` / `scan.ts` (zero-width + bidi codepoints).
+- **Remediation:** delete the file, audit `git log`, rotate any token the compromised rules could have exfiltrated. See `guides/02-vibe-coding-patterns.md` A4. This one IS a code/config fix, but it lands here because detection is scan-driven and the response is "remove + rotate," not "patch a pattern."
+
+---
+
+## Audit procedure - detect affected versions / configs in this codebase
 
 Run these in order during Phase 1. Outputs go to a local ephemeral scratch dir (e.g., `.scan-output/`, gitignored) per the standard scan workflow.
 
-### Step 1 — Identify lockfile
+### Step 1 - Identify lockfile
 
 ```bash
-ls package-lock.json pnpm-lock.yaml yarn.lock 2>/dev/null
+ls package-lock.json 2>/dev/null
 ```
 
-The lockfile (not `package.json`) is the source of truth. `package.json` shows ranges; `pnpm-lock.yaml` / `package-lock.json` shows the resolved version actually installed.
+`package-lock.json` (not `package.json`) is the source of truth. `package.json` shows ranges; the lockfile shows the resolved version actually installed.
 
-### Step 2 — Resolve `next` and `react`
+### Step 2 - Run the dependency + bundle scans
 
 ```bash
-# pnpm
-pnpm why next 2>&1 | head -30
-pnpm why react 2>&1 | head -30
-
-# npm
-npm ls next react --all 2>&1 | head -30
+npm audit --json --audit-level=high | tee .scan-output/npm-audit.json
+npm run audit:openclaw           2>&1 | tee .scan-output/openclaw-audit.txt
 ```
 
-If `next` is at any version listed under "Affected versions" above, the project is vulnerable. Same for `react` against CVE-2025-55182.
+Any Critical/High advisory, or any new OpenClaw flag, gates the ship.
 
-### Step 3 — Confirm App Router usage (gates 55184 + 55183 severity)
+### Step 3 - Confirm the deliberate bypass is intact
 
 ```bash
-test -d app && echo "App Router: yes" || echo "App Router: no"
-test -d src/app && echo "src/app present" || true
-grep -RIn "use server" app src/app 2>/dev/null | head -5  # Server Actions
+grep -n "createRequire" src/skillify/gate-runner.ts
+grep -n "execFileSync\|spawn" src/skillify/gate-runner.ts harnesses/openclaw/src/index.ts
 ```
 
-If only Pages Router is in use (`pages/` directory and no `app/`), CVE-2025-55183 does not apply, and CVE-2025-55184 only applies if any RSC-aware code path is reachable. Document this in the report.
+Confirm the renamed handle and the documenting comment block are present and unchanged. A stripped comment or a new undocumented spawn is a finding.
 
-### Step 4 — Identify hardcoded secrets in Server Actions (amplifier for 55183)
+### Step 4 - Confirm the SQL guards are intact
 
 ```bash
-grep -RIn "use server" app src/app 2>/dev/null | cut -d: -f1 | sort -u | xargs -I{} grep -EHn "(sk_live|sk_test|api[_-]?key|secret|password|token)\s*[:=]\s*['\"]" {} 2>/dev/null
+grep -n "sqlIdent\|sqlStr\|sqlLike" src/utils/sql.ts
+grep -nE '"\$\{[^}]+\}"' src/deeplake-api.ts   # identifiers - each must be sqlIdent-wrapped
 ```
 
-Any hit means a Server Action contains a hardcoded credential that **will leak** under 55183. Severity escalates to Critical regardless of CVSS, per `00-principles.md` rule #4.
+A weakened `sqlIdent` regex, or an interpolated identifier with no `sqlIdent`, is **Critical** per `00-principles.md` rule #4.
 
-### Step 5 — Recommend the upgrade target
+### Step 5 - Confirm credential-file modes
 
-Pick from this matrix (Vercel-consolidated, includes the 55184 follow-up patch):
+```bash
+grep -nE "credentials\.json|0o?600|0o?700|mode:" src/cli/auth.ts src/commands/auth*.ts src/config.ts
+```
 
-| Current minor | Upgrade to |
-|---|---|
-| 14.x (any 14.x ≥ 13.3 surface) | **14.2.35** |
-| 15.0.x | **15.0.7** |
-| 15.1.x | **15.1.11** |
-| 15.2.x | **15.2.8** |
-| 15.3.x | **15.3.8** |
-| 15.4.x | **15.4.10** |
-| 15.5.x | **15.5.9** |
-| 16.0.x | **16.0.10** |
-| 15.x canary (PPR) | **15.6.0-canary.60** |
-| 16.x canary | **16.1.0-canary.19** |
+A write to the credential file without an explicit mode → **High**.
 
-For React, target the latest patched within the project's React 19 minor (19.0.2+, 19.1.3+, or 19.2.2+).
+### Step 6 - Regression test that must accompany every dependency bump
 
-### Step 6 — Regression test that must accompany every framework bump
+For any production-dependency upgrade, the audit report must require:
 
-For any Next.js or React major/minor upgrade, the audit report must require:
+1. **Build succeeds:** `npm run build` completes without error.
+2. **Test suite green:** the full test suite passes against the new dependency tree.
+3. **Type check:** `tsc --noEmit` reports no new errors.
+4. **Lock-file freshness:** `package-lock.json` is committed alongside the upgrade - never let CI resolve the new version.
+5. **Bundle re-scan:** `npm run audit:openclaw` and CodeQL re-run clean after the bump.
 
-1. **Build succeeds:** `pnpm build` (or `npm run build`) completes without error.
-2. **Smoke test:** the app's primary auth flow + one Server Action round-trip succeed under `pnpm start` against the new build.
-3. **Type check:** `pnpm tsc --noEmit` reports no new errors.
-4. **Lock-file freshness:** `pnpm-lock.yaml` / `package-lock.json` is committed alongside the upgrade — never let CI resolve the new version.
-5. **Sub-dependency check:** re-run `pnpm why react` and `pnpm why next` after the bump to confirm transitive resolution actually moved.
-
-A framework bump without these five checks is a half-finished remediation. The audit report should call it out as `NEEDS REGRESSION TEST` rather than passing.
+A dependency bump without these five checks is a half-finished remediation. The audit report should call it out as `NEEDS REGRESSION TEST` rather than passing.
 
 ---
 
-## Subscription pattern — how to track future advisories
+## Subscription pattern - how to track future advisories
 
-The Bee reads `06-cve-tracker.md` on every run and this guide on demand. Both stay current via a manual quarterly refresh. The owner of that refresh follows this routine:
+The Bee reads `06-cve-tracker.md` on every run and this guide on demand. Both stay current via a manual quarterly refresh.
 
 ### Authoritative sources (in priority order)
 
-1. **Next.js GitHub Security Advisories** — <https://github.com/vercel/next.js/security/advisories>. Every Next.js CVE lands here first. RSS / Atom feed available.
-2. **Vercel Security Bulletins** — <https://vercel.com/kb/bulletin>. Vercel publishes consolidated bulletins (often with a fuller upgrade matrix than the GHSA entry alone). The 55184/55183 bulletin at <https://vercel.com/kb/bulletin/security-bulletin-cve-2025-55184-and-cve-2025-55183> is the canonical example.
-3. **React Security Advisories** — <https://github.com/facebook/react/security/advisories> and the React blog at <https://react.dev/blog>. The RSC RCE / DoS / source-disclosure advisories are published here in parallel with Vercel bulletins.
-4. **Next.js blog** — <https://nextjs.org/blog>. Security-relevant patch releases land here with CVE references.
-5. **NVD** — <https://nvd.nist.gov/vuln/search>. Search `next.js`, `react`, and any specific CVE ID. Gives the canonical CPE/affected-version JSON.
-6. **GitHub Security Advisories database** — <https://github.com/advisories>. Filter by ecosystem npm and package `next` or `react`.
+1. **GitHub Security Advisories database** - <https://github.com/advisories>. Filter by ecosystem npm and the top production dependencies (Deep Lake client, MCP SDK, etc.).
+2. **`npm audit`** - the canonical resolved-tree advisory view for this exact lockfile.
+3. **CodeQL alerts** - the GitHub code-scanning alerts produced by the javascript-typescript workflow in CI.
+4. **ClawHub / OpenClaw bundle policy** - whatever scan rules ClawHub publishes; `scripts/audit-openclaw-bundle.mjs` should track them.
+5. **Activeloop / Deep Lake advisories** - any security note from the dataset/API provider, since the SQL-over-HTTP contract is theirs.
+6. **NVD** - <https://nvd.nist.gov/vuln/search> for any specific CVE ID on a named dependency.
 
 ### `npm audit` cadence
 
-Every project this Bee audits should run, at minimum:
+Every audit this Bee runs should, at minimum:
 
-- **CI gate:** `pnpm audit --audit-level=high` (or `npm audit --audit-level=high`) on every PR. Fail the build on High or Critical findings. (`scripts/scan.sh` already does this in Phase 1.)
-- **Weekly Renovate / Dependabot scan:** automated PRs for any `next` or `react` patch release. Approve same-day for Tier 0 / Tier 1 advisories.
-- **Quarterly manual sweep:** the security-stinger owner refreshes `06-cve-tracker.md` + this guide against the six sources above.
+- **CI gate:** `npm audit --audit-level=high` on every PR. Fail the build on High or Critical findings. (`scripts/scan.sh` already does this in Phase 1.)
+- **Bundle gate:** `npm run audit:openclaw` on every PR touching the harness.
+- **Weekly Dependabot/Renovate scan:** automated PRs for dependency patch releases. Approve same-day for Critical/High advisories.
+- **Quarterly manual sweep:** the security-stinger owner refreshes `06-cve-tracker.md` + this guide against the sources above.
 
 ### What "subscription" looks like in practice
 
 Pick one of:
 
-- **GitHub watch** (lowest friction): "Watch → Custom → Security alerts" on `vercel/next.js` and `facebook/react`. New advisories arrive in your inbox within minutes of publication.
-- **RSS feed** (preferred for an automation pipeline): the GHSA Atom feed at `https://github.com/vercel/next.js/security/advisories.atom` and `https://github.com/facebook/react/security/advisories.atom`.
-- **Vercel changelog email**: subscribe at <https://vercel.com/changelog>. Less granular but catches release announcements that include CVE fixes.
+- **Dependabot security alerts** (lowest friction): enable on the repo; new advisories arrive as PRs/alerts.
+- **GitHub Advisory database RSS / API** for the named production dependencies.
+- **Watch the Deep Lake / Activeloop release notes** for changes to the SQL-over-HTTP contract that could affect the escaping assumptions in `src/utils/sql.ts`.
 
-When a Tier 0 / Tier 1 advisory drops, the response sequence is:
+When a Critical/High advisory drops, the response sequence is:
 
-1. Owner adds the CVE to `06-cve-tracker.md` Tier 1 / Tier 0.
-2. Owner adds the detailed entry to this guide if there's nothing actionable in code — i.e., it's an upgrade-only fix.
-3. Owner runs `forge-stinger` for security-worker-bee to refresh `Last refreshed` dates and review `scripts/scan.sh` version-check logic.
+1. Owner adds the advisory to `06-cve-tracker.md` Tier 1.
+2. Owner adds the detailed entry to this guide if there's nothing actionable in application code - i.e., it's an upgrade/config-only fix.
+3. Owner runs `forge-stinger` for security-worker-bee to refresh `Last refreshed` dates and review `scripts/scan.sh` sweep logic.
 4. Audit report templates pick up the new check on next Bee invocation.
 
 ---
 
 ## Cross-references
 
-- `06-cve-tracker.md` — the live patch matrix (skim first on every run).
-- `02-vibe-coding-patterns.md` — AI-generated code failure patterns (some overlap with CVE-induced surfaces).
-- `05-remediation-playbooks.md` — code-pattern fixes (NOT applicable to the upgrade-only CVEs in this guide).
-- `research/cve-watchlist.md` — source-of-truth refresh log.
-- `research/2026-04-25-nextjs-cves-2025.md` — research note backing this guide's 55184/55183 entries.
-- `research/2026-04-24-cve-2025-55182-react2shell.md` — research note backing the Tier 0 RCE.
+- `06-cve-tracker.md` - the live dependency + bundle-scan matrix (skim first on every run).
+- `02-vibe-coding-patterns.md` - AI-generated code failure patterns (A5 hallucinated deps, A8 gate-runner tampering).
+- `05-remediation-playbooks.md` - code-pattern fixes (NOT applicable to the upgrade/config-only issues in this guide).
+- `research/cve-watchlist.md` - source-of-truth refresh log.
 
 ---
 
-*Citations:* every CVE entry in this guide cites at least the official Vercel/GitHub advisory URL and one independent third-party analysis (Aikido, Snyk, NVD). Refer to those URLs for the authoritative version matrix at any future date.
+*Citations:* every advisory entry should cite at least the GitHub Security Advisory / NVD URL and one corroborating source. Refer to those for the authoritative version matrix at any future date.

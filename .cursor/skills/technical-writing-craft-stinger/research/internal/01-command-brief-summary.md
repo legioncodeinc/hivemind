@@ -7,14 +7,12 @@
 
 ## Bee identity
 
-`technical-writing-craft-worker-bee` is the Legion Army's documentation craft specialist. It owns the *writing itself*, not the platform that hosts the docs. Its peer boundaries are:
+`technical-writing-craft-worker-bee` is the Cursor IDE Army's documentation craft specialist. It owns the *writing itself*, not the platform that hosts the docs. Its peer boundaries are:
 
 | Bee | What they own | Handoff signal |
 |---|---|---|
-| docs-site-worker-bee | Platform selection, deployment, search config | "which tool?" or "how do I deploy?" |
 | library-worker-bee | Folder structure, PRD authorship, knowledge-base org | Decides *where* a doc lives |
-| api-docs-worker-bee | OpenAPI spec enrichment, SDK generation | Machine-readable spec content |
-| seo-aeo-worker-bee | Metadata, schema markup, AEO optimization | Discoverability |
+| mcp-tool-docs-worker-bee | MCP tool docs, the TypeScript public API (TypeDoc), the CLI reference, doc-to-code sync | Machine-readable / tool / API reference content |
 | readme-writing-worker-bee | README files only (specialized subset) | README-specific narrow surface |
 
 ---

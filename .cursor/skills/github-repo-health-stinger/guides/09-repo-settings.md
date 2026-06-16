@@ -1,4 +1,4 @@
-# 09 — Repository Settings Audit
+# 09 - Repository Settings Audit
 
 *Research basis: `research/external/05-repo-security-settings.md`, `research/external/10-auto-delete-merge-settings.md`*
 
@@ -65,7 +65,7 @@ See `research/external/05-repo-security-settings.md`. Summary:
 **Merge settings:**
 | Setting | Status | Recommendation |
 |---|---|---|
-| Allow merge commits | ✅ Enabled | RECOMMEND disabling — prefer squash/rebase only |
+| Allow merge commits | ✅ Enabled | RECOMMEND disabling - prefer squash/rebase only |
 | Allow squash merging | ✅ Enabled | Good |
 | Allow rebase merging | ✅ Enabled | Good |
 | Auto-delete head branches | ❌ Disabled | RECOMMEND enabling (effort: 30 seconds) |
@@ -76,12 +76,12 @@ See `research/external/05-repo-security-settings.md`. Summary:
 |---|---|---|
 | Secret scanning | ✅ Enabled | |
 | Push protection | ✅ Enabled | |
-| Dependency review | ❌ Disabled | RECOMMEND enabling — requires GitHub Advanced Security or public repo |
+| Dependency review | ❌ Disabled | RECOMMEND enabling - requires GitHub Advanced Security or public repo |
 | Dependabot alerts | ✅ Enabled | |
 | Dependabot security updates | ⚠️ Disabled | RECOMMEND enabling |
 
 **Findings (ranked by priority):**
-1. Enable auto-delete-head-branches — Settings > General > Pull Requests (effort: 30 seconds, impact: eliminates stale branch accumulation).
-2. Disable "allow merge commits" — enforce squash or rebase only.
+1. Enable auto-delete-head-branches - Settings > General > Pull Requests (effort: 30 seconds, impact: eliminates stale branch accumulation).
+2. Disable "allow merge commits" - enforce squash or rebase only.
 3. Enable Dependabot security updates to auto-fix known CVEs.
 ```

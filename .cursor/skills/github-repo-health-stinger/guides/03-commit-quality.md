@@ -1,4 +1,4 @@
-# 03 — Commit History Quality Audit
+# 03 - Commit History Quality Audit
 
 *Research basis: `research/external/02-conventional-commits-spec.md`*
 
@@ -7,7 +7,7 @@
 1. **Conventional Commits format adherence** (the primary metric)
 2. **Average subject line length** (target: <= 72 characters)
 3. **Generic/noise commits** ("wip", "fix", "update", "stuff", "minor")
-4. **Merge commit discipline** (merge commits vs. squash vs. rebase — consistent with configured merge strategy?)
+4. **Merge commit discipline** (merge commits vs. squash vs. rebase - consistent with configured merge strategy?)
 5. **Co-author attribution** for pair/AI-assisted work
 6. **Breaking change documentation** (`BREAKING CHANGE:` footer or `!` suffix)
 
@@ -65,7 +65,7 @@ Add 1 point (max 10) if `commitlint` or equivalent is configured in CI.
 ## Report section template
 
 ```markdown
-### Commit Quality — Conventional Commits (Score: X/10)
+### Commit Quality - Conventional Commits (Score: X/10)
 
 **Sample:** Last 100 commits (git log --oneline -100)
 

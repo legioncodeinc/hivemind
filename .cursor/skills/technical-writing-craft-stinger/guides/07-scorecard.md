@@ -11,7 +11,7 @@ The scorecard is the structured summary of a writing quality review. It appears 
 | **Diataxis mode** | Single mode, no mixing | Minor mixing (< 20% off-mode content) | Significant mixing or wrong mode |
 | **Inverted pyramid** | Opening sentence is the most important fact | Opening is relevant but not optimal | Opening buries the lead or starts with history/tool |
 | **Code discipline** | All code blocks pass the full checklist | 1-2 minor checklist violations | Missing introductory sentence, ellipsis omissions, or unrunnable code |
-| **Voice and tone** | Consistent with house style or Legion defaults | 1-2 isolated violations | Systematic passive voice, person mixing, or tense mixing |
+| **Voice and tone** | Consistent with house style or the default style | 1-2 isolated violations | Systematic passive voice, person mixing, or tense mixing |
 | **Reader lens** | Prerequisites stated, jargon defined, EPPO-ready | Missing prerequisites or 1-2 undefined terms | Jargon-heavy, no audience statement, significant EPPO failures |
 | **Structural completeness** | All sections needed for the Diataxis mode are present | One optional section missing | Required section (e.g., steps in a how-to) missing |
 

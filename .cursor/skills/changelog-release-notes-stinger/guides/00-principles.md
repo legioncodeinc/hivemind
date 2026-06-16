@@ -2,70 +2,67 @@
 
 > Read this before any other guide. These are the non-negotiables.
 
-*Derived from: `research/external/keep-a-changelog.md`, `research/external/changelog-copy-craft.md`, `research/internal/command-brief-notes.md`*
+*Derived from: `research/external/keep-a-changelog.md`, `research/external/semver.md`, `research/external/changelog-copy-craft.md`, `research/internal/command-brief-notes.md`*
 
 ---
 
 ## The core problem
 
-Most changelogs fail in one of two ways:
+A CHANGELOG for a fast-moving CLI/library fails in one of three ways:
 
-1. **Over-automated:** Raw commit logs, auto-generated from `git log --oneline`, shipped as-is. Written for CI pipelines, not humans.
-2. **Under-communicated:** A quarterly blog post, no changelog page, no widget. Users discover changes accidentally.
+1. **Over-automated:** raw `git log` dumped as bullets. Written for the next engineer, not the person upgrading.
+2. **Under-communicated:** the package ships new versions but the CHANGELOG goes stale, so users diff source to find out what changed.
+3. **Wrong semver:** a contract change shipped as a patch, breaking downstream installs silently.
 
-The goal of `changelog-release-notes-worker-bee` is the middle path: a human-authored, user-centric entry that is easy to create and actually reaches users.
+The goal of `changelog-release-notes-worker-bee` is a human-authored, accurate, user-centric CHANGELOG.md plus matching GitHub Release notes that tell a developer exactly what changed about @deeplake/hivemind and whether the upgrade is safe.
 
-## The ten principles
+## The principles
 
-### 1. Changelogs are for users, not machines
+### 1. The CHANGELOG is for the person installing or upgrading, not for machines
 
 *Source: `research/external/keep-a-changelog.md`*
 
 > "Don't let your friends dump git logs into changelogs."
 
-A changelog entry is a communication artifact. The reader is a paying user wondering "did they fix the bug I reported?" or "what new thing can I do today?" Every word should serve that reader.
+The reader runs `npm i -g @deeplake/hivemind` or pins a version in a harness. They want to know: what can I do now, what got fixed, and will upgrading break me?
 
 ### 2. Name the user-visible behavior, not the implementation
 
-Good: "Fixed a bug where the export button sometimes disappeared after refreshing the page."  
-Bad: "Fixed a race condition in the UI state manager."
+Good: "Recall no longer drops the most relevant memory when more than 50 match a query."
+Bad: "Refactored the recall ranking pipeline to fix an off-by-one in the top-k sort."
 
-The second sentence may be accurate; the first is useful to the user.
+The second may be accurate; the first is what the user needs.
 
 ### 3. Impact first, details second
 
-Open with the most user-meaningful change. Not the most technically complex change. If the biggest thing is a performance improvement, lead with "Loading the dashboard is now 3x faster" — not the root cause analysis.
+Lead with the most meaningful change. If the biggest thing is "capture is now 5x faster on large repos," lead with that, not with the root cause.
 
-### 4. Honest scope: name what is NOT in this release
+### 4. Get the semver bump right - it is a contract, not a vibe
 
-When users have been waiting for a feature, a brief note prevents support tickets and builds trust:
+*Source: `research/external/semver.md`*
 
-> "We started work on bulk CSV export but it is not ready for the quality bar we want. Expected in the next 2-3 releases."
+@deeplake/hivemind is depended on by harnesses and agents. The breaking-change surface is wider than most libraries: CLI flags and commands, library exports, the **harness contracts**, the **MCP tool surface**, and the **Deep Lake schema**. A change to any of those that is not backward compatible is a **major**. Mislabeling it as a patch or minor breaks downstream silently. See `guides/02-semver-decisions.md`.
 
-This is NOT a commitment to a date. It is transparency about the team's awareness and priorities. See `research/external/changelog-copy-craft.md` for the full rationale.
+### 5. Honest scope: name what is NOT in this release
 
-### 5. Respect the team's existing tone
+When users have been waiting for something, one sentence prevents issues and builds trust:
 
-Before writing an entry, read the three most recent entries. If they are casual ("hey, that annoying spinner bug is gone"), match it. If they are formal ("We have resolved an issue affecting..."), match that. A sudden tone shift signals a broken process, not a better product.
+> "We started work on cross-repo recall but it is not ready for the quality bar we want. No ETA yet."
 
-### 6. Distribution or it didn't happen
+This is NOT a date commitment. It is transparency.
 
-*Source: `research/external/changelog-copy-craft.md`*
+### 6. One source of truth for the version
 
-An entry that lives only on the changelog page and is never distributed via widget badge, email, or community post has zero discovery ROI. At minimum: update the in-app widget badge. For significant releases: email digest + community post.
+`package.json` is the single source. `scripts/sync-versions.mjs` runs as a `prebuild` hook and copies that version into every manifest (`.claude-plugin/plugin.json`, the harness plugin manifests, `marketplace.json`), and esbuild's `define` inlines it into the bundles. The CHANGELOG version heading **must** match the version that ships. A mismatch ships a lie. See `guides/04-release-mechanics.md`.
 
-### 7. Never recommend a paid tool without confirming fit
+### 7. Keep a Changelog format, ISO dates, latest at top
 
-Keep a Changelog markdown is always a valid starting point and never requires migration away. Recommend paid tools only when a specific capability (segmentation, NPS, email digest automation) justifies the cost and the team is actively looking to invest.
+CHANGELOG.md at repo root. Sections per release: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`. Latest release at the top, `[Unreleased]` above it. ISO dates only (`2026-06-16`). Every version heading links to a GitHub compare URL. See `guides/01-changelog-format.md`.
 
-### 8. Keep entries linkable
+### 8. Distribution or it didn't happen
 
-Every release should have a stable anchor URL. Whether that is a dedicated page (`/changelog/2026-05-20`), a heading in CHANGELOG.md, or a platform-provided permalink — the link is the audit trail.
+A CHANGELOG entry that ships but is never surfaced has zero discovery ROI. The minimum is a **GitHub Release** cut from the entry (the `release.yaml` flow). For significant releases: a README note and a post in the Slack community.
 
-### 9. ISO dates only
+### 9. Respect the team's existing voice
 
-`2026-05-20` not `May 20, 2026` not `5/20/26`. ISO dates are internationally unambiguous and sort lexicographically. *Source: `research/external/keep-a-changelog.md`*
-
-### 10. One source of truth
-
-The changelog is NOT the git log. It is NOT the sprint board. It is NOT the email. It IS the human-authored record of user-facing changes. Everything else is a distribution channel pointing back to it.
+Read the last two or three CHA

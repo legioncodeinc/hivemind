@@ -12,11 +12,11 @@ See also: `templates/justfile-template.md` for a ready-to-use starter, `examples
 
 | Use case | Recommendation |
 |---|---|
-| Developer task automation in any language | **just** — no tab sensitivity, self-documenting |
-| C/C++/Fortran builds with file dependencies | **make** — designed for this; DAG is the feature |
+| Developer task automation in any language | **just** - no tab sensitivity, self-documenting |
+| C/C++/Fortran builds with file dependencies | **make** - designed for this; DAG is the feature |
 | Legacy project where team knows make | Keep make; optionally add a thin `justfile` wrapper |
-| Cross-platform scripts (Windows + Unix) | **just** — works on all platforms without extra tools |
-| Needs `.PHONY` everywhere | **just** — phony is the default, not the exception |
+| Cross-platform scripts (Windows + Unix) | **just** - works on all platforms without extra tools |
+| Needs `.PHONY` everywhere | **just** - phony is the default, not the exception |
 | CI runner doesn't have just installed | Either; make is universal; just is one `brew/apt` install |
 
 ---
@@ -24,7 +24,7 @@ See also: `templates/justfile-template.md` for a ready-to-use starter, `examples
 ## justfile anatomy
 
 ```makefile
-# justfile — stored at repo root; just searches parent directories
+# justfile - stored at repo root; just searches parent directories
 
 # Set shell for all recipes (default: sh)
 set shell := ["bash", "-euo", "pipefail", "-c"]
@@ -37,49 +37,46 @@ default:
     @just --list
 
 # ── Variables ────────────────────────────────────────────
-app_name := "myapp"
+app_name := "hivemind"
 build_dir := "dist"
 
 # ── Dependencies ────────────────────────────────────────
 install:
     npm ci
 
-install-dev:
-    pip install -r requirements-dev.txt
-    npm ci
-
 # ── Build ───────────────────────────────────────────────
-# Build for an environment (default: development)
-build env="development":
+# Build the package (tsc types + esbuild bundle)
+build:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "Building {{app_name}} for {{env}}"
-    npm run build:{{env}}
+    echo "Building {{app_name}}"
+    npm run build
 
 # ── Test ────────────────────────────────────────────────
 test *args:
-    npm test -- {{args}}
+    npx vitest run {{args}}
 
 test-watch:
-    npm run test:watch
+    npx vitest --watch
 
-# ── Lint ────────────────────────────────────────────────
-lint:
-    npm run lint
+# ── Quality gate ─────────────────────────────────────────
+check:
+    npm run typecheck   # tsc --noEmit
+    npx jscpd src
     shellcheck scripts/*.sh
 
 # ── Clean ───────────────────────────────────────────────
 clean:
-    rm -rf {{build_dir}} node_modules .next
+    rm -rf {{build_dir}} node_modules coverage
 
-# ── Deploy ──────────────────────────────────────────────
+# ── Release ──────────────────────────────────────────────
 # Explicit: requires target argument
-deploy target:
-    @echo "Deploying to {{target}}..."
-    ./scripts/deploy.sh {{target}}
+sync target:
+    @echo "Syncing smoke test to {{target}}..."
+    ./scripts/sync-smoke.sh {{target}}
 
-# Composite: run lint + test before build
-ci: lint test (build "production")
+# Composite: run quality gate + tests before build
+ci: check test build
 ```
 
 ---
@@ -91,23 +88,23 @@ ci: lint test (build "production")
 `just --list` shows all recipes with their doc comments. Add a `##` comment above any recipe to make it visible:
 
 ```makefile
-## Run the development server
-dev:
-    npm run dev
+## Run the test watcher
+watch:
+    npx vitest --watch
 ```
 
 ### Parameters with defaults
 
 ```makefile
-# just deploy staging  OR  just deploy
-deploy env="staging":
-    ./deploy.sh {{env}}
+# just sync staging  OR  just sync
+sync env="staging":
+    ./scripts/sync-smoke.sh {{env}}
 ```
 
 ### Dry-run
 
 ```bash
-just -n deploy production   # shows commands without running
+just -n sync staging   # shows commands without running
 ```
 
 ### fzf integration

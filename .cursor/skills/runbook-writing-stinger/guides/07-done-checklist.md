@@ -27,7 +27,7 @@ A runbook that passes every item on this checklist is ready for production on-ca
 - [ ] **C5** All referenced documents are linked inline. **HIGH.**
 - [ ] **C6** Every command shows expected output and what to do if the output is unexpected. **HIGH.**
 - [ ] **C7** Time estimates included for time-sensitive steps. **MEDIUM.**
-- [ ] **C8** Access requirements stated (VPN, AWS role, database credentials). **HIGH.**
+- [ ] **C8** Access requirements stated (VPN, dataset read token, embeddings API key). **HIGH.**
 - [ ] **C9** No hardcoded secrets, API keys, or passwords. All credentials reference a secret store. **CRITICAL.**
 
 ---

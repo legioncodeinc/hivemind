@@ -1,6 +1,6 @@
 # terminal-bash-stinger
 
-The procedural arsenal for `terminal-bash-worker-bee`, the Legion Army's specialist for the terminal as a developer productivity surface.
+The procedural arsenal for `terminal-bash-worker-bee`, the Cursor IDE Army's specialist for the terminal as a developer productivity surface.
 
 This stinger encodes playbooks for Bash/Zsh/Fish configuration, modern CLI tool adoption, shell scripting safety patterns, dotfile architecture, tmux/Zellij setup, and just/make task automation. Every guide cites at least one file in `research/`.
 

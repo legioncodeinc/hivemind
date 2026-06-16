@@ -1,6 +1,6 @@
 ---
 name: runbook-writing-stinger
-description: Operational runbook authorship specialist — canonical templates (break-fix, scheduled operation, diagnostic), the no-implied-context audit protocol, exact-command discipline, escalation path architecture, rollback procedure standards, runbook-as-test (game day) methodology, and postmortem-to-runbook linkage. Activate when the user says "write a runbook", "audit this runbook", "our runbooks are out of date", "we need a runbook for this alert", "turn this postmortem into a runbook", "schedule a game day", "our on-call docs are weak", or when `runbook-writing-worker-bee` is invoked. Do NOT activate for incident management tooling setup (PagerDuty/OpsGenie — route to devops-worker-bee), infrastructure provisioning decisions (route to devops-worker-bee), or documentation culture/process design beyond the runbook format (route to library-worker-bee).
+description: Operational runbook authorship specialist covering canonical templates (break-fix, scheduled operation, diagnostic), the no-implied-context audit protocol, exact-command discipline, escalation path architecture, rollback procedure standards, runbook-as-test (game day) methodology, and postmortem-to-runbook linkage. Activate when the user says "write a runbook", "audit this runbook", "our runbooks are out of date", "we need a runbook for this alert", "turn this postmortem into a runbook", "schedule a game day", "our on-call docs are weak", or when `runbook-writing-worker-bee` is invoked. Do NOT activate for incident management tooling setup (PagerDuty/OpsGenie, route to ci-release-worker-bee), infrastructure provisioning decisions (route to ci-release-worker-bee), or documentation culture/process design beyond the runbook format (route to library-worker-bee).
 ---
 
 # runbook-writing-stinger
@@ -16,7 +16,7 @@ Operational runbook craft: the exact-command discipline, the no-implied-context 
 These govern every decision in this stinger. Full justification with failure modes per principle in `guides/00-principles.md`.
 
 1. **No implied context.** Every command is copy-pasteable. Every URL is absolute. Every env var is defined. Every decision point is explicit. A runbook written for "someone who knows the system" is not a runbook.
-2. **Exact-command discipline.** No "something like `kubectl get pods`." Exact flags, exact namespaces, exact service names. Vague commands create incident-time variance.
+2. **Exact-command discipline.** No "something like `npm run embeddings:status`." Exact flags, exact dataset paths, exact daemon names. Vague commands create incident-time variance.
 3. **Explicit escalation paths.** Every runbook names its escalation contact (person, team, channel) with a response-time expectation. "Escalate if needed" is not an escalation path.
 4. **Rollback before you ship.** Every state-changing step has an undo step or an explicit irreversibility acknowledgment. Rollback is never improvised during an incident.
 5. **Runbook-as-test mandate.** An untested runbook is a hypothesis. Exercise runbooks quarterly (game day) and on every postmortem action item. Mark untested runbooks prominently.
@@ -59,8 +59,8 @@ Trigger contexts:
 - PR or code change that introduces a new failure mode without a runbook
 
 Do NOT activate for:
-- PagerDuty / OpsGenie configuration (devops-worker-bee)
-- Infrastructure provisioning decisions embedded in runbooks (devops-worker-bee owns the what; this stinger owns the how-to-document-it)
+- PagerDuty / OpsGenie configuration (ci-release-worker-bee)
+- Infrastructure provisioning decisions embedded in runbooks (ci-release-worker-bee owns the what; this stinger owns the how-to-document-it)
 - Incident culture or postmortem process design beyond the document format (library-worker-bee)
 
 ---
@@ -81,13 +81,13 @@ Three types, three templates. Details in `guides/01-runbook-types.md`.
 
 The following were surfaced by `scripture-historian` and were not resolved by the Command Brief. Flag to the user before finalizing any guide that touches these areas:
 
-1. **Runbook-as-code scope**: Should this stinger cover automation hooks (Rundeck, AWS SSM, Jupyter notebooks)? Research shows 2026 SRE practice increasingly blurs manual vs. automated runbooks. Current stance: manual runbooks only; automation is an advanced pattern flagged in `guides/01-runbook-types.md` as "out of scope, see devops-worker-bee."
+1. **Runbook-as-code scope**: Should this stinger cover automation hooks (Rundeck, AWS SSM, Jupyter notebooks)? Research shows 2026 SRE practice increasingly blurs manual vs. automated runbooks. Current stance: manual runbooks only; automation is an advanced pattern flagged in `guides/01-runbook-types.md` as "out of scope, see ci-release-worker-bee."
 2. **Security attribute**: The SRE School quality model adds "no exposed secrets, least privilege commands" as a ninth attribute. Added to `guides/07-done-checklist.md` as a checklist item; flag to user if their environment has PCI/HIPAA compliance requirements.
-3. **Alert-links-to-runbook principle**: Added as Principle 6 in `guides/00-principles.md` ("Alert linking") — the alert payload must directly link to the specific runbook, not a runbook index.
+3. **Alert-links-to-runbook principle**: Added as Principle 6 in `guides/00-principles.md` ("Alert linking"), the alert payload must directly link to the specific runbook, not a runbook index.
 4. **Freshness KPIs**: Added postmortem action item completion rate as a KPI in `guides/07-done-checklist.md`. User should decide whether to track in a dashboard.
 5. **Storage tooling**: This stinger is tool-agnostic (Notion, Confluence, Slab, Git/Backstage all work). Tool-specific tips are callouts in `guides/00-principles.md`.
 
-> TODO: open question — if the user's org uses runbook automation tools (Rundeck, Shoreline, AWS SSM), a future `runbook-automation-worker-bee` would own the integration layer. Flag this need if it surfaces.
+> TODO: open question, if the user's org uses runbook automation tools (Rundeck, Shoreline, AWS SSM), a future `runbook-automation-worker-bee` would own the integration layer. Flag this need if it surfaces.
 
 ---
 
@@ -105,19 +105,19 @@ The following were surfaced by `scripture-historian` and were not resolved by th
 
 ```
 runbook-writing-stinger/
-+- SKILL.md                        (this file — read first)
++- SKILL.md                        (this file, read first)
 +- README.md                       (one-page overview)
 +- guides/
 |  +- 00-principles.md             (six core principles with failure modes)
 |  +- 01-runbook-types.md          (break-fix vs scheduled-operation vs diagnostic)
-|  +- 02-no-implied-context-audit.md (audit protocol — step-by-step)
+|  +- 02-no-implied-context-audit.md (audit protocol, step-by-step)
 |  +- 03-escalation-path-architecture.md (naming, formatting, SLA tiering)
 |  +- 04-rollback-procedures.md    (reversible vs irreversible, undo templates)
 |  +- 05-runbook-as-test.md        (game day methodology, quarterly cadence)
 |  +- 06-postmortem-linkage.md     (closed loop: incident -> postmortem -> runbook)
 |  +- 07-done-checklist.md         (validation pass before marking ready)
 +- examples/
-|  +- happy-path-break-fix.md      (end-to-end worked example: database OOM alert)
+|  +- happy-path-break-fix.md      (end-to-end worked example: embeddings daemon stall alert)
 |  +- audit-existing-runbook.md    (worked audit: before and after with violations called out)
 +- templates/
 |  +- break-fix-runbook.md         (canonical template with all required sections)
@@ -135,4 +135,4 @@ runbook-writing-stinger/
 
 ---
 
-*Forged by `stinger-forge` from `runbook-writing-worker-bee-command-brief.md` and `research/`. Part of the Legion AI Tools Factory by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*
+*Part of the Cursor IDE Army curated by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*

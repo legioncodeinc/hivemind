@@ -22,7 +22,7 @@ Not "X should be used." Not "we plan to use X." The decision is closed. -->
 
 ## Consequences
 
-<!-- Trade-offs accepted — positive, negative, and neutral.
+<!-- Trade-offs accepted, positive, negative, and neutral.
 Be honest about negatives; they are the most valuable part. -->
 
 **Positive:**

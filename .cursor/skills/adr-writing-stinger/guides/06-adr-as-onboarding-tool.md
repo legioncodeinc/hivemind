@@ -8,9 +8,9 @@ The ADR log is the engineering team's institutional memory in its most navigable
 
 ### 1. Decision archaeology
 
-New engineers inevitably ask: "Why do we use X instead of Y?" Without an ADR log, the answer is "because that's how it was when I joined" — or a painful historical reconstruction from git blame and Slack search.
+New engineers inevitably ask: "Why do we use X instead of Y?" Without an ADR log, the answer is "because that's how it was when I joined", or a painful historical reconstruction from git blame and Slack search.
 
-With an ADR log, the answer is: "See ADR-0012 — we considered Y but rejected it because of Z."
+With an ADR log, the answer is: "See ADR-0012, we considered Y but rejected it because of Z."
 
 The Alternatives Considered section is especially valuable here. It prevents experienced engineers from relitigating decisions and gives new engineers the evidence they need to propose a reversal only when circumstances have genuinely changed.
 
@@ -19,14 +19,14 @@ The Alternatives Considered section is especially valuable here. It prevents exp
 ADRs are linked from commit messages and PR descriptions:
 
 ```
-feat(auth): migrate from NextAuth to Better Auth (ADR-0031)
+feat(harness): add string-based pre-tool-use gate (ADR-0031)
 ```
 
-When a new engineer reads a commit that changed the auth layer, the ADR reference takes them directly to the decision record with full context, rationale, and trade-offs.
+When a new engineer reads a commit that changed the harness dispatch path, the ADR reference takes them directly to the decision record with full context, rationale, and trade-offs.
 
 ### 3. Architecture overview
 
-The ADR log — sorted by topic area — gives a new engineer a map of the major architectural choices. It is not a complete architecture document, but it covers the decisions that deviated from defaults and therefore require explanation.
+The ADR log, sorted by topic area, gives a new engineer a map of the major architectural choices. It is not a complete architecture document, but it covers the decisions that deviated from defaults and therefore require explanation.
 
 ---
 
@@ -66,16 +66,16 @@ Log4brains allows filtering and categorization. For manual browsing, add an `adr
 ```markdown
 # ADR Log
 
-## Data Layer
-- [0012 - Use PostgreSQL](docs/decisions/0012-use-postgresql.md) — Accepted
-- [0022 - Adopt Drizzle ORM](docs/decisions/0022-adopt-drizzle-orm.md) — Accepted
+## Retrieval & Data Layer
+- [0012 - Fall back to BM25 when embeddings off](docs/decisions/0012-bm25-fallback.md), Accepted
+- [0022 - Append-only version-bump for embedding rows](docs/decisions/0022-append-only-version-bump.md), Accepted
 
-## Authentication
-- [0015 - Use Clerk for auth](docs/decisions/0015-use-clerk.md) — Accepted
-- [0031 - Migrate to Better Auth](docs/decisions/0031-migrate-better-auth.md) — Accepted, Supersedes 0015
+## Harness Safety
+- [0015 - Self-policing tool safety per bee](docs/decisions/0015-self-policing-tool-safety.md), Accepted
+- [0031 - String-based pre-tool-use gate](docs/decisions/0031-string-based-pre-tool-use-gate.md), Accepted, Supersedes 0015
 
-## Deployment
-- [0008 - Deploy to Vercel](docs/decisions/0008-deploy-vercel.md) — Accepted
+## Release
+- [0008 - npm publish flow for @deeplake/hivemind](docs/decisions/0008-npm-publish-flow.md), Accepted
 ```
 
 ---
@@ -84,9 +84,9 @@ Log4brains allows filtering and categorization. For manual browsing, add an `adr
 
 In the onboarding guide, point new engineers to the ADR log with this framing:
 
-> "Read the ADR log in chronological order for the first 30 minutes. Pay special attention to ADRs marked `Superseded` — they show you where we changed direction and why. After that, use the topic index to find decisions related to the area you'll be working in first."
+> "Read the ADR log in chronological order for the first 30 minutes. Pay special attention to ADRs marked `Superseded`, they show you where we changed direction and why. After that, use the topic index to find decisions related to the area you'll be working in first."
 
-For teams using Log4brains, the HTML interface provides filtering by status, date, and package — direct new engineers to the rendered site.
+For teams using Log4brains, the HTML interface provides filtering by status, date, and package, direct new engineers to the rendered site.
 
 ---
 

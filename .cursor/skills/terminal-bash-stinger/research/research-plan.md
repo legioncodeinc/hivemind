@@ -1,4 +1,4 @@
-# Research Plan — terminal-bash-stinger
+# Research Plan - terminal-bash-stinger
 
 **Bee:** terminal-bash-worker-bee
 **Stinger:** terminal-bash-stinger

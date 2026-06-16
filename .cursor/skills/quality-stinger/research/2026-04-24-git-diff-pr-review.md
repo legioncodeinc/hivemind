@@ -1,4 +1,4 @@
-# Git Diff for PR Review — Two-Dot vs. Three-Dot
+# Git Diff for PR Review - Two-Dot vs. Three-Dot
 
 **Sources:**
 - https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-comparing-branches-in-pull-requests
@@ -12,8 +12,8 @@
 
 When inventorying changes for a PR audit, the invocation matters. GitHub's PR diff uses three-dot semantics. Two-dot and three-dot answer different questions:
 
-- `git diff A..B` (two dots) — "Everything different between the tip of A and the tip of B." Changes when `A` is updated, even if `B` hasn't changed.
-- `git diff A...B` (three dots) — "What did branch B introduce since it diverged from A?" Uses the merge base. This matches what the PR page shows.
+- `git diff A..B` (two dots) - "Everything different between the tip of A and the tip of B." Changes when `A` is updated, even if `B` hasn't changed.
+- `git diff A...B` (three dots) - "What did branch B introduce since it diverged from A?" Uses the merge base. This matches what the PR page shows.
 
 For `quality-worker-bee`, the audit should mirror what a human reviewer sees on the PR page: the three-dot diff against the base branch.
 

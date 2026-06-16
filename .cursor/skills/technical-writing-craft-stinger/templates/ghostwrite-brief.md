@@ -24,7 +24,7 @@ Fill this out before the Bee writes. Unanswered questions produce a draft that n
 
 ## 4. Voice and tone
 
-**House style guide:** {URL or file path, or "none -- use Legion defaults"}
+**House style guide:** {URL or file path, or "none -- use the default style"}
 **Register:** {formal | conversational | technical-precise}
 **Voice matching source:** {URL or file path of existing writing to match, or "none"}
 

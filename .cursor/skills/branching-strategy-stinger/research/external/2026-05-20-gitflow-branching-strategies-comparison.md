@@ -19,7 +19,7 @@ Rigorous April 2026 practitioner post. Provides concise one-line characterizatio
 - "The strategy must match how often you ship. Releasing twice a day on GitFlow is suffering; quarterly point releases on trunk-based is chaos."
 - On GitLab Flow: "GitHub Flow + explicit environment branches. Pragmatic middle ground for teams that want continuous merging but not continuous deployment."
 - On GitLab Flow: each environment is a branch that is strictly behind the previous; to promote a change you merge (or fast-forward) one branch into the next
-- On GitFlow: "The develop branch often ends up identical to main — that's the canary that the model is wrong for the team."
+- On GitFlow: "The develop branch often ends up identical to main - that's the canary that the model is wrong for the team."
 - On TBD hotfix: "Hotfix = revert the bad commit from main and roll forward (not a separate branch)."
 
 ## Strategy characterizations

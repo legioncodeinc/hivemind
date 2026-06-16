@@ -38,6 +38,6 @@ Docs-as-code treats documentation like source code: Git for version control, Mar
 ## Annotations for stinger-forge
 
 - `guides/06-docs-as-code-review.md` should define the Bee's specific review checklist for docs PRs. The checklist should be structured around the same seven criteria as the scorecard: Diataxis mode, inverted pyramid (opening sentence), heading quality, code examples, voice/tone, reader-lens, and (for additions) structural completeness.
-- The CI automation angle is relevant to the Bee's scope boundary: automated checks (Vale, link checkers, spell check) are infrastructure owned by devops-worker-bee. The Bee reviews what automation cannot: judgment calls about prose quality, Diataxis mode correctness, and reader experience.
+- The CI automation angle is relevant to the Bee's scope boundary: automated checks (Vale, link checkers, spell check) are infrastructure owned by ci-release-worker-bee. The Bee reviews what automation cannot: judgment calls about prose quality, Diataxis mode correctness, and reader experience.
 - The "docs updated in the same PR" principle means the Bee may be invoked during code PR review, not just standalone doc reviews. The guide should handle both entry points.
 - The 2026 AI-assist context matters: the Bee should be aware that AI-generated doc drafts are increasingly common, and that AI tends to produce generic, mode-mixed, passive-voice content that needs structured review.

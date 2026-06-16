@@ -79,7 +79,7 @@ pick m0n1o2p Add session middleware
 - `squash` - merges both commit messages; opens editor to write combined message
 - `fixup` - silently keeps only the first commit's message; no editor opens
 
-> "fixup is squash without the message editing. It combines the commit with the one above it and keeps only the previous commit's message. This is the one you will use most often — it is perfect for folding small fixes into the commits they belong to." - Grizzly Peak Software (2026)
+> "fixup is squash without the message editing. It combines the commit with the one above it and keeps only the previous commit's message. This is the one you will use most often - it is perfect for folding small fixes into the commits they belong to." - Grizzly Peak Software (2026)
 
 Since Git 2.32, `fixup -C` keeps the fixup commit's message instead, and `fixup -c` keeps it but opens the editor.
 

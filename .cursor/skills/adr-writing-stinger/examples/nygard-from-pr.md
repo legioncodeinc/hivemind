@@ -6,14 +6,14 @@ This example walks through the full workflow of deriving an ADR from a PR that i
 
 ## Input: PR description
 
-> **PR #247: Migrate auth from NextAuth to Better Auth**
+> **PR #247: Add a string-based pre-tool-use gate to the harness**
 >
-> We've hit the wall with NextAuth's session management flexibility. Migrating to Better Auth gives us:
-> - First-class Drizzle ORM adapter (no custom adapter code)
-> - Built-in passkey support (required for our Q3 security goals)
-> - Database-side sessions (eliminates the JWT-rotation complexity we've been fighting)
+> We keep letting unsafe tool calls reach worker bees before any check runs. This PR adds a pre-tool-use gate that inspects the serialized tool-call string and blocks disallowed patterns before dispatch:
+> - Pure string/regex matching, no parsing of the tool payload into an AST
+> - Runs in the harness before the call ever reaches `harness-integration-worker-bee`
+> - Fail-closed: an unmatched-but-suspicious call is blocked, not allowed
 >
-> Reviewed NextAuth v5 beta and Clerk as alternatives. NextAuth v5 is still unstable; Clerk is a hosted service we'd rather avoid for compliance reasons.
+> Considered a full structured-AST validator and a post-hoc audit log as alternatives. The AST validator is heavy and couples the gate to every tool's schema; the audit log only tells us after the fact.
 >
 > Related ticket: ENG-482
 
@@ -21,20 +21,20 @@ This example walks through the full workflow of deriving an ADR from a PR that i
 
 ## Step 1: Determine ADR eligibility
 
-This is a consequential, closed, non-obvious decision. The auth provider affects security posture, developer ergonomics, onboarding complexity, and vendor lock-in. It warrants an ADR. Format: Nygard (two alternatives, manageable complexity).
+This is a consequential, closed, non-obvious decision. The gate affects the security posture of every tool call, the harness hot path, and how new tools get onboarded. It warrants an ADR. Format: Nygard (two alternatives, manageable complexity).
 
 ## Step 2: Assign the next number
 
 ```bash
 adr list
-# → 0030-adopt-drizzle-orm.md (latest)
+# -> 0030-bm25-fallback-when-embeddings-off.md (latest)
 # Next: 0031
 ```
 
 ## Step 3: Draft the ADR
 
 ```markdown
-# 0031. Migrate from NextAuth to Better Auth
+# 0031. String-based pre-tool-use gate
 
 Date: 2026-03-12
 
@@ -44,52 +44,51 @@ Accepted
 
 ## Context
 
-We adopted NextAuth.js v4 in 2024 (ADR-0008) for its ecosystem breadth and Next.js 
-integration. By Q1 2026 we had encountered three friction points: (1) the Drizzle ORM 
-adapter required custom code not maintained in the official repo, (2) passkey support 
-was not available without a community plugin with poor maintenance, (3) JWT-based 
-sessions required complex rotation logic to satisfy our 30-minute idle timeout 
-requirement (ENG-391).
+The harness dispatched tool calls to worker bees with no centralized safety check. Each
+bee was expected to self-police, which it did inconsistently. By Q1 2026 we had three
+near-misses where a malformed or disallowed tool call reached a bee before any validation
+ran (ENG-391). We need a single choke point in front of dispatch.
 
-Better Auth is a new entrant (stable since Q3 2025) with a first-class Drizzle adapter, 
-built-in passkey support, and database-side session storage.
+A string-based gate inspects the serialized tool-call request as text and blocks
+disallowed patterns. It is cheap (no payload parsing), centralized (one place in the
+harness), and fail-closed.
 
 ## Decision
 
-We decided to migrate from NextAuth.js v4 to Better Auth for all authentication in the 
-main web application. The migration was executed in PR #247 and validated against 
-all existing auth test cases.
+We decided to add a string-based pre-tool-use gate in the harness, evaluated before any
+call reaches `harness-integration-worker-bee`. The gate matches the serialized request
+against a deny-list of string/regex patterns and blocks on match. Unrecognized requests
+that trip a heuristic are blocked, not allowed. The gate runs synchronously in the
+dispatch path.
 
 ## Consequences
 
 **Positive:**
-- First-class Drizzle ORM adapter eliminates ~200 lines of custom adapter code.
-- Passkey support enables Q3 2026 security goal without a third-party plugin.
-- Database sessions simplify the idle-timeout implementation (ENG-391 closed).
+- One centralized choke point; bees no longer self-police tool safety.
+- String matching keeps the gate off the critical-path latency budget (no AST build).
+- Fail-closed default means a new unsafe pattern is blocked until explicitly allowed.
 
 **Negative:**
-- Better Auth has a smaller community and ecosystem than NextAuth. Fewer Stack Overflow
-  answers; more reliance on official docs and Discord.
-- Migration required updating 14 files and re-testing all auth flows — 3 days of 
-  engineering time.
+- String matching is coarser than structured validation; a cleverly encoded payload could
+  evade a naive pattern. The deny-list must be maintained as tools evolve.
+- False positives block legitimate calls until the pattern is refined.
 
 **Neutral:**
-- Both libraries use similar session cookie semantics; no user-visible auth behavior changed.
+- Existing bees need no code change; the gate is upstream of them.
 
 ## Alternatives Considered
 
-### Alternative: NextAuth v5 (App Router beta)
+### Alternative: full structured-AST validator
 
-NextAuth v5 addresses some of the adapter and passkey limitations via the new Auth.js 
-framework. Rejected because v5 was still in beta as of March 2026 with known breaking 
-changes expected before stable release. Revisit if v5 stabilizes.
+Parsing each tool payload into a typed AST and validating against per-tool schemas is more
+precise. Rejected because it couples the gate to every tool's schema, adds parse latency to
+the hot path, and is far more code to maintain. Revisit if string matching proves too coarse.
 
-### Alternative: Clerk
+### Alternative: post-hoc audit log only
 
-Clerk offers a hosted auth solution with first-class passkey support. Rejected because 
-it is a vendor-hosted service — all user session data would reside on Clerk's 
-infrastructure, creating GDPR data-residency concerns for our EU customers. Also 
-rejected due to per-MAU pricing at our scale.
+Logging every tool call for later review is simpler and adds no blocking. Rejected because
+it only surfaces an unsafe call after it has already executed; the near-misses in ENG-391
+required a pre-dispatch block.
 ```
 
 ## Step 4: File the ADR
@@ -97,27 +96,27 @@ rejected due to per-MAU pricing at our scale.
 ```bash
 # Create the file at the next number
 # (adr-tools doesn't auto-draft from PR descriptions; write manually or use the template)
-cp docs/decisions/_template-nygard.md docs/decisions/0031-migrate-nextauth-to-better-auth.md
+cp docs/decisions/_template-nygard.md docs/decisions/0031-string-based-pre-tool-use-gate.md
 # Fill in the content above, then:
 
 adr generate toc
-# → Updates docs/decisions/README.md with the new entry
+# -> Updates docs/decisions/README.md with the new entry
 ```
 
 ## Step 5: Update the PR description
 
 Add to PR #247:
 
-> **ADR recorded:** [ADR-0031 - Migrate from NextAuth to Better Auth](docs/decisions/0031-migrate-nextauth-to-better-auth.md)
+> **ADR recorded:** [ADR-0031 - String-based pre-tool-use gate](docs/decisions/0031-string-based-pre-tool-use-gate.md)
 
 ## Step 6: Link from the merge commit
 
 ```
-feat(auth): migrate from NextAuth to Better Auth (ADR-0031, closes ENG-482)
+feat(harness): add string-based pre-tool-use gate (ADR-0031, closes ENG-482)
 ```
 
 ---
 
 ## Result
 
-The merge commit, the PR description, and the ADR record all cross-reference each other. Six months from now, when an engineer asks "why did we switch auth providers?", `git log`, GitHub PR search, or the ADR log each lead to the full answer.
+The merge commit, the PR description, and the ADR record all cross-reference each other. Six months from now, when an engineer asks "why does the harness block calls before dispatch?", `git log`, GitHub PR search, or the ADR log each lead to the full answer.

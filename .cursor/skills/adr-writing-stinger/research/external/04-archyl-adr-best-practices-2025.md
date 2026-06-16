@@ -19,7 +19,7 @@ A January 2025 practitioner article focusing on practical adoption patterns, com
 - "The format is deliberately lightweight. An ADR should fit on one page. If it's longer, you're probably documenting more than one decision."
 - "The rejected status is particularly valuable. Sometimes you want to capture why you didn't do something, so future teams don't propose the same thing."
 - "Be specific about constraints. 'We need ACID compliance' is much more useful than 'we need reliability.'"
-- "State the decision clearly. Not 'we might consider' or 'we should explore' — what we actually decided."
+- "State the decision clearly. Not 'we might consider' or 'we should explore' - what we actually decided."
 - "Documenting what you didn't choose is often as valuable as documenting what you did."
 - "The best time to write an ADR is during the decision process, not weeks later."
 - "If your ADR is more than one page, you're probably: documenting multiple decisions (split into multiple ADRs); including implementation details (save that for design docs); overexplaining obvious context."

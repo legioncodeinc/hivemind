@@ -8,7 +8,7 @@ topic: runbook-structure
 stinger: runbook-writing-stinger
 ---
 
-# On-Call Runbook Best Practices (With Examples) — Incident Copilot
+# On-Call Runbook Best Practices (With Examples) - Incident Copilot
 
 Published: 2026-03-08
 
@@ -25,7 +25,7 @@ Published: 2026-03-08
 ## Direct quotes
 
 - "Most runbooks fail because they're incomplete, outdated, or too abstract to follow under pressure."
-- "Rule: One alert, one runbook. If two runbooks share 80% of steps, that's fine — duplication is better than confusion."
+- "Rule: One alert, one runbook. If two runbooks share 80% of steps, that's fine - duplication is better than confusion."
 - "'Check the logs' is not a step. 'Run `grep -i error /var/log/app/app.log | tail -50`' is."
 - "Every remediation action should have a documented rollback. If you scale up read replicas and it doesn't work, how do you undo it?"
 

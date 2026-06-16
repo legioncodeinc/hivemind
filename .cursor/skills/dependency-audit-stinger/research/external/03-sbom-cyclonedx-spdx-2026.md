@@ -81,10 +81,10 @@ on:
 ## Key quotations / statistics
 
 - "For 2026, generate CycloneDX 1.6 JSON as the primary format and keep an SPDX 2.3 variant for customers who explicitly ask for it."
-- "Generate the SBOM from the built artifact, not from the source tree — source-tree SBOMs miss the packages that actually ended up in the container or binary."
+- "Generate the SBOM from the built artifact, not from the source tree - source-tree SBOMs miss the packages that actually ended up in the container or binary."
 - "GitHub's default artifact retention is 90 days, which is shorter than any meaningful compliance horizon."
 - "Trigger SBOM generation on tag pushes (not branch pushes) so that every SBOM maps to an immutable artifact."
-- "Pin Syft to a specific release — never use `@latest` in a compliance pipeline."
+- "Pin Syft to a specific release - never use `@latest` in a compliance pipeline."
 - anchore/sbom-action released v0.24.0 on March 20, 2026 (latest as of research date)
 
 ## Annotations for stinger-forge

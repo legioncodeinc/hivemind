@@ -1,41 +1,38 @@
 // templates/safe-log.ts
 //
-// Reference implementation of a PII-redacting logger. Drop into
-// `src/lib/safe-log.ts` and replace every `console.log` / `Sentry.captureException`
-// / `LogRocket.identify` in PII paths with the matching `safeLog.*` call.
+// Reference implementation of a token/PII-redacting logger for Hivemind. Drop
+// into `src/lib/safe-log.ts` and replace every `console.log` in a sensitive path
+// (the Deep Lake client, the capture hooks, the auth/credential flow) with the
+// matching `safeLog.*` call. Also use `redact()` at the capture boundary before
+// any INSERT into the `sessions` / `memory` tables.
 //
-// Rationale: research/2026-04-24 PII-in-logging findings; guides/04-pii-and-financial.md C2.
+// Rationale: guides/04-pii-and-financial.md C2 / C5 - never log or persist the
+// Activeloop Bearer token, the X-Activeloop-Org-Id paired with a token, or raw
+// captured-trace content.
 //
 // Behavior:
 //   - Deep-clones the payload.
 //   - Walks every object/array; replaces the VALUE of any key matching
 //     SENSITIVE_KEYS (case-insensitive, partial match) with '[REDACTED]'.
-//   - Masks credit-card-like numbers anywhere in string values.
+//   - Masks Bearer/JWT-shaped strings anywhere in string values.
 //   - Leaves the original object untouched.
 
 const SENSITIVE_KEYS: readonly string[] = [
-  // auth
+  // auth / credentials - the keys-to-the-kingdom on Hivemind
   'password', 'pwd', 'passwd',
   'token', 'accessToken', 'access_token', 'refreshToken', 'refresh_token',
   'apiKey', 'api_key', 'secret', 'clientSecret', 'client_secret',
-  'authorization', 'auth', 'cookie', 'set-cookie',
+  'authorization', 'auth', 'bearer', 'cookie', 'set-cookie',
+  'credentials', 'deviceCode', 'device_code',
   'sessionId', 'session_id',
-  // financial
-  'cardNumber', 'card_number', 'pan',
-  'cvv', 'cvc', 'cvn', 'cvv2',
-  'exp', 'exp_month', 'exp_year', 'expiry', 'expiration',
-  'iban', 'bic', 'swift', 'routingNumber', 'routing_number',
-  'accountNumber', 'account_number',
-  // identity
-  'ssn', 'socialSecurityNumber', 'social_security_number',
-  'taxId', 'tax_id', 'ein', 'nin',
-  'driverLicense', 'driver_license', 'passport', 'passportNumber',
-  'pin',
-  // demographic
-  'dob', 'dateOfBirth', 'date_of_birth', 'birthdate',
+  // org/tenant identifiers that enable cross-tenant access when paired with a token
+  'orgId', 'org_id', 'x-activeloop-org-id',
+  // captured-trace content fields that may carry raw prompt/response text
+  'prompt', 'completion', 'response', 'rawHeaders', 'headers', 'env',
 ];
 
-const CC_RE = /\b(?:\d[ -]*?){13,19}\b/g;
+const BEARER_RE = /Bearer\s+[A-Za-z0-9._-]{8,}/g;
+const JWT_RE = /\beyJ[A-Za-z0-9._-]{10,}\b/g;
 const REDACTED = '[REDACTED]';
 
 function isSensitiveKey(key: string): boolean {
@@ -43,19 +40,17 @@ function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEYS.some((s) => k.includes(s.toLowerCase()));
 }
 
-function maskCC(value: string): string {
-  return value.replace(CC_RE, (m) => {
-    const digits = m.replace(/\D/g, '');
-    if (digits.length < 13 || digits.length > 19) return m; // not a card
-    return `${'*'.repeat(digits.length - 4)}${digits.slice(-4)}`;
-  });
+function maskTokens(value: string): string {
+  return value
+    .replace(BEARER_RE, 'Bearer [REDACTED]')
+    .replace(JWT_RE, '[REDACTED_JWT]');
 }
 
 function redactValue(value: unknown, depth = 0): unknown {
   if (depth > 8) return '[DEPTH_LIMIT]';
   if (value === null || value === undefined) return value;
 
-  if (typeof value === 'string') return maskCC(value);
+  if (typeof value === 'string') return maskTokens(value);
 
   if (Array.isArray(value)) return value.map((v) => redactValue(v, depth + 1));
 
@@ -96,14 +91,14 @@ export const safeLog = {
   warn:  (message: string, payload?: unknown) => emit('warn', message, payload),
   error: (message: string, payload?: unknown) => emit('error', message, payload),
 
-  /** For plug-in replacement of Sentry.captureException calls */
+  /** Structured exception logging without leaking sensitive context */
   captureException: (err: unknown, context?: Record<string, unknown>) => {
     emit('error', 'exception', {
       name: (err as Error)?.name,
       message: (err as Error)?.message,
-      // NOTE: stack intentionally NOT sent to telemetry by default —
-      // a Sentry integration can re-enable it after confirming Sentry
-      // does not ingest into a non-compliant region.
+      // NOTE: stack intentionally NOT included by default - it can echo the
+      // resolved memory path or internal Deep Lake detail. Re-enable only for
+      // server-side debugging, never into a captured trace.
       ...(context ?? {}),
     });
   },
@@ -113,5 +108,4 @@ export type SafeLog = typeof safeLog;
 
 // Add sensitive keys for your domain
 export function extendSensitiveKeys(keys: string[]) {
-  for (const k of keys) if (!SENSITIVE_KEYS.includes(k)) (SENSITIVE_KEYS as string[]).push(k);
-}
+  for

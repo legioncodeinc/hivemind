@@ -29,8 +29,8 @@ sources: []
 
 ## Examples in this codebase
 
-- [[entities/...]] — how the concept manifests there
-- [[entities/...]] — second example
+- [[entities/...]] - how the concept manifests there
+- [[entities/...]] - second example
 
 ## Connections
 
@@ -39,5 +39,5 @@ sources: []
 
 ## Sources
 
-- `path/to/source/file.ts` (lines X–Y) — primary expression of the concept
-- commit `{sha}` — when this concept was introduced or last refined
+- `path/to/source/file.ts` (lines X-Y) - primary expression of the concept
+- commit `{sha}` - when this concept was introduced or last refined

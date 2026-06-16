@@ -1,6 +1,6 @@
 ---
 name: git-stinger
-description: Git mastery specialist — interactive rebase (squash, fixup, reword, drop), conflict resolution, history rewriting (git filter-repo, BFG), reset/reflog recovery, worktrees for parallel branches, hooks (Husky, lefthook), submodules vs subtrees, Git LFS, partial clone, and sparse checkout. Use when the user says "squash my commits", "I pushed a secret", "my repo is huge", "undo that rebase", "work on two branches at once", "set up Git hooks", "submodules vs subtrees", or needs any Git recovery operation. Do NOT use for CI/CD pipeline configuration (devops-worker-bee) or credential rotation after a secrets incident (security-worker-bee).
+description: Git mastery specialist - interactive rebase (squash, fixup, reword, drop), conflict resolution, history rewriting (git filter-repo, BFG), reset/reflog recovery, worktrees for parallel branches, hooks (Husky, lefthook), submodules vs subtrees, Git LFS, partial clone, and sparse checkout. Use when the user says "squash my commits", "I pushed a secret", "my repo is huge", "undo that rebase", "work on two branches at once", "set up Git hooks", "submodules vs subtrees", or needs any Git recovery operation. Do NOT use for CI/CD pipeline configuration (ci-release-worker-bee) or credential rotation after a secrets incident (security-worker-bee).
 ---
 
 # git Stinger
@@ -27,10 +27,10 @@ The procedural arsenal for `git-worker-bee`. This stinger encodes the opinionate
 - Commit signing: GPG and SSH signature verification
 
 **Not in scope:**
-- CI/CD pipeline configuration using Git events → devops-worker-bee
-- Server-side hook configuration in CI/CD runners → devops-worker-bee
-- Credential rotation after a secrets-in-history incident → security-worker-bee
-- Secret scanning policies and repository security tooling → security-worker-bee
+- CI/CD pipeline configuration using Git events -> ci-release-worker-bee
+- Server-side hook configuration in CI/CD runners -> ci-release-worker-bee
+- Credential rotation after a secrets-in-history incident -> security-worker-bee
+- Secret scanning policies and repository security tooling -> security-worker-bee
 - GitHub/GitLab REST API usage beyond the Git protocol itself
 
 ---
@@ -64,9 +64,9 @@ These are non-negotiables. Full justifications in `guides/00-principles.md`.
 
 4. **Confirm the Git version before recommending advanced features.** Worktrees stabilized in Git 2.15. Sparse checkout v2 (cone mode) arrived in 2.25. Partial clone landed in 2.22. `--rebase-merges` in 2.22. `--autosquash` has been available since 1.7.4 but `fixup!` with a comment requires 2.32.
 
-5. **Escalate to security-worker-bee for secrets-in-history scenarios.** Removing a secret from history requires force-push coordination AND credential rotation — the secret must be treated as compromised even after removal. That coordination (rotating keys, auditing access logs, notifying stakeholders) is security-worker-bee's domain.
+5. **Escalate to security-worker-bee for secrets-in-history scenarios.** Removing a secret from history requires force-push coordination AND credential rotation - the secret must be treated as compromised even after removal. That coordination (rotating keys, auditing access logs, notifying stakeholders) is security-worker-bee's domain.
 
-6. **Escalate to devops-worker-bee for server-side hooks and CI Git configuration.** Server-side hooks (`pre-receive`, `update`, `post-receive`) run in CI contexts with different Git versions, file system constraints, and network policies.
+6. **Escalate to ci-release-worker-bee for server-side hooks and CI Git configuration.** Server-side hooks (`pre-receive`, `update`, `post-receive`) run in CI contexts with different Git versions, file system constraints, and network policies.
 
 ---
 
@@ -120,7 +120,7 @@ Check with `git --version` before using any of the above.
 
 ```text
 git-stinger/
-├── SKILL.md                         (this file — master index)
+├── SKILL.md                         (this file - master index)
 ├── README.md                        (human overview)
 ├── guides/
 │   ├── 00-principles.md             (escape-hatch-first, force-with-lease, filter-branch deprecation, version matrix, public-branch rule)
@@ -141,7 +141,7 @@ git-stinger/
 │   └── rebase-cheatsheet.md         (quick-reference card for rebase -i commands)
 ├── reports/
 │   └── README.md                    (past run summaries accumulate here)
-└── research/                        (authored by scripture-historian — DO NOT MODIFY)
+└── research/                        (authored by scripture-historian - DO NOT MODIFY)
     ├── research-plan.md
     ├── research-summary.md
     ├── index.md
@@ -151,4 +151,4 @@ git-stinger/
 
 ---
 
-*Forged by `stinger-forge` from `git-worker-bee-command-brief.md` and research/. Part of the Legion AI Tools Factory by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*
+*Part of the Cursor IDE Army curated by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*

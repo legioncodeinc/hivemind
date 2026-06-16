@@ -1,4 +1,4 @@
-# Conflict Resolution — git-stinger
+# Conflict Resolution - git-stinger
 
 Merge conflicts, rebase conflicts, rerere, and mergetool configuration.
 
@@ -14,9 +14,9 @@ incoming version of the code
 >>>>>>> feature/new-login
 ```
 
-- `<<<<<<< HEAD` — the current branch's version
-- `=======` — separator
-- `>>>>>>> <branch>` — the incoming branch's version
+- `<<<<<<< HEAD` - the current branch's version
+- `=======` - separator
+- `>>>>>>> <branch>` - the incoming branch's version
 
 Resolution: edit the file to the desired final state, remove all three marker lines, then stage the file.
 
@@ -56,7 +56,7 @@ git status          # shows conflicted files
 git add <file>
 git rebase --continue   # moves to the next commit
 
-# Skip this commit entirely (dangerous — use only if commit is empty after resolution):
+# Skip this commit entirely (dangerous - use only if commit is empty after resolution):
 git rebase --skip
 
 # Abort and return to pre-rebase state:
@@ -91,7 +91,7 @@ git merge -X ours <branch>
 git merge -X theirs <branch>
 ```
 
-Use `-X ours` and `-X theirs` with care — they silently resolve all conflicts in one direction, which is fast but potentially lossy.
+Use `-X ours` and `-X theirs` with care - they silently resolve all conflicts in one direction, which is fast but potentially lossy.
 
 ---
 

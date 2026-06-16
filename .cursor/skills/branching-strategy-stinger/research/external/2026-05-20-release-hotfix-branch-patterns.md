@@ -18,18 +18,18 @@ Comprehensive Gitflow reference with detailed release and hotfix branch mechanic
 On release branches:
 - "Branch off from develop at release-feature-complete milestone"
 - "Only apply bug fixes and minor release-prep changes"
-- "No new features allowed — feature freeze enforced here"
+- "No new features allowed - feature freeze enforced here"
 - "Merged into both main (production release) and develop (back-merge the fixes)"
 - "Tagged with the release version on main"
 - "Deleted after merging"
 
 On hotfix branches:
-- "Branch off from main only — never from develop"
+- "Branch off from main only - never from develop"
 - "Contains the minimum possible change to fix the bug"
 - "Merged back into both main AND develop after the fix"
 - "Tagged with a patch version on main (e.g., v4.28.1)"
 - "Deleted after merging"
-- DISCIPLINE NOTE: "Hotfixes must contain the minimum possible change to fix the bug. Resist the temptation to include other improvements — a hotfix that introduces new behaviour can itself cause production incidents."
+- DISCIPLINE NOTE: "Hotfixes must contain the minimum possible change to fix the bug. Resist the temptation to include other improvements - a hotfix that introduces new behaviour can itself cause production incidents."
 
 ## Decision matrix from source
 

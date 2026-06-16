@@ -1,192 +1,102 @@
-# Worked Example — Critical: PCI DSS Violation (Raw Card Data on Server)
+# Worked Example - Critical: Activeloop Token Leaked to Logs and a Captured Trace
 
-Demonstrates: `guides/04-pii-and-financial.md` C5 · `guides/01-scan-procedure.md` Step 10 · `guides/05-remediation-playbooks.md` §Stripe PCI.
+Demonstrates: `guides/04-pii-and-financial.md` C2 / C5 · `guides/01-scan-procedure.md` Step 11 · `guides/05-remediation-playbooks.md` §safeLog / §Credential redaction.
 
 ---
 
 ## Scenario
 
-Branch `feat/premium-upgrade` adds a new checkout endpoint. The developer used AI code generation to scaffold the Stripe integration.
+Branch `feat/request-tracing` adds debug logging to the Deep Lake client and captures the outbound request into the `sessions` table for "observability." The developer used AI code generation to scaffold the tracing.
 
 ## Vulnerable code discovered
 
-`app/api/checkout/route.ts` (lines 1–23):
+`src/deeplake-api.ts` (request path):
 
 ```ts
-import { stripe } from '@/lib/stripe';
-import { prisma } from '@/lib/db';
-
-export async function POST(req: Request) {
-  const { cardNumber, cvv, exp_month, exp_year, amount } = await req.json();
-
-  const charge = await stripe.charges.create({
-    source: {
-      number: cardNumber,
-      cvc: cvv,
-      exp_month,
-      exp_year,
+async query(sql: string) {
+  const req = {
+    url: this.baseUrl,
+    headers: {
+      Authorization: `Bearer ${this.token}`,
+      'X-Activeloop-Org-Id': this.orgId,
     },
-    amount: Math.round(amount * 100),
-    currency: 'usd',
+    body: sql,
+  };
+
+  console.log('[deeplake] request', req);            // <- logs the Bearer token
+
+  await capture({                                    // <- writes the token into a trace
+    path: `sessions/${Date.now()}`,
+    summary: JSON.stringify({ outbound: req }),
   });
 
-  await prisma.payment.create({
-    data: {
-      cardNumber,                            // <- raw PAN stored
-      last4: cardNumber.slice(-4),
-      amount,
-      stripeChargeId: charge.id,
-    },
-  });
-
-  return Response.json({ ok: true, id: charge.id });
-}
-```
-
-`prisma/schema.prisma` relevant block:
-
-```prisma
-model Payment {
-  id              String   @id @default(cuid())
-  cardNumber      String   // <- raw PAN column
-  last4           String
-  amount          Float
-  stripeChargeId  String
-  createdAt       DateTime @default(now())
+  return this._fetch(req);
 }
 ```
 
 ## Finding text (report-ready)
 
-> - [x] **PCI DSS / Payment Processing** `app/api/checkout/route.ts:5-17`, `prisma/schema.prisma:Payment.cardNumber` — Route accepts raw card data (`cardNumber`, `cvv`, `exp_month`, `exp_year`) in the request body and the `Payment` table persists the full PAN in a column named `cardNumber`. This pushes the merchant from PCI DSS SAQ A (Stripe-tokenized, ~22 controls) to SAQ D (~300 controls, external ASV scans, quarterly pen-tests). Also: `amount` is trusted from the client request, enabling price manipulation.
+> - [x] **Credential Exposure** `src/deeplake-api.ts:~245` - The request object containing `Authorization: Bearer <jwt>` is both written to stdout via `console.log` and persisted into the `sessions` table via `capture()`. The Activeloop token is now in process logs AND in recalled-memory content that will be injected into future agents' context. Any reader of the logs or any future session recall gains full account access.
 
 ## Severity rationale
 
-**Critical.** Two simultaneous Critical findings in a single handler:
+**Critical.** Two simultaneous Critical findings in one handler:
 
-1. Raw cardholder data touching the server = immediate PCI DSS scope escalation. The brief's never-downgrade rule applies: financial findings are Critical by construction.
-2. Client-trusted `amount` = direct financial loss vector.
+1. Token in logs - one `cat` of the log stream is full account takeover.
+2. Token in a captured trace - the `sessions` table is recalled into future agents, so the token replays into someone's prompt later. The never-downgrade rule applies: credential findings are Critical by construction.
 
 ## Remediation diff (applied in-session)
 
-`app/api/checkout/create-intent/route.ts` (new):
+```diff
+--- a/src/deeplake-api.ts
++++ b/src/deeplake-api.ts
+@@
++import { safeLog, redact } from './lib/safe-log.js';
+@@
+   const req = { url: this.baseUrl, headers: { Authorization: `Bearer ${this.token}`,
+     'X-Activeloop-Org-Id': this.orgId }, body: sql };
 
-```ts
-import { stripe } from '@/lib/stripe';
-import { prisma } from '@/lib/db';
-import { auth } from '@/lib/auth';
-import { z } from 'zod';
-
-const OrderSchema = z.object({
-  productId: z.string().cuid(),
-  quantity: z.number().int().min(1).max(99),
-}).strict();
-
-export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user?.id) return new Response('Unauthorized', { status: 401 });
-
-  const { productId, quantity } = OrderSchema.parse(await req.json());
-
-  // Server-side price recomputation — client amount never trusted.
-  const product = await prisma.product.findUniqueOrThrow({
-    where: { id: productId },
-    select: { priceCents: true, currency: true, name: true },
-  });
-  const amount = product.priceCents * quantity;
-
-  const intent = await stripe.paymentIntents.create({
-    amount,
-    currency: product.currency,
-    metadata: { userId: session.user.id, productId, quantity: String(quantity) },
-  });
-
-  return Response.json({ clientSecret: intent.client_secret });
-}
+-  console.log('[deeplake] request', req);
++  // safeLog redacts authorization/token/cookie before anything is emitted
++  safeLog.info('deeplake.request', { url: req.url, bodyLen: sql.length });
+@@
+-  await capture({
+-    path: `sessions/${Date.now()}`,
+-    summary: JSON.stringify({ outbound: req }),
+-  });
++  // never persist headers/token into a trace; capture only non-sensitive shape
++  await capture({
++    path: `sessions/${Date.now()}`,
++    summary: JSON.stringify(redact({ outbound: { url: req.url, bodyLen: sql.length } })),
++  });
 ```
 
-`app/api/stripe/webhook/route.ts` (new):
+Two targeted changes:
 
-```ts
-import { stripe } from '@/lib/stripe';
-
-export async function POST(req: Request) {
-  const body = await req.text();
-  const sig = req.headers.get('stripe-signature');
-  if (!sig) return new Response('Missing signature', { status: 400 });
-
-  let event;
-  try {
-    event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
-  } catch (err) {
-    console.error('[stripe webhook] signature verification failed', err);
-    return new Response('Invalid signature', { status: 400 });
-  }
-
-  switch (event.type) {
-    case 'payment_intent.succeeded':
-      // Grant entitlement scoped by metadata.userId — server-side only
-      break;
-    default:
-      break;
-  }
-  return new Response('ok');
-}
-```
-
-`components/CheckoutForm.tsx` (new, replaces the custom card form):
-
-```tsx
-'use client';
-import { Elements, PaymentElement, useStripe, useElements }
-  from '@stripe/react-stripe-js';
-import { loadStripe } from '@stripe/stripe-js';
-
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
-
-export function CheckoutForm({ clientSecret }: { clientSecret: string }) {
-  return (
-    <Elements stripe={stripePromise} options={{ clientSecret }}>
-      <PaymentForm />
-    </Elements>
-  );
-}
-```
-
-Migration (new):
-
-```prisma
-// prisma/migrations/.../drop-payment-raw-pan.sql
-ALTER TABLE "Payment" DROP COLUMN "cardNumber";
-```
-
-Delete the old handler: `rm app/api/checkout/route.ts`.
+1. Replace `console.log(req)` with a `safeLog` call that emits only the URL and body length - the redactor strips `authorization`/`token` even if a future edit re-adds headers.
+2. Strip headers from the captured trace and route the payload through `redact()` so a token can never reach the `sessions` table.
 
 ## Post-fix actions (non-code)
 
-- Rotate Stripe API keys (leaked secrets assumption, even if no evidence of compromise).
-- Purge any log aggregator (Datadog, Sentry) records older than the retention window for hits on `cardNumber`.
-- Purge existing DB rows: `UPDATE "Payment" SET "cardNumber" = NULL` (in migration, before drop).
-- Re-attest SAQ tier with the finance team — confirm SAQ A eligibility now that no PAN touches the server.
+- Rotate the Activeloop token (assume compromise - it was in logs and a trace).
+- Purge any log aggregator records matching `Bearer ` within the retention window.
+- Delete or overwrite any `sessions` rows already written with the token (scoped `UPDATE ... SET summary = ...` or row delete through the proper API).
+- Confirm `scripts/pack-check.mjs` would block a token at publish time (defense-in-depth).
 
 ## What goes in the audit report
 
 Under **Critical Findings (fixed in this session):**
 
-- [x] **PCI DSS / Payment Processing** `app/api/checkout/route.ts:5-17` — Raw card data in request body, PAN stored in `Payment.cardNumber` column, client-trusted amount. Migrated to Stripe Payment Element + Payment Intents; dropped `cardNumber` column; added server-side price recompute; added webhook signature verification.
+- [x] **Credential Exposure** `src/deeplake-api.ts:~245` - Bearer token logged via `console.log` and persisted into the `sessions` table. Replaced with `safeLog` (redacted) logging; stripped headers from capture and routed through `redact()`. Token rotation + log/trace purge queued as post-fix actions.
 
 Under **Files Changed (remediation):**
 
 | File | Change Summary |
 |---|---|
-| `app/api/checkout/route.ts` | Deleted (replaced with create-intent + webhook handlers) |
-| `app/api/checkout/create-intent/route.ts` | New — creates PaymentIntent with server-side amount |
-| `app/api/stripe/webhook/route.ts` | New — verifies `stripe-signature` and fulfills |
-| `components/CheckoutForm.tsx` | New — Stripe Elements PaymentElement |
-| `prisma/schema.prisma` | Dropped `Payment.cardNumber` column |
-| `prisma/migrations/YYYYMMDDHHMMSS_drop_payment_raw_pan/migration.sql` | New migration |
+| `src/deeplake-api.ts` | Replaced raw `console.log(req)` with redacting `safeLog`; stripped token/headers from `capture()` payload |
+| `src/lib/safe-log.ts` | Added (token/PII-redacting logger from `templates/safe-log.ts`) |
 
 Under **Recommended Follow-Up (architectural):**
 
-- Re-run PCI SAQ attestation with finance now that card data no longer touches the server.
-- Rotate Stripe API keys at convenience (no evidence of compromise, but defense-in-depth).
+- Add an ESLint / CodeQL rule banning `console.log` of any object that may contain `headers`/`Authorization` in `src/deeplake-api.ts` and the hooks.
+- Rotate the Activeloop token on a schedule, not just on incident.

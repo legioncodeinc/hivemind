@@ -15,7 +15,7 @@ Before writing a single word, confirm:
 
 2. **Target reader.** Who is reading this, and what do they already know? Beginner / intermediate / expert. What goal are they trying to achieve?
 
-3. **Voice and tone.** Is there a house style guide? If yes: read it before writing. If no: apply Legion defaults (`guides/03-voice-and-tone.md`).
+3. **Voice and tone.** Is there a house style guide? If yes: read it before writing. If no: apply the default style (`guides/03-voice-and-tone.md`).
 
 4. **Scope.** What does the document cover, and what explicitly does it NOT cover? Scope creep during writing is the primary cause of mode-mixed output.
 
@@ -115,7 +115,7 @@ When ghostwriting to match an existing author's voice:
 
 1. Read 500-1000 words of the author's existing writing.
 2. Extract: sentence length pattern (short/medium/long), pronoun choices, formality level, use of hedges vs confident assertions, technical vocabulary level.
-3. Match those patterns. Do not average them toward the Legion defaults.
+3. Match those patterns. Do not average them toward the default style.
 4. Flag in your delivery note: "I matched your voice based on [cited source pages]. Here's what I noticed: [2-3 observations]. Let me know if any patterns need adjusting."
 
 Voice matching is a best-effort skill. Flag it as such, and invite the author to correct any mismatches.

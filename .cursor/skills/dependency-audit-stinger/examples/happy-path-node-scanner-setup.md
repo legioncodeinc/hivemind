@@ -1,97 +1,71 @@
-# Happy Path: Setting Up Scanners for a New Node.js Monorepo
+# Happy Path: Setting Up Dependency Tooling for @deeplake/hivemind
 
 > **Guides demonstrated:** `guides/00-scanner-decision-matrix.md`, `guides/03-lockfile-discipline.md`
-> **Template used:** `templates/renovate-base-config.json`, `templates/snyk-ci-gate.yml`
+> **Template used:** `templates/renovate-base-config.json`
 
 ## Scenario
 
-A team is starting a new Node.js monorepo (two apps, three shared packages) on GitHub. They want automated dependency updates, CVE scanning in CI, and supply-chain threat intelligence. They have no existing scanner setup.
+`@deeplake/hivemind` (ESM, TypeScript ^6, Node `>=22`, npm + `package-lock.json`) has no automated dependency tooling yet. The team wants grouped update PRs, a CVE baseline in CI, and behavioral threat intel - with special care for the tree-sitter native grammars that run install-time code.
 
-## Step 1: Choose the scanner stack
+## Step 1: Choose the stack
 
-**Decision matrix applied (from `guides/00-scanner-decision-matrix.md`):**
+Applying `guides/00-scanner-decision-matrix.md`:
 
-- GitHub? Yes → Dependabot is available, but team needs automerge and PR grouping → **Choose Renovate**
-- CVE scanning? → **npm audit** baseline (free) + **Snyk CLI** for developer workflow integration
-- Supply-chain threat intel? → **socket.dev GitHub App** (free tier, covers npm + PyPI + Cargo)
-- SBOM required? → Not yet, but will add when CRA compliance is scoped
+- Update PRs -> **Renovate** (grouping + `minimumReleaseAge`; the native-dep surface needs the release-age delay that Dependabot lacks)
+- CVE baseline -> **npm audit** (`--audit-level=high`), free and built in
+- Behavioral intel -> **socket.dev GitHub App**, free tier (the `install-scripts` control for tree-sitter)
+- SBOM -> add later, on release (see `guides/02-sbom-workflow.md`)
 
-**Result:** Renovate + npm audit + Snyk CLI + socket.dev
+**Result:** Renovate + npm audit + socket.dev.
 
 ## Step 2: Install Renovate
 
-1. Install the Renovate GitHub App: https://github.com/apps/renovate
-2. Create `renovate.json` in the repo root (use `templates/renovate-base-config.json` as the base):
-
-```json
-{
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "minimumReleaseAge": "7 days",
-  "schedule": ["before 5am on monday"],
-  "lockFileMaintenance": { "enabled": true },
-  "packageRules": [
-    {
-      "matchDepTypes": ["devDependencies"],
-      "automerge": true,
-      "automergeType": "pr",
-      "requiredStatusChecks": null
-    },
-    {
-      "groupName": "internal packages",
-      "matchPackagePrefixes": ["@myorg/"]
-    }
-  ]
-}
-```
-
-3. Verify a Renovate onboarding PR is opened within 24 hours.
+1. Install the Renovate GitHub App on the repo.
+2. Add `renovate.json` to the repo root from `templates/renovate-base-config.json`. Key pieces it brings:
+   - `minimumReleaseAge: "7 days"` globally, `14 days` for native deps
+   - grouping (all patches in one PR, devDependency patch/minor automerge)
+   - a **guarded rule** that disables automerge for `tree-sitter-c`, `tree-sitter-python`, `tree-sitter-rust` (the `overrides`-pinned grammars) and labels them `review-required`
+3. Verify the Renovate onboarding PR opens within 24 hours.
 
 ## Step 3: Enforce lockfile discipline
 
-Add to `.github/workflows/ci.yml`:
+In `.github/workflows/ci.yaml`, confirm every node-version install uses:
 
 ```yaml
-- name: Install dependencies
-  run: npm ci  # NOT npm install
+- run: npm ci   # NOT npm install
 ```
 
-Verify `package-lock.json` is committed and not in `.gitignore`.
+Confirm `package-lock.json` is committed and not in `.gitignore`. Add a lockfile-drift check to the existing `husky` + `lint-staged` setup (see `guides/03-lockfile-discipline.md` Rule 3).
 
-## Step 4: Add Snyk CI gate
+## Step 4: Add the npm audit gate
 
-Add the Snyk step from `templates/snyk-ci-gate.yml` to the CI workflow:
+In the same CI job that runs `npm ci`:
 
 ```yaml
-- name: Snyk security scan
-  uses: snyk/actions/node@master
-  env:
-    SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-  with:
-    args: --severity-threshold=high --fail-on=upgradable
+- run: npm audit --audit-level=high
 ```
 
-This gates CI only on high/critical CVEs where an upgrade is available. Does not block on unresolvable vulnerabilities.
+This gates CI on high/critical only - never on low/moderate (alert fatigue). Triage findings per `guides/01-vulnerability-triage.md`.
 
-## Step 5: Install socket.dev GitHub App
+## Step 5: Install the socket.dev GitHub App
 
-1. Install from https://github.com/marketplace/socket-security
-2. No configuration required — socket.dev auto-comments on PRs introducing packages with behavioral signals
-3. Alert categories to leave enabled by default: `malware`, `install-scripts`, `network`, `obfuscated-code`
-4. Alert categories to disable in high-noise environments: `debug-access`, `deprecated`
+1. Install the socket.dev GitHub App.
+2. No config needed - it comments on PRs introducing packages with behavioral signals.
+3. Leave enabled: `malware`, `install-scripts`, `network`, `obfuscated-code`. The `install-scripts` category is exactly the tree-sitter `postinstall` risk - do not disable it.
 
 ## Step 6: Verify the setup
 
-After completing all steps, open a PR that bumps a minor version dependency. Verify:
-- [ ] Renovate opened a PR for the bump
-- [ ] `npm ci` passed in CI
-- [ ] Snyk scan ran and reported 0 high/critical or listed actionable findings
-- [ ] socket.dev either passed silently or commented with a relevant alert
+Open a PR that bumps a minor devDependency. Verify:
+- [ ] Renovate opened the PR (grouped where applicable)
+- [ ] `npm ci` passed across all tested node versions
+- [ ] `npm audit --audit-level=high` reported clean or listed actionable findings
+- [ ] socket.dev passed silently or commented a relevant alert
+- [ ] a tree-sitter bump, if any, landed in the guarded "manual review" group, not an automerge
 
 ## Expected outcome
 
-From week 1, the team has:
-- Automated PRs for all dependency updates (grouped, with `minimumReleaseAge` protection)
-- CVE compliance baseline in CI (only high/critical, only upgradable)
-- Supply-chain behavioral threat intelligence on every new package introduction
+From week 1 the package has:
+- Grouped automated update PRs with `minimumReleaseAge` protection and the native grammars held for manual review
+- A CVE compliance baseline in CI (high/critical only)
+- Behavioral threat intelligence on every new package and grammar release
 - Reproducible builds enforced via `npm ci`

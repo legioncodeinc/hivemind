@@ -1,44 +1,39 @@
 ---
 depth_consumed: shallow
-time_window: 2025-11 to 2026-05
-files_written: 6
+time_window: 2026-01 to 2026-06
+files_written: 4
 internal_files: 1
-external_files: 5
+external_files: 3
 ---
 
 # Research Summary: changelog-release-notes-stinger
 
-**Date:** 2026-05-20  
-**Depth tier:** shallow  
-**Researcher:** scripture-historian (slot-03, synthesized from training data)
+**Date:** 2026-06-16
+**Depth tier:** shallow
+**Scope:** release communication for the @deeplake/hivemind npm package and CLI
 
 ## What was researched
 
-Covered the five most important topic areas for `changelog-release-notes-worker-bee`:
+The three topic areas needed to author credible release-communication guides for an agent-memory CLI/library:
 
-1. The Keep a Changelog format standard (the baseline vocabulary and philosophy).
-2. Headway, FeatureBase, Productlane, and Beamer — the four most commonly adopted changelog SaaS platforms.
-3. Changelog copy craft best practices — the community consensus on user-centric framing, honest scope, and distribution.
+1. The Keep a Changelog format standard - the baseline `CHANGELOG.md` vocabulary and "not for machines" philosophy.
+2. Semantic Versioning - mapped to this package's wide contract surface (CLI, library API, harness contracts, MCP tool surface, Deep Lake schema).
+3. Release-note copy craft - impact-first framing, the honest scope note, and distribution.
 
-## Five most influential sources
+Repo ground truth (`scripts/sync-versions.mjs`, `.github/workflows/release.yaml`, `publish-smoke-test.yaml`, `package.json`) was read directly and informs `guides/04-release-mechanics.md`; it is not duplicated as a research file.
 
-1. **Keep a Changelog** (`external/keep-a-changelog.md`) — canonical format standard; the "not for machines" philosophy is foundational to the entire stinger.
-2. **Changelog Copy Craft Best Practices** (`external/changelog-copy-craft.md`) — the practical writing playbook including impact-first structure, user-centric verbs, and the honest scope note.
-3. **Beamer** (`external/beamer.md`) — most feature-rich engagement platform; sets the ceiling for what changelog tooling can do (segmentation, NPS, analytics).
-4. **Productlane** (`external/productlane.md`) — the Linear-native automation story; documents how to eliminate the data-gathering step for teams with good issue hygiene.
-5. **FeatureBase** (`external/featurebase.md`) — best example of changelog-as-part-of-feedback-loop; the React widget snippet is immediately usable.
+## Most influential sources
 
-## Open questions for stinger-forge to surface
+1. **Keep a Changelog** (`external/keep-a-changelog.md`) - canonical format and the anti-`git log` philosophy.
+2. **Semantic Versioning** (`external/semver.md`) - the bump rules, extended to Hivemind's contract surfaces; the basis for `guides/02-semver-decisions.md`.
+3. **Release-Note Copy Craft** (`external/changelog-copy-craft.md`) - impact-first writing, honest scope, distribution.
 
-1. **Self-hosted options depth:** Only shallow coverage of open-source alternatives (conventional-changelog, release-please). If the user base includes open-source maintainers, a dedicated `guides/06-open-source-changelog.md` may be warranted.
-2. **Changelogfy coverage:** Not covered independently in this shallow pass — appears to be a lighter-weight Headway competitor. If users specifically request Changelogfy, the Bee should note this gap.
-3. **GitHub Releases integration:** Several tools (Productlane, standard-version) integrate with GitHub Releases directly. A guide on using GitHub Releases as the source of truth for markdown-driven changelogs is a logical extension.
+## Open questions for refresh
 
-## Sources to re-fetch at normal/deep tier
-
-- `external/keep-a-changelog.md` — worth scraping the actual site for the most current philosophy document.
-- `external/beamer.md` — pricing changes frequently; re-fetch if tier decisions matter.
+1. **Migration tooling depth:** the breaking-change examples assume a `hivemind migrate` path. Confirm the actual migration command/UX before publishing a real schema-break entry.
+2. **`0.x` break convention:** the repo treats certain breaks by bumping the leading segment rather than following strict pre-1.0 semver. Reconfirm the convention at the next stable milestone.
+3. **Auto-patch override:** `release.yaml` auto-patches; confirm the exact mechanism for shipping a deliberate minor/major so the guide stays accurate.
 
 ## File manifest
 
-See `index.md` for the full manifest with per-file metadata.
+See `index.md`.

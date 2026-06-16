@@ -1,4 +1,4 @@
-# 01 — Locate the Plan Document
+# 01, Locate the Plan Document
 
 The plan is the ground truth for the audit. Without a plan, there is no audit.
 
@@ -10,7 +10,7 @@ Try each source in order. Stop at the first that yields a plan.
 
 ### 1. Explicit pointer from the invoker
 
-If the user's message includes a path (e.g., "QA `library/requirements/features/feature-007-billing/prd-feature-007-billing.md`"), use that file directly. Do not second-guess the choice. Verify the file exists and is readable.
+If the user's message includes a path (e.g., "QA `library/requirements/features/feature-007-search/prd-feature-007-search.md`"), use that file directly. Do not second-guess the choice. Verify the file exists and is readable.
 
 ### 2. Attached context
 
@@ -36,7 +36,7 @@ Older repos that have not yet adopted this convention may keep plans in `docs/pr
 
 ### 4. Branch correlation
 
-If the branch name encodes a plan reference (e.g., `feat/phase-3-billing`), search for plans whose filename or header matches:
+If the branch name encodes a plan reference (e.g., `feat/phase-3-search`), search for plans whose filename or header matches:
 
 ```bash
 git branch --show-current           # get current branch
@@ -56,7 +56,7 @@ git log --oneline --all -- 'library/requirements/issues/**/issue-*.md' | head -2
 
 If no plan can be located after the above, stop and ask. Do not fabricate a plan from the diff. Example prompt:
 
-> "I couldn't locate the plan document. Is it in `library/requirements/features/`, `library/requirements/issues/`, or somewhere else? If you don't have one, I need at least a short spec — the audit depends on comparing the implementation against stated requirements."
+> "I couldn't locate the plan document. Is it in `library/requirements/features/`, `library/requirements/issues/`, or somewhere else? If you don't have one, I need at least a short spec, the audit depends on comparing the implementation against stated requirements."
 
 ---
 
@@ -66,7 +66,7 @@ Once you have a candidate plan:
 
 1. It should contain at least one of: Goals, User Stories, Requirements, Acceptance Criteria, Non-Goals, Scope.
 2. It should reference the feature/phase matching the branch or the user's request.
-3. It should not itself be a QA report from a previous run (check for scorecards and "Critical Issues" sections — those mean you grabbed the wrong file).
+3. It should not itself be a QA report from a previous run (check for scorecards and "Critical Issues" sections, those mean you grabbed the wrong file).
 
 If the candidate fails validation, escalate back to resolution step 3 or 6.
 
@@ -90,7 +90,7 @@ If the user says "there's no plan, just audit what's there":
 
 - This is not a plan audit. Decline politely and recommend either:
   - Having `library-worker-bee` author a backwards-PRD from the diff first, then running QA against it, or
-  - Running a plan-agnostic code review (which is not this Bee's job — suggest the `review` skill or a generic AI code reviewer like CodeRabbit).
+  - Running a plan-agnostic code review (which is not this Bee's job, suggest the `review` skill or a generic AI code reviewer like CodeRabbit).
 
 Do not produce a report anyway. The value of the audit is the plan comparison.
 
@@ -99,4 +99,4 @@ Do not produce a report anyway. The value of the audit is the plan comparison.
 ## See also
 
 - Example: `examples/01-happy-path-clean-audit.md` shows the plan location as `library/requirements/features/feature-007-user-profile-badge/prd-feature-007-user-profile-badge.md` and the report reflects that in its heading.
-- Research: plans and requirements traceability — `research/2026-04-24-traceability-matrix.md`.
+- Research: plans and requirements traceability, `research/2026-04-24-traceability-matrix.md`.

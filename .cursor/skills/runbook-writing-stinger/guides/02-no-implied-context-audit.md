@@ -15,7 +15,7 @@ For each check, scan the runbook top to bottom. Flag every violation with a `<!-
 
 ### Check 1: Copy-paste commands
 
-**Test:** Can every shell command, SQL query, kubectl invocation, and API call be copied and pasted into a terminal without modification?
+**Test:** Can every shell command, dataset query, npm script, and API call be copied and pasted into a terminal without modification?
 
 **Violations to find:**
 - Commands with `<placeholder>` that aren't defined in a Prerequisites section.
@@ -26,12 +26,12 @@ For each check, scan the runbook top to bottom. Flag every violation with a `<!-
 **Correction pattern:**
 ```
 # BEFORE (violation):
-kubectl get pods -n payments
+npm run embeddings:status
 
 # AFTER (compliant):
-kubectl get pods -n payments -l app=checkout-api
-# Expected output: pods named "checkout-api-<hash>" in Running or CrashLoopBackOff status
-# If no pods are returned, confirm NAMESPACE is correct: echo $NAMESPACE
+npm run embeddings:status -- --dataset "$DATASET"
+# Expected output: {"state":"running"|"stalled","queueDepth":<N>,"lastAdvance":"<timestamp>"}
+# If the command errors with "unknown dataset", confirm DATASET is correct: echo $DATASET
 ```
 
 ---
@@ -41,12 +41,12 @@ kubectl get pods -n payments -l app=checkout-api
 **Test:** Are all URLs absolute (including protocol and domain)?
 
 **Violations to find:**
-- Relative paths: `/dashboard/payments`
+- Relative paths: `/dashboard/embeddings`
 - Anchor references without a base: `#alert-overview`
-- "Check the Grafana dashboard" without a URL
+- "Check the embeddings dashboard" without a URL
 - "Open the runbook index" without a URL
 
-**Correction:** Replace with the full URL: `https://grafana.internal.example.com/d/payments-overview?var-env=production`
+**Correction:** Replace with the full URL: `https://grafana.internal.example.com/d/hivemind-embeddings?var-env=production`
 
 ---
 
@@ -55,7 +55,7 @@ kubectl get pods -n payments -l app=checkout-api
 **Test:** Is every environment variable used in a command defined in the Prerequisites section?
 
 **Violations to find:**
-- `$SERVICE`, `$NAMESPACE`, `$ENV`, `$CLUSTER` used but not defined.
+- `$DATASET`, `$DAEMON`, `$ENV` used but not defined.
 - A command that works in one environment but not another without explanation.
 
 **Correction:** Add a Prerequisites section at the top of the runbook:
@@ -63,10 +63,9 @@ kubectl get pods -n payments -l app=checkout-api
 ## Prerequisites
 Before executing any step, set these variables in your terminal:
 
-  ENV=production        # environment: production | staging | dev
-  NAMESPACE=payments    # Kubernetes namespace
-  SERVICE=checkout-api  # deployment name (check: kubectl get deploy -n payments)
-  REGION=us-east-1      # AWS region
+  ENV=production              # environment: production | staging | dev
+  DATASET=ds_hivemind_prod    # Deep Lake dataset for this environment
+  DAEMON=embeddings-daemon    # process name (check: npm run embeddings:status -- --pid)
 ```
 
 ---
@@ -86,11 +85,11 @@ Before executing any step, set these variables in your terminal:
 If the service doesn't come back up, investigate further.
 
 # AFTER (compliant):
-If the service is still not Running after 3 minutes:
-  - Run: kubectl describe pod -n $NAMESPACE -l app=$SERVICE | grep -A5 "Events:"
-  - If Events show "OOMKilled": proceed to Step 7 (Memory Scale-Up).
-  - If Events show "ImagePullBackOff": proceed to Step 9 (Image Troubleshooting).
-  - If Events show neither: escalate to Tier 2 per the Escalation Path section.
+If the daemon is still not Running after 3 minutes:
+  - Run: npm run embeddings:logs -- --tail=50 | grep -E '401|429|FATAL'
+  - If logs show "401": proceed to Step 5 (Restart with Fresh Key).
+  - If logs show "429": proceed to Step 6 (Throttle and Resume).
+  - If logs show neither: escalate to Tier 2 per the Escalation Path section.
 ```
 
 ---
@@ -116,10 +115,10 @@ If the service is still not Running after 3 minutes:
 
 **Correction pattern:**
 ```
-Run: kubectl get pods -n $NAMESPACE -l app=$SERVICE
-Expected: All pods show STATUS=Running and READY=1/1
-If STATUS=CrashLoopBackOff: proceed to Step 4.
-If no pods: proceed to Step 6.
+Run: npm run embeddings:status -- --dataset "$DATASET"
+Expected: state=running and queueDepth decreasing
+If state=stalled: proceed to Step 4.
+If the command errors: proceed to Step 6.
 ```
 
 ---
@@ -139,11 +138,11 @@ If no pods: proceed to Step 6.
 **Test:** Does the runbook assume access that not every on-call engineer has?
 
 **Violations to find:**
-- "Log in to the production database" without specifying the login mechanism.
-- "Access the AWS console" without specifying the role to assume.
+- "Open the production dataset" without specifying the access mechanism.
+- "Read the embeddings API key" without specifying where it lives.
 - Commands that require a VPN but don't mention it.
 
-**Correction:** Add to Prerequisites: `Access requirements: [VPN connected / AWS role assumed / database credentials in 1Password vault "Engineering/Prod-DB"]`.
+**Correction:** Add to Prerequisites: `Access requirements: [VPN connected / dataset read token / embeddings API key in 1Password vault "Engineering/Hivemind-Prod"]`.
 
 ---
 
@@ -151,9 +150,9 @@ If no pods: proceed to Step 6.
 
 **Test:** Does the runbook contain hardcoded secrets, API keys, or passwords?
 
-**Violations:** Any literal value that looks like a credential (`AKIA...`, `sk_live_...`, `postgres://user:password@host`).
+**Violations:** Any literal value that looks like a credential (`sk-...`, `sk_live_...`, an inline API token).
 
-**Correction:** Replace with a reference to the secret store: `$(aws ssm get-parameter --name /prod/db/password --with-decryption --query Parameter.Value --output text)`
+**Correction:** Replace with a reference to the secret store: `$(op read "op://Engineering/Hivemind-Prod/embeddings-api-key")`
 
 **Source:** SRE School quality attribute #9 (security-aware). See `research/external/2026-02-15-sreschool-runbook-definition-maturity.md`.
 

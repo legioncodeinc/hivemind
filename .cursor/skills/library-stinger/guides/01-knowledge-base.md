@@ -1,4 +1,4 @@
-# Guide 01 — Knowledge-Base Authoring
+# Guide 01 - Knowledge-Base Authoring
 
 Covers writing and filing reference documentation in `library/knowledge/`.
 
@@ -9,7 +9,7 @@ Covers writing and filing reference documentation in `library/knowledge/`.
 - "add an architecture doc for Y"
 - "write an ADR for decision Z"
 
-## Public vs Private — the key decision
+## Public vs Private - the key decision
 
 Before writing, decide where the doc belongs:
 
@@ -38,8 +38,8 @@ Target: `library/knowledge/private/<domain>/<slug>.md`
 Use for everything else: ADRs, architecture docs, engineering standards, domain-specific internal docs, business strategy, marketing strategy.
 
 **Required sub-folders always present:**
-- `architecture/` — ADRs only (see ADR rules below)
-- `standards/` — `documentation-framework.md` + repo-specific writing rules
+- `architecture/` - ADRs only (see ADR rules below)
+- `standards/` - `documentation-framework.md` + repo-specific writing rules
 
 **Domain folders:** create as needed (ai/, auth/, data/, frontend/, security/, strategy/, etc.)
 
@@ -77,6 +77,5 @@ Every doc under `library/knowledge/` opens with:
 ## What does NOT go here
 
 - PRDs or IRDs → `requirements/` or `issues/`
-- QA reports → `*/qa/` or `requirements/reports/`
-- Brand assets → `legion-shared/brands/`
-- Notes → `library/notes/` (human only)
+- QA reports -> `*/qa/` or `requirements/reports/`
+- Binary assets (images, fonts, PDFs) -> an `assets/` or `public/` folder, never `librar

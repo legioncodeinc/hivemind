@@ -8,7 +8,7 @@ Sibling folder for QA reports:
 
 # Issue #42: Password reset link expires too quickly
 
-> **GitHub Issue #42** — Bug
+> **GitHub Issue #42** - Bug
 >
 > **Source:** https://app.example.com/login
 > **Reporter:** Dana Kim (@danakim)
@@ -44,7 +44,7 @@ No env var or config option exists; the TTL is inline. `api/src/routes/password-
 | AC-2 | Given a reset token that is 59 minutes old, when the user submits the reset form, then the request succeeds. |
 | AC-3 | Given a reset token that is 61 minutes old, when the user submits the reset form, then the API returns `410 Gone` with `code: "token_expired"`. |
 | AC-4 | Given the `PASSWORD_RESET_TTL_MINUTES` env var is set, when a token is generated, then the TTL uses that value (fallback 60). |
-| AC-5 | Given an existing token that was generated under the 15-minute TTL, when it is evaluated after the deploy, then it is validated against its original `expiresAt` (no grandfather logic needed — DB stores absolute time). |
+| AC-5 | Given an existing token that was generated under the 15-minute TTL, when it is evaluated after the deploy, then it is validated against its original `expiresAt` (no grandfather logic needed - DB stores absolute time). |
 
 ## Proposed solution
 
@@ -71,5 +71,5 @@ Replace the hardcoded 15-minute TTL with a function that reads `PASSWORD_RESET_T
 
 ## Related
 
-- [ird-issue-044-password-reset-rate-limit.md](../issue-044-password-reset-rate-limit/ird-issue-044-password-reset-rate-limit.md) — rate limiter for repeated requests.
-- [kb-authentication-flow.md](../../../knowledge-base/architecture/authentication-flow.md) — architectural context.
+- [ird-issue-044-password-reset-rate-limit.md](../issue-044-password-reset-rate-limit/ird-issue-044-password-reset-rate-limit.md) - rate limiter for repeated requests.
+- [kb-authentication-flow.md](../../../knowledge-base/architecture/authentication-flow.md) - architectural context.

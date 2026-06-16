@@ -1,12 +1,14 @@
-# Provenance Verification
+# Provenance Verification + Publish-Time Guards
 
-> **Research sources:** `research/external/04-npm-provenance-sigstore-2026.md` (HIGH), `research/external/05-python-pip-audit-pypi-attestations-2026.md` (HIGH)
+> **Research source:** `research/external/04-npm-provenance-sigstore-2026.md` (HIGH)
 
-Package provenance is cryptographic proof of where a package was built and by whom. It answers: "Was this package actually built from the claimed source repository, or was it tampered with post-build?"
+Two things protect the integrity of what `@deeplake/hivemind` ships: npm provenance (proof of where the package was built) and the repo's own publish-time guards (proof that nothing unexpected got into the tarball). This guide covers both.
 
 ---
 
 ## npm provenance (Sigstore-backed)
+
+Provenance is cryptographic proof of where a package was built and from what source. It answers: "was this tarball actually built from the claimed repo, or tampered with post-build?"
 
 ### Publishing with provenance
 
@@ -16,86 +18,64 @@ npm publish --provenance --access public
 ```
 
 Requirements:
-- Must run from GitHub Actions, GitLab CI, or another Sigstore-supported CI provider
-- Generates a Sigstore attestation automatically (no signing keys needed)
-- Attestation is stored in the npm registry and visible at `npmjs.com/package/<name>/v/<version>`
+- Must run from GitHub Actions (or another Sigstore-supported CI) with `id-token: write` permission
+- Generates a Sigstore attestation automatically - no signing keys to manage
+- The attestation is stored in the npm registry and visible at `npmjs.com/package/@deeplake/hivemind/v/<version>`
+
+`publishConfig.access` is already `public` in `package.json`, so adding `--provenance` to the release publish step is the only change needed. Wire it into the existing `release.yaml` publish step.
 
 ### Verifying provenance as a consumer
 
 ```bash
-# Check a package's provenance before installing
-npm audit signatures <package-name>@<version>
+# Basic verification of the resolved tree
+npm audit signatures
 
-# Output full Sigstore bundle (March 2026 addition)
-npm audit signatures <package-name>@<version> --include-attestations
-
-# View in browser
-https://npmjs.com/package/<package-name>/v/<version>?activeTab=code
+# Full Sigstore bundle output (March 2026 addition) - for CI integration
+npm audit signatures --json --include-attestations
 ```
 
-The `--include-attestations` flag (merged March 2026) outputs the full Sigstore bundle in JSON, enabling CI integration and automated verification. Source: `research/external/04-npm-provenance-sigstore-2026.md`.
+`npm audit signatures` checks registry ECDSA signatures and SLSA provenance attestations against the Sigstore trust root. The `--include-attestations` flag (merged March 2026) emits the full bundle as JSON for automated verification. Source: `research/external/04-npm-provenance-sigstore-2026.md`.
 
-### What provenance tells you
+### What provenance does and does not tell you
 
-- The source repository URL and commit SHA the package was built from
-- The GitHub Actions workflow run that produced it
-- That the package was not modified after CI produced it
-
-### What provenance does NOT tell you
-
-- That the source code itself is trustworthy (a compromised repo produces valid provenance)
-- That the source repo commit is safe (provenance is a transport guarantee, not a content guarantee)
+- **Does:** the source repo URL + commit SHA the tarball was built from, the workflow run that produced it, that it was not modified after CI.
+- **Does NOT:** vouch that the source code itself is trustworthy. Provenance is a transport guarantee, not a content guarantee - a compromised repo produces valid provenance.
 
 ---
 
-## PyPI attestations (PEP 740)
+## The publish-time guards (this repo's own controls)
 
-### 2026 state: good publisher adoption, no consumer-side enforcement yet
+Provenance proves the build pipeline; these guards prove the *contents* of the tarball. They are already wired into `package.json` and must not be weakened.
 
-As of late 2024 / early 2026:
-- **~20,000+ packages** carry PEP 740 attestations, growing
-- Attestations are **automatic** for GitHub Actions users using Trusted Publishing
-- `pip` and `uv` do **NOT** yet verify attestations at install time
+### Guard 1: the `files` allowlist
 
-This means PyPI attestations are currently a transparency improvement (you can verify manually), not an enforcement control. Source: `research/external/05-python-pip-audit-pypi-attestations-2026.md`.
+`package.json` `files` is an allowlist, not a denylist. Only the listed paths ship: `bundle`, the harness bundles (`codex`, `cursor`, `hermes`, `pi`, `openclaw`), `mcp/bundle`, `.claude-plugin`, `scripts`, `README.md`, `LICENSE`. Anything not listed - source, tests, secrets, scratch files - never reaches the registry. Adding a broad entry (or a `.npmignore` that fights the allowlist) is a supply-chain regression: review any change here.
 
-### Verifying a PyPI package attestation manually
+### Guard 2: `pack-check.mjs`
 
-```bash
-# Install the verification tool
-pip install sigstore
+`npm run pack:check` runs `scripts/pack-check.mjs`, which inspects what `npm pack` would publish and blocks the release if secrets or unexpected files slipped past the allowlist. Run it before any manual publish and keep it in the release pipeline.
 
-# Download and verify
-pip download <package>==<version> --no-deps -d ./tmp_verify
-python -m sigstore verify github \
-  --cert-identity "https://github.com/<owner>/<repo>/.github/workflows/publish.yml@refs/tags/<tag>" \
-  ./tmp_verify/<package>-<version>*.whl
-```
+### Guard 3: `audit:openclaw`
 
-### The path to consumer-side verification: PEP 751
+`npm run audit:openclaw` runs `scripts/audit-openclaw-bundle.mjs`, which replicates the static scan that ClawHub performs on the OpenClaw bundle. Run it before publishing the OpenClaw harness so a rejection surfaces locally, not after publish.
 
-PEP 751 (standardized Python lockfiles with hash pinning and attestation binding) is the mechanism that will enable `pip` and `uv` to verify attestations at install time. As of 2026, PEP 751 is in draft. Trail of Bits is building a pip plugin for attestation verification as an interim measure.
+### Guard 4: CodeQL
 
-**Current recommendation:** For Python projects, rely on `pip-audit` for CVE scanning and `uv lock` / `poetry.lock` hash pinning for integrity. Provenance verification is currently manual or CI-scripted.
+`.github/workflows/codeql.yaml` scans `javascript-typescript`. It is application-code SAST, not dependency scanning - but it is part of the pre-release defense, so confirm it is green before a release tag.
 
 ---
 
-## Cargo / Rust
+## Pre-publish checklist for a release
 
-Cargo registry signing is in active development as of 2026. Source: `research/research-summary.md` OQ-5.
-
-> **OQ-5:** `cargo audit` vs `cargo-deny` for Rust CVE scanning is unresolved from research. Until resolved, recommend both: `cargo audit` for CVE scanning, `cargo-deny` for combined policy (duplicate detection + license + CVE + banned crates). See `research/research-summary.md`.
-
----
-
-## CI integration checklist
-
-| Action | npm | Python | Rust |
-|---|---|---|---|
-| Verify package signatures in CI | `npm audit signatures` | Manual / pip plugin (coming) | `cargo audit` |
-| Generate provenance when publishing | `npm publish --provenance` | PyPA Trusted Publishing | Cargo signing (in development) |
-| Lockfile integrity check | `npm ci` | `uv sync --frozen` | `cargo fetch --locked` |
-| Behavioral threat scanning | socket.dev | socket.dev (PyPI GA 2026) | socket.dev (Cargo GA 2026) |
+| Step | Command / check |
+|---|---|
+| Reproducible install | `npm ci` (not `npm install`) |
+| CVE baseline | `npm audit --audit-level=high` clean or triaged (see `guides/01`) |
+| Tarball contents safe | `npm run pack:check` passes |
+| OpenClaw bundle safe | `npm run audit:openclaw` passes |
+| SAST green | CodeQL workflow passing |
+| Provenance | publish with `npm publish --provenance --access public` from CI |
+| Consumer verification | `npm audit signatures` after publish |
 
 ---
 

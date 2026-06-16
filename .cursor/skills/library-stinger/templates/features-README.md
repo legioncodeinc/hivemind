@@ -1,6 +1,6 @@
 # library/requirements/features/
 
-Forward-looking feature PRDs — planned work that does not require a GitHub issue. Use this for product roadmap items, architectural initiatives, and backwards-PRDs for already-shipped features.
+Forward-looking feature PRDs - planned work that does not require a GitHub issue. Use this for product roadmap items, architectural initiatives, and backwards-PRDs for already-shipped features.
 
 ## Folder + filename
 
@@ -91,9 +91,9 @@ See `.cursor/skills/library-stinger/guides/05-backwards-prd.md`.
 
 The agent handles:
 
-1. **Plan** — "write a PRD for <feature>" creates the folder, the main PRD, and the empty `reports/` subfolder.
-2. **Decompose** — "break down <capability> into PRDs" creates sequenced feature folders.
-3. **Ship** — move the entire folder to `features/completed/` when implementation ships.
-4. **Audit** — `quality-worker-bee` writes audit reports into the feature's `reports/` subfolder as `<date>-qa-report.md`.
+1. **Plan** - "write a PRD for <feature>" creates the folder, the main PRD, and the empty `reports/` subfolder.
+2. **Decompose** - "break down <capability> into PRDs" creates sequenced feature folders.
+3. **Ship** - move the entire folder to `features/completed/` when implementation ships.
+4. **Audit** - `quality-worker-bee` writes audit reports into the feature's `reports/` subfolder as `<date>-qa-report.md`.
 
 See `.cursor/skills/library-stinger/guides/03-feature-prd.md` for full workflow.

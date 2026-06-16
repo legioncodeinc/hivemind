@@ -1,103 +1,94 @@
-# Example 01 — Happy-Path Clean Audit
+# Example 01, Happy-Path Clean Audit
 
-Demonstrates a small, faithful implementation that passes the audit with one Suggestion. Illustrates the minimum viable report — even when nothing is wrong, the full structure is produced.
+Demonstrates a small, faithful implementation that passes the audit with one Suggestion. Illustrates the minimum viable report, even when nothing is wrong, the full structure is produced.
 
 **Illustrates guides:** `00-principles.md` (no silent passes), `04-five-axis-evaluation.md` (all-green scorecard), `06-report-writing.md` (voice and metadata).
 
 ---
 
-## Input — Plan document excerpt
+## Input, Plan document excerpt
 
-Plan file: `library/requirements/features/feature-007-user-profile-badge/prd-feature-007-user-profile-badge.md`
+Plan file: `library/requirements/features/feature-007-result-mode-label/prd-feature-007-result-mode-label.md`
 
 ```markdown
-# PRD: User Profile Badge
+# PRD: Result Mode Label
 
 ## Goal
-Add a verified-status badge to the user profile header that renders when
-`user.verified === true`.
+Tag each retrieval result with the mode that produced it so callers can tell
+dense results from BM25-fallback results.
 
 ## User Stories
-- US-1: As a visitor, I see a checkmark badge next to the username of a verified user so that I can trust the content they post.
+- US-1: As a caller, I read a `mode` field on each result so that I know whether it came from embeddings or the BM25 fallback.
 
 ## Acceptance Criteria
-- AC-1.1: Badge renders only when `user.verified === true`.
-- AC-1.2: Badge uses the existing `CheckCircleIcon` from the design system.
-- AC-1.3: Badge has an accessible label ("Verified account").
+- AC-1.1: `mode` is `"embeddings"` when dense ranking ran.
+- AC-1.2: `mode` is `"bm25-fallback"` when the lexical ranker ran.
+- AC-1.3: The field is part of the exported `SearchResult` type.
 
 ## Non-Goals
-- NG-1: No badge UI for other statuses (pro, admin, etc.) in this phase.
-- NG-2: No verification application flow.
+- NG-1: No new ranking logic in this phase, only labeling.
+- NG-2: No changes to the embeddings daemon.
 
 ## Tasks
-- [ ] Add `VerifiedBadge` component.
-- [ ] Integrate into `ProfileHeader`.
+- [ ] Add a `tagMode` helper.
+- [ ] Apply it in `rank`.
 ```
 
-## Input — Diff
+## Input, Diff
 
 ```
-A  src/components/VerifiedBadge.tsx
-M  src/components/ProfileHeader.tsx
+A  src/retrieval/tag-mode.ts
+M  src/retrieval/rank.ts
 ```
 
-Contents of `src/components/VerifiedBadge.tsx`:
+Contents of `src/retrieval/tag-mode.ts`:
 
-```tsx
-import { CheckCircleIcon } from "@/design-system/icons";
+```ts
+import type { SearchResult, RankMode } from "./types.js";
 
-interface Props {
-  verified: boolean;
-}
-
-export function VerifiedBadge({ verified }: Props) {
-  if (!verified) return null;
-  return (
-    <span aria-label="Verified account" role="img" className="inline-flex items-center">
-      <CheckCircleIcon className="h-4 w-4 text-blue-500" />
-    </span>
-  );
+export function tagMode(results: SearchResult[], mode: RankMode): SearchResult[] {
+  return results.map((r) => ({ ...r, mode }));
 }
 ```
 
-Excerpt of `src/components/ProfileHeader.tsx` showing the integration:
+Excerpt of `src/retrieval/rank.ts` showing the integration:
 
-```tsx
-import { VerifiedBadge } from "./VerifiedBadge";
+```ts
+import { tagMode } from "./tag-mode.js";
 // ...
-<h1 className="text-xl font-semibold">
-  {user.displayName}
-  <VerifiedBadge verified={user.verified} />
-</h1>
+const ranked = embeddingsAvailable
+  ? tagMode(await denseRank(query), "embeddings")
+  : tagMode(await bm25Rank(query), "bm25-fallback");
+return ranked;
 ```
 
 ---
 
-## Output — QA Report
+## Output, QA Report
 
-Written to `library/requirements/features/feature-007-user-profile-badge/reports/2026-04-24-qa-report.md`.
+Written to `library/requirements/features/feature-007-result-mode-label/reports/2026-04-24-qa-report.md`.
 
 ```markdown
-# QA Report: feature-007 User Profile Badge
+# QA Report: feature-007 Result Mode Label
 
-**Plan document:** `library/requirements/features/feature-007-user-profile-badge/prd-feature-007-user-profile-badge.md`
+**Plan document:** `library/requirements/features/feature-007-result-mode-label/prd-feature-007-result-mode-label.md`
 **Audit date:** 2026-04-24
 **Base branch:** `main`
-**Head:** `feat/verified-badge`
+**Head:** `feat/result-mode-label`
 **Auditor:** quality-worker-bee
 
 ## Summary
 
-The verified-badge implementation is complete, faithful to the plan, and ships with a clean scorecard across all five axes. One minor Suggestion on keyboard focus styling is included but does not block merge.
+The result-mode-label implementation is complete, faithful to the plan, and ships with a clean scorecard across all five axes. One minor Suggestion on narrowing the `mode` type is included but does not block merge.
 
 ## Scorecard
 
 | Category      | Status | Notes |
 |---------------|--------|-------|
-| Completeness  | ✅ | Both user stories and all three acceptance criteria implemented |
-| Correctness   | ✅ | `verified` guard correctly returns `null`; icon and label match plan |
-| Alignment     | ✅ | Uses `CheckCircleIcon` from `@/design-system/icons` as specified |
-| Gaps          | ✅ | No implicit gaps — component is purely presentational with no async paths |
+| Completeness  | ✅ | The user story and all three acceptance criteria implemented |
+| Correctness   | ✅ | `mode` is set correctly on both the dense and fallback paths |
+| Alignment     | ✅ | Uses the exported `SearchResult` / `RankMode` types as specified |
+| Gaps          | ✅ | No implicit gaps, helper is pure with no async paths |
 | Detrimental   | ✅ | No regressions, performance issues, or security smells |
 
 ## Critical Issues (must fix)
@@ -110,27 +101,27 @@ None.
 
 ## Suggestions (consider improving)
 
-- [ ] **Consider an explicit focus style if the badge becomes interactive later** — `src/components/VerifiedBadge.tsx:8-12`
+- [ ] **Consider a string-literal union for `RankMode` if it isn't already**, `src/retrieval/tag-mode.ts:1-5`
 
-  The current badge is a non-interactive `<span>`, which is correct for this phase. If a future phase adds a tooltip or link (e.g., linking to a "what does verified mean?" page), add `focus-visible` styling. Not in scope for this PR; tracking as a pointer for when NG-2 (verification flow) is revisited.
+  The helper accepts `mode: RankMode`. If `RankMode` is currently a plain `string`, narrow it to `"embeddings" | "bm25-fallback"` so a typo cannot produce an invalid mode. Not in scope for this PR; tracking as a pointer for the next types pass.
 
 ## Plan Item Traceability
 
 | #     | Plan Requirement                                          | Status | Implementation Location                     | Notes |
 |-------|-----------------------------------------------------------|--------|---------------------------------------------|-------|
-| US-1  | Visitor sees checkmark badge next to verified user's name | ✅     | `src/components/ProfileHeader.tsx:14-17`    | Integrated via `<VerifiedBadge verified=...>` |
-| AC-1.1| Badge renders only when `user.verified === true`         | ✅     | `src/components/VerifiedBadge.tsx:8`        | Early `return null` |
-| AC-1.2| Badge uses `CheckCircleIcon` from design system          | ✅     | `src/components/VerifiedBadge.tsx:1,11`     | Imported from canonical path |
-| AC-1.3| Badge has accessible label "Verified account"            | ✅     | `src/components/VerifiedBadge.tsx:10`       | `aria-label="Verified account"` + `role="img"` |
-| T-1   | Add `VerifiedBadge` component                            | ✅     | `src/components/VerifiedBadge.tsx` (new)    | — |
-| T-2   | Integrate into `ProfileHeader`                           | ✅     | `src/components/ProfileHeader.tsx:14-17`    | — |
-| NG-1  | Non-goal: No badge UI for other statuses                 | ✅     | —                                           | Honored — only `verified` prop, no status enum |
-| NG-2  | Non-goal: No verification application flow               | ✅     | —                                           | Honored — no route or form added |
+| US-1  | Caller reads a `mode` field on each result                | ✅     | `src/retrieval/rank.ts:4-7`                 | Applied via `tagMode(...)` on both paths |
+| AC-1.1| `mode` is `"embeddings"` when dense ranking ran          | ✅     | `src/retrieval/rank.ts:5`                   | `tagMode(..., "embeddings")` |
+| AC-1.2| `mode` is `"bm25-fallback"` when lexical ran             | ✅     | `src/retrieval/rank.ts:6`                   | `tagMode(..., "bm25-fallback")` |
+| AC-1.3| `mode` is part of the exported `SearchResult` type      | ✅     | `src/retrieval/tag-mode.ts:1,3`             | Returns `SearchResult[]` |
+| T-1   | Add `tagMode` helper                                     | ✅     | `src/retrieval/tag-mode.ts` (new)           |, |
+| T-2   | Apply it in `rank`                                       | ✅     | `src/retrieval/rank.ts:4-7`                 |, |
+| NG-1  | Non-goal: No new ranking logic                           | ✅     |,                                           | Honored, helper only labels |
+| NG-2  | Non-goal: No embeddings daemon changes                   | ✅     |,                                           | Honored, no daemon file touched |
 
 ## Files Changed
 
-- `src/components/ProfileHeader.tsx` (M) — imports `VerifiedBadge` and renders it inside the `<h1>` after the display name
-- `src/components/VerifiedBadge.tsx` (A) — new presentational component: accepts `verified: boolean`, returns `null` when false, otherwise renders the `CheckCircleIcon` with an aria label
+- `src/retrieval/rank.ts` (M), imports `tagMode` and applies it on both the dense and fallback ranking paths
+- `src/retrieval/tag-mode.ts` (A), new pure helper: accepts `SearchResult[]` and a `RankMode`, returns the results with the `mode` field set
 ```
 
 ---
@@ -139,5 +130,5 @@ None.
 
 - **All-green scorecard.** Every plan item maps to implementation. No regressions, no gaps, no anti-patterns.
 - **Full report despite no Criticals.** Per `guides/00-principles.md` rule #4 (No silent passes), the scorecard and traceability are written out even when everything passes.
-- **One Suggestion, not a Warning.** Per `guides/05-severity-classification.md`, focus styling is an improvement on correct code — Suggestion, not Warning.
+- **One Suggestion, not a Warning.** Per `guides/05-severity-classification.md`, a type-narrowing improvement on correct code is a Suggestion, not a Warning.
 - **Non-Goals traced.** Both NG rows appear in the traceability table, confirming scope was audited.

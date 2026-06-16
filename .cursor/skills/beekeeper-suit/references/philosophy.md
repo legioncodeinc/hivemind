@@ -21,12 +21,12 @@ The Army is built on the second bet. Every Bee has a single, narrow domain; ever
 
 ## The ritual
 
-When the Legendary Bee Factory forges a new Bee, registration with Beekeeper-Suit is the final step. Unregistered Bees are invisible. The pipeline is:
+When the `hive-registrar` skill forges a new Bee, registration with Beekeeper-Suit is the final step. Unregistered Bees are invisible. The pipeline is:
 
-1. Command Brief (Factory: `command-center`).
-2. Stinger (Factory: `stinger-forge`).
-3. Subagent file (Factory: `bee-creator`).
-4. Beekeeper-Suit registration (Cursor: update roster + add guide).
+1. Command Brief.
+2. Stinger (the paired Cursor skill under `.cursor/skills/`).
+3. Subagent file (the Bee under `.cursor/agents/`).
+4. Beekeeper-Suit registration (update roster + add guide).
 
 Each phase produces an auditable artifact. Each phase is rerunnable. The whole pipeline is designed so that an Bee can be traced from idea to deployment without anyone opening a terminal log.
 
@@ -34,7 +34,7 @@ Each phase produces an auditable artifact. Each phase is rerunnable. The whole p
 
 ## Why guides, not a manifest
 
-Beekeeper-Suit could be a one-page manifest: here's the roster, here are the routing rules, go. The guides exist because routing is judgment work. Knowing when a security concern is actually a UX concern (invoke `ux-ui-worker-bee`, not `security-worker-bee`), or when a documentation task is actually a QA task (invoke `quality-worker-bee`, not `library-worker-bee`), requires context the manifest can't carry. That context lives in the guides.
+Beekeeper-Suit could be a one-page manifest: here's the roster, here are the routing rules, go. The guides exist because routing is judgment work. Knowing when a recall concern is actually an embeddings concern (invoke `embeddings-runtime-worker-bee`, not `retrieval-worker-bee`), or when a documentation task is actually a QA task (invoke `quality-worker-bee`, not `library-worker-bee`), requires context the manifest can't carry. That context lives in the guides.
 
 A manifest tells the orchestrator what exists. A guide tells it what each Bee actually does, when it should be used, and what to do when someone routes it incorrectly. The second is what produces good delegations.
 

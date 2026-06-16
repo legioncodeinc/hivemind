@@ -40,14 +40,11 @@ Published May 18, 2026. Practitioner guide covering Cursor MCP server setup from
 ## Key quotations
 
 - "Cursor and Claude Code both speak the same Model Context Protocol, so server packages are interchangeable."
-- "Tool search: Not available — all tools loaded at session start" (unlike Claude Code's lazy loading)
+- "Tool search: Not available, all tools loaded at session start" (unlike Claude Code's lazy loading)
 - "Resources: Not yet supported" in Cursor (unlike Claude Code)
 - "Hot reload: Restart Cursor required for config changes" (unlike Claude Code's auto-reload)
 
-## Annotations for stinger-forge
+## Relevance to the stinger
 
-- The "all tools loaded at session start" limitation is important: large numbers of MCP tools can bloat the context window. Mention in guide 03 as a reason to scope MCP servers per-project.
-- Resources (MCP spec feature) not supported in Cursor - note this as a known gap in guide 03.
-- The Cursor vs Claude Code comparison table is useful for teams choosing between tools - include a condensed version in guide 03.
-- The troubleshooting steps (MCP: View Server Status command) are practical and should be in a troubleshooting section of guide 03.
-- Config interpolation (`${env:VAR}`) is the safe way to inject API keys; this guide's reliance on hardcoded env values is an antipattern to note.
+- Secondary backing for `guides/03-mcp-integration.md`: the "all tools loaded at session start" note (a reason to keep MCP servers scoped), the "Restart Cursor, no hot reload" friction point, and the View Server Status troubleshooting step.
+- Config interpolation (`${env:VAR}`) is the safe way to inject secrets; the Hivemind server authenticates via its credentials file, so no secrets belong in `mcp.json`.

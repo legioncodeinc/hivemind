@@ -1,6 +1,6 @@
-# Interactive Rebase — git-stinger
+# Interactive Rebase - git-stinger
 
-Squash, fixup, reword, drop, reorder, and exec — the full `git rebase -i` playbook.
+Squash, fixup, reword, drop, reorder, and exec - the full `git rebase -i` playbook.
 
 ---
 
@@ -157,7 +157,7 @@ git rebase --skip
 git rebase --abort
 ```
 
-After resolving, never use `git commit` during rebase — always use `git rebase --continue`.
+After resolving, never use `git commit` during rebase - always use `git rebase --continue`.
 
 ---
 

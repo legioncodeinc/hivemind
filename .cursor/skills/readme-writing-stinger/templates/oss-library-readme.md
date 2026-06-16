@@ -29,7 +29,7 @@
 - {Feature 4}
 - {Feature 5}
 
-<!-- 5–8 bullets. Each should be a capability, not a technical implementation detail. -->
+<!-- 5-8 bullets. Each should be a capability, not a technical implementation detail. -->
 
 ## Install
 
@@ -72,9 +72,9 @@
 {One-line description.}
 
 **Parameters:**
-- `{param}` — `{type}` — {description}
+- `{param}`, `{type}`, {description}
 
-**Returns:** `{type}` — {description}
+**Returns:** `{type}`, {description}
 
 **Example:**
 ```{language}

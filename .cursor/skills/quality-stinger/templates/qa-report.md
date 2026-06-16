@@ -8,7 +8,7 @@
 
 ## Summary
 
-{{2–3 sentence verdict. Lead with the overall call (pass / pass-with-warnings / blocked), then the headline findings, then the recommendation.}}
+{{2-3 sentence verdict. Lead with the overall call (pass / pass-with-warnings / blocked), then the headline findings, then the recommendation.}}
 
 ## Scorecard
 
@@ -22,19 +22,19 @@
 
 ## Critical Issues (must fix)
 
-- [ ] **{{short title}}** — `{{path/to/file.ts:LN-LN}}`
+- [ ] **{{short title}}**, `{{path/to/file.ts:LN-LN}}`
 
-  {{2–4 sentence explanation: what's wrong, why it matters, suggested remediation.}}
+  {{2-4 sentence explanation: what's wrong, why it matters, suggested remediation.}}
 
   ```{{lang}}
-  {{1–6 lines of offending or missing code}}
+  {{1-6 lines of offending or missing code}}
   ```
 
 <!-- Repeat. If none, write: "None." -->
 
 ## Warnings (should fix)
 
-- [ ] **{{short title}}** — `{{path/to/file.ts:LN-LN}}`
+- [ ] **{{short title}}**, `{{path/to/file.ts:LN-LN}}`
 
   {{explanation}}
 
@@ -46,7 +46,7 @@
 
 ## Suggestions (consider improving)
 
-- [ ] **{{short title}}** — `{{path/to/file.ts:LN-LN}}`
+- [ ] **{{short title}}**, `{{path/to/file.ts:LN-LN}}`
 
   {{explanation}}
 
@@ -62,6 +62,6 @@
 
 ## Files Changed
 
-- `{{path/to/file.ext}}` ({{A/M/D/R}}) — {{one-line summary of the change}}
+- `{{path/to/file.ext}}` ({{A/M/D/R}}), {{one-line summary of the change}}
 
 <!-- Sort alphabetically by path. One line per file. -->

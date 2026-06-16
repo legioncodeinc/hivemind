@@ -2,7 +2,7 @@
 
 **Research sources:** `research/external/2026-03-29-branching-strategies-hotfix-codelit.md` (3-rule migration guidance), `research/external/2026-04-04-tbd-discipline-codecraftdiary.md` (3-rule TBD discipline for active repos).
 
-> TODO: open question — migration playbook depth. The current research corpus has only brief treatments of GitFlow-to-trunk migration in active repos. A targeted search for "GitFlow to trunk-based migration active repo 2025 2026" would produce better source material. The playbook below is based on research available but should be considered a starting point, not a comprehensive guide. (`research/research-summary.md` open question 5)
+> TODO: open question - migration playbook depth. The current research corpus has only brief treatments of GitFlow-to-trunk migration in active repos. A targeted search for "GitFlow to trunk-based migration active repo 2025 2026" would produce better source material. The playbook below is based on research available but should be considered a starting point, not a comprehensive guide. (`research/research-summary.md` open question 5)
 
 ---
 
@@ -39,10 +39,10 @@ This is the most common migration. The team has no formal branching conventions 
 1. **Stop creating new `feature/` branches from `develop`.** New feature work starts from `main` with the 2-day branch-lifetime target.
 2. **Shorten existing branches.** Review all open feature branches. If any branch is > 5 days old, split it: merge what is ready (behind a feature flag if incomplete), and re-scope the remainder as a smaller next branch.
 3. **Introduce feature flags** for any in-progress work that cannot merge in its current state. This is the prerequisite for Step 1 to work.
-4. **Merge `develop` into `main` when it is empty.** Once all feature branches have migrated to start from `main`, merge `develop` to `main` and delete `develop`. This is the flag-day moment — coordinate with the release team.
-5. **Archive `develop`.** Rename it to `archive/develop-pre-migration-YYYY-MM-DD` and set it to protected/read-only. Do not delete it — the history is auditable.
+4. **Merge `develop` into `main` when it is empty.** Once all feature branches have migrated to start from `main`, merge `develop` to `main` and delete `develop`. This is the flag-day moment - coordinate with the release team.
+5. **Archive `develop`.** Rename it to `archive/develop-pre-migration-YYYY-MM-DD` and set it to protected/read-only. Do not delete it - the history is auditable.
 
-*Source: "Gradually shorten feature branch lifetimes. Introduce feature flags for incomplete work. Merge develop into main and delete develop once the team is comfortable." — `research/external/2026-03-29-branching-strategies-hotfix-codelit.md`*
+*Source: "Gradually shorten feature branch lifetimes. Introduce feature flags for incomplete work. Merge develop into main and delete develop once the team is comfortable." - `research/external/2026-03-29-branching-strategies-hotfix-codelit.md`*
 
 **Handle the `release/` and `hotfix/` branches:**
 - Existing `release/X.Y.Z` branches: let them complete their current lifecycle normally. Do not merge them to main early.
@@ -60,13 +60,13 @@ This is the most common migration. The team has no formal branching conventions 
 
 **Steps:**
 
-1. **Set a branch-age target of 1 day.** Not 2 — 1. This is the discipline shift that makes TBD real.
+1. **Set a branch-age target of 1 day.** Not 2 - 1. This is the discipline shift that makes TBD real.
 2. **Add a branch-age CI check.** Fail the PR (or add a warning comment) if the branch creation date is > 1 day old. This is the fastest feedback loop.
 3. **Pair feature flags with every feature that spans > 1 day.** The pattern: merge the first increment behind a flag on day 1, continue on a new branch on day 2.
 4. **Graduate to direct commits to main for small changes.** Once the team is comfortable with step 3, encourage committing small changes (typos, config, dependency bumps) directly to main without a branch.
 5. **Enforce CI on every commit to main.** Direct commits mean your main protection must be extremely strong: required CI checks that cannot be bypassed by admins for new commits.
 
-*"The three disciplines of TBD: (1) Every engineer merges to main at least daily. (2) Feature flags gate incomplete work. (3) CI is the gatekeeper — no human can merge failing code." — `research/external/2026-04-04-tbd-discipline-codecraftdiary.md`*
+*"The three disciplines of TBD: (1) Every engineer merges to main at least daily. (2) Feature flags gate incomplete work. (3) CI is the gatekeeper - no human can merge failing code." - `research/external/2026-04-04-tbd-discipline-codecraftdiary.md`*
 
 ---
 

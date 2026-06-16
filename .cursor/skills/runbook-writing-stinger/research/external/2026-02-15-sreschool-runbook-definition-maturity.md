@@ -8,7 +8,7 @@ topic: runbook-structure
 stinger: runbook-writing-stinger
 ---
 
-# What is Runbook? Meaning, Architecture, Examples, Use Cases, and How to Measure It (2026 Guide) — SRE School
+# What is Runbook? Meaning, Architecture, Examples, Use Cases, and How to Measure It (2026 Guide) - SRE School
 
 Published: 2026-02-15 (Author: Rajesh Kumar)
 

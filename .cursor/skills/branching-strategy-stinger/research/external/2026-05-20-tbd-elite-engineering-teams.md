@@ -15,8 +15,8 @@ Comprehensive 2026 practitioner guide. Trunk-based development means all develop
 
 ## Key quotations / statistics
 
-- "Elite performers — those who deploy multiple times per day and recover from incidents in under an hour — are overwhelmingly using trunk-based practices."
-- "CI build time under 10 minutes is non-negotiable at team sizes above ~15 engineers. At 30-minute builds and 50 engineers, the math produces ~5 trunk breaks per day and 45–90 minute feedback loops."
+- "Elite performers - those who deploy multiple times per day and recover from incidents in under an hour - are overwhelmingly using trunk-based practices."
+- "CI build time under 10 minutes is non-negotiable at team sizes above ~15 engineers. At 30-minute builds and 50 engineers, the math produces ~5 trunk breaks per day and 45-90 minute feedback loops."
 - Branch lifespan comparison: TBD = hours to 1-2 days; GitFlow = days to weeks
 - Merge conflict frequency: TBD = rare and small; GitFlow = frequent and painful
 - CI/CD compatibility: TBD = native fit; GitFlow = requires workarounds

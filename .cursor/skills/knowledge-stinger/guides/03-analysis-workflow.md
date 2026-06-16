@@ -1,6 +1,6 @@
-# Analysis Workflow — From Zero to Full Knowledge Base
+# Analysis Workflow - From Zero to Full Knowledge Base
 
-How to go from a repo with only ADRs and PRDs to a complete `library/knowledge/private/` knowledge base. This is the methodology used to produce 68 knowledge docs for `legion-code` from 19 ADRs and 43 PRDs.
+How to go from a repo with only ADRs and PRDs to a complete `library/knowledge/private/` knowledge base. The methodology: read every ADR and PRD, map them to domains, then author in dependency order.
 
 ---
 
@@ -8,40 +8,24 @@ How to go from a repo with only ADRs and PRDs to a complete `library/knowledge/p
 
 ### Read all ADRs
 
-List every ADR and note the domain it belongs to:
+List every ADR and note the domain it belongs to. For example, mapping this repo's ADRs:
 
 ```
-ADR-001 — Stack (Theia + React)     → architecture/, frontend/
-ADR-002 — LLM Gateway (Resolver)   → ai/, architecture/
-ADR-003 — Storage                  → data/
-ADR-004 — Container Runtime        → container/
-ADR-005 — Auth (GitHub OAuth)      → auth/
-ADR-006 — Tenant Model             → multi-tenant/
-ADR-007 — Project as Unit of State → architecture/, data/
-ADR-008 — Education Hierarchy      → curriculum/
-ADR-009 — Monetization             → monetization/
-ADR-010 — Coach Attach             → collaboration/
-ADR-011 — Live Sessions            → collaboration/
-ADR-012 — Plugin Distribution      → plugins/, security/
-ADR-013 — Theia as Library         → frontend/, architecture/
-ADR-014 — GraphRAG                 → ai/
-ADR-015 — Cross-Project Knowledge  → ai/
-ADR-016 — Mobile Experience        → frontend/
-ADR-017 — Replicate for GPU        → ai/
-ADR-018 — Atlas Map Upsell         → (non-goal, reference in overview)
-ADR-019 — Audit Logging Retention  → data/, security/
+system-overview            -> architecture/, integrations/
+session-lifecycle          -> architecture/, ai/
+desktop-harness-overview   -> integrations/, architecture/
 ```
 
-This mapping tells you which domain folders to create and what ADRs each doc should reference.
+As new ADRs land (e.g. a storage-substrate decision -> data/, a device-flow decision -> auth/, an MCP-server decision -> plugins/), add a row. This mapping tells you which domain folders to create and what ADRs each doc should reference.
 
 ### Read all PRDs (extract technical detail)
 
 For each PRD, extract:
-- **SQL DDL:** Every `CREATE TABLE` block → contributes to `data/postgres-schema.md`
-- **API specs:** Endpoint signatures → contributes to `standards/api-design-conventions.md` and domain docs
-- **Technical Considerations sections:** Implementation details → contribute to the relevant domain docs
-- **Files Touched sections:** Real file paths → used to cite source code in knowledge docs
-- **Architecture notes:** System-level observations → contribute to `architecture/` docs
+- **SQL DDL / column lists:** Every table or `ColumnDef` block -> contributes to `data/deeplake-tables-schema.md`
+- **API specs:** Tool / command signatures -> contribute to `standards/api-design-conventions.md` and domain docs
+- **Technical Considerations sections:** Implementation details -> contribute to the relevant domain docs
+- **Files Touched sections:** Real file paths -> used to cite source code in knowledge docs
+- **Architecture notes:** System-level observations -> contribute to `architecture/` docs
 
 **Do NOT copy PRD content verbatim.** PRDs are specs ("what to build"). Knowledge docs are explanations ("how it works and why"). Transform spec language into narrative explanations.
 
@@ -54,19 +38,17 @@ Create a planning table before writing any docs:
 ```
 Domain           | Docs to create                          | Source material
 -----------------|-----------------------------------------|----------------
-architecture/    | system-overview, request-lifecycle,      | ADR-001,002,003,004,007
-                 | resolver-placement                       |
-ai/              | resolver-overview, prompt-cascade,       | ADR-002,014,015 + PRDs 005,016
-                 | rag-pipeline, graphrag, model-routing,   |
-                 | coach-system, ai-trace-observability,    |
-                 | cross-project-knowledge-sharing,         |
-                 | portkey-virtual-keys                     |
-auth/            | auth-architecture, session-model,        | ADR-005,006 + PRD-001
-                 | tenant-roles, rbac                       |
+architecture/    | system-overview, session-lifecycle,      | system-overview ADR,
+                 | desktop-harness-overview                 | session-lifecycle ADR
+ai/              | session-capture, hybrid-recall-pipeline, | session-lifecycle ADR + recall PRDs
+                 | embeddings-daemon, skillify-pipeline     |
+data/            | deeplake-tables-schema, schema-healing,  | src/deeplake-schema.ts + storage PRDs
+                 | vfs-path-conventions                     |
+integrations/    | six-harness-overview, adding-a-harness   | harness ADRs + per-harness PRDs
 ...
 ```
 
-Confirm the domain list matches the ADRs and PRDs in this repo. Skip domains that aren't applicable (e.g., `container/` is irrelevant for a pure API product).
+Confirm the domain list matches the ADRs and PRDs in this repo. Skip domains that aren't applicable (e.g., `frontend/` only if the repo ships the dashboard / graph-visualizer surfaces).
 
 ---
 
@@ -74,11 +56,11 @@ Confirm the domain list matches the ADRs and PRDs in this repo. Skip domains tha
 
 ### Batch A first (sets the stage)
 
-Always write these docs first — every other doc cross-references them:
+Always write these docs first - every other doc cross-references them:
 
-1. `library/knowledge/private/overview.md` — the entry point doc
-2. `library/knowledge/private/architecture/system-overview.md` — master diagram
-3. `library/knowledge/private/architecture/request-lifecycle.md` — end-to-end flow
+1. `library/knowledge/private/overview.md` - the entry point doc
+2. `library/knowledge/private/architecture/system-overview.md` - master diagram
+3. `library/knowledge/private/architecture/session-lifecycle.md` - end-to-end capture/recall flow
 
 These three docs force you to understand the system well enough to write everything else.
 
@@ -88,9 +70,9 @@ After Batch A, the remaining domains are largely independent:
 
 ```
 Batch B: ai/ + auth/ + data/
-Batch C: container/ + frontend/
-Batch D: curriculum/ + collaboration/ + plugins/
-Batch E: infrastructure/ + monetization/ + multi-tenant/ + security/ + standards/
+Batch C: integrations/ + plugins/
+Batch D: frontend/ + collaboration/
+Batch E: infrastructure/ + multi-tenant/ + security/ + standards/ + operations/
 ```
 
 ---
@@ -105,24 +87,24 @@ Batch E: infrastructure/ + monetization/ + multi-tenant/ + security/ + standards
 4. Add a Mermaid diagram if the doc benefits from a visual.
 5. Fill in the Related section.
 
-### For schema docs (data/postgres-schema.md)
+### For schema docs (data/deeplake-tables-schema.md)
 
-1. Collect ALL `CREATE TABLE` DDL from all PRDs across all phases.
-2. Organize by phase (Phase 1, Phase 2, Phase 3, etc.) within the doc.
-3. Add explanatory prose above each table group: "These tables were introduced in Phase 1 to support..."
-4. Add migration strategy note at the end.
+1. Collect ALL column definitions from `src/deeplake-schema.ts` (the 7 `*_COLUMNS` lists).
+2. Organize one section per table (`memory`, `sessions`, `skills`, `rules`, `goals`, `kpis`, `codebase`).
+3. Add explanatory prose above each table: what writes it, what reads it, the version-bump pattern where it applies.
+4. Add the schema-healing note (SELECT-first `ALTER TABLE ADD COLUMN`) at the end.
 
-### For catalog docs (data/valkey-patterns.md, data/qdrant-collections.md)
+### For pipeline docs (ai/hybrid-recall-pipeline.md)
 
-1. Scan all PRDs for Valkey keys (grep for `valkey.set`, `valkey.get`).
-2. Collect into a table: Key pattern | TTL | Invalidated by | Description.
-3. Add usage sections for common patterns (working memory, distributed locks, caching).
+1. Read `src/shell/grep-core.ts`.
+2. Document the three responsibilities in order: `searchDeeplakeTables` (the `UNION ALL` across memory + sessions), `normalizeSessionContent` (JSON blob -> `Speaker: text`), `refineGrepMatches` (line-wise regex flags).
+3. Add a `flowchart` of the query path and a worked example of a single recall.
 
 ### For standards docs
 
-1. Look at any existing `tsconfig.json`, `eslint.config.js`, `.prettierrc`.
+1. Look at any existing `tsconfig.json`, `eslint.config.js`, `.prettierrc`, and `package.json` (this repo uses npm, not pnpm).
 2. Look at any existing convention notes in the codebase.
-3. Make explicit what was implicit — the conventions developers follow by habit.
+3. Make explicit what was implicit - the conventions developers follow by habit.
 4. Add examples from the actual codebase (cite file paths).
 
 ---
@@ -134,7 +116,7 @@ After all docs are written, verify cross-links:
 1. Every doc's Related section: do all linked files exist?
 2. Every ADR reference: does the cited ADR exist at the expected path?
 3. `overview.md` reading guide: do all paths it mentions exist?
-4. No doc is an island — every doc should link to at least 2 others.
+4. No doc is an island - every doc should link to at least 2 others.
 
 Quick check command:
 ```bash
@@ -154,7 +136,7 @@ Before declaring the knowledge base complete:
 - [ ] Every domain folder has at least one doc (no empty folders)
 - [ ] `overview.md` exists at the top level and has a reading guide
 - [ ] `architecture/system-overview.md` has a Mermaid architecture diagram
-- [ ] `data/postgres-schema.md` has DDL for every table (check against PRDs)
+- [ ] `data/deeplake-tables-schema.md` has DDL for all 7 tables (check against `src/deeplake-schema.ts`)
 - [ ] Every doc has the standard header (Category, Version, Date, Status)
 - [ ] Every doc has a Related section with at least 2 links
 - [ ] No doc exceeds 500 lines without a good reason
@@ -170,7 +152,7 @@ Before declaring the knowledge base complete:
 PRDs are specs. Knowledge docs are explanations. "The system MUST do X" (spec language) becomes "The system does X" (knowledge language). "Implementation Notes" becomes narrative prose.
 
 ### Pitfall: Making one giant doc per domain
-Split by coherent topic. `data/` should have separate files for Postgres, Valkey, Qdrant, Spaces, and audit retention — not one 2000-line file.
+Split by coherent topic. `data/` should have separate files for the table schema, schema healing, and the VFS path conventions - not one 2000-line file.
 
 ### Pitfall: Skipping the overview.md
 The overview is the map. Without it, someone arriving at the knowledge base cold doesn't know where to start. Write it after Batch A so you have a clear picture of the whole system.

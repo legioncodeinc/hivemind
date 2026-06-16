@@ -1,6 +1,6 @@
 ---
 name: adr-writing-stinger
-description: Architecture Decision Records specialist — Nygard format (Context / Decision / Consequences), MADR extended template, Y-statement framing, supersession and deprecation lifecycle, Log4brains and adr-tools CLI integration, and the "decisions, not docs" philosophy. Use when authoring a new ADR, superseding an existing decision, auditing the ADR log, setting up Log4brains, or onboarding a team to ADR practice. Do NOT use for general knowledge-base authoring (library-worker-bee), code entity extraction (wiki-worker-bee), or security review of the decisions themselves (security-worker-bee).
+description: Architecture Decision Records specialist covering Nygard format (Context / Decision / Consequences), MADR extended template, Y-statement framing, supersession and deprecation lifecycle, Log4brains and adr-tools CLI integration, and the "decisions, not docs" philosophy. Use when authoring a new ADR, superseding an existing decision, auditing the ADR log, setting up Log4brains, or onboarding a team to ADR practice. Do NOT use for general knowledge-base authoring (library-worker-bee), code entity extraction (wiki-worker-bee), or security review of the decisions themselves (security-worker-bee).
 license: MIT
 ---
 
@@ -50,22 +50,22 @@ For blank templates, see `templates/nygard.md`, `templates/madr.md`, and `templa
 
 ### 1. Decisions, not docs
 
-An ADR captures a **closed, consequential decision** — one that is hard or expensive to reverse and that future engineers will want to understand. It is NOT:
+An ADR captures a **closed, consequential decision**, one that is hard or expensive to reverse and that future engineers will want to understand. It is NOT:
 
 - A design proposal (use an RFC or PRD instead)
 - A meeting summary (use a shared doc)
 - A description of how something works (use the wiki)
 - A changelog entry (use CHANGELOG.md)
 
-The test: "If I delete this ADR, does the team lose understanding of *why* the codebase is the way it is?" If yes, write it. If no, don't.
+The test: "If I delete this ADR, does the team lose understanding of *why* the codebase is the way it is?" If yes, write it. If no, do not.
 
 ### 2. Four required questions (Nygard canonical)
 
 Every ADR must answer:
 
 1. **What is the architectural context?** (forces at play, constraints, the problem)
-2. **What decision did we make?** (the concrete, stated choice — no weasel words)
-3. **What are the consequences?** (positive, negative, neutral — the trade-offs accepted)
+2. **What decision did we make?** (the concrete, stated choice, no weasel words)
+3. **What are the consequences?** (positive, negative, neutral, the trade-offs accepted)
 4. **What alternatives were considered and rejected?** (and why)
 
 ### 3. Sequential numbering is permanent
@@ -96,7 +96,7 @@ A `Proposed` ADR is in-flight. Never reference a `Proposed` ADR from code or oth
 
 | Criterion | Nygard | MADR | Y-statement |
 |---|---|---|---|
-| Length | 1-2 pages | 2-4 pages | 1-5 sentences |
+| Length | 1 to 2 pages | 2 to 4 pages | 1 to 5 sentences |
 | Sections | Context, Decision, Consequences | Title, Status, Context, Decision, Consequences, Pros, Cons, Alternatives | Single sentence with embedded structure |
 | Best for | Most team decisions | Decisions needing explicit trade-off tables | Quick records, ADR log summaries |
 | Tooling | adr-tools (native) | MADR template repo | Any markdown |
@@ -113,10 +113,10 @@ Recommendation: use Nygard as the default. Switch to MADR when the team needs ex
 The original CLI. Creates Nygard-format ADRs, handles supersession linking, generates a table of contents.
 
 ```bash
-adr init docs/decisions          # initialize ADR log
-adr new "Use PostgreSQL"         # creates docs/decisions/0001-use-postgresql.md
-adr new -s 1 "Use Neon instead"  # creates 0002, supersedes 0001
-adr generate toc                 # regenerates table of contents
+adr init docs/decisions                       # initialize ADR log
+adr new "Append-only version-bump for embeddings"   # creates docs/decisions/0001-append-only-version-bump.md
+adr new -s 1 "In-place UPDATE for embeddings"       # creates 0002, supersedes 0001
+adr generate toc                              # regenerates table of contents
 ```
 
 ### Log4brains (thomvaill/log4brains)
@@ -148,4 +148,4 @@ The research folder was populated by `scripture-historian` at normal depth (15 f
 
 ---
 
-*Created via the Legion AI Tools Factory pipeline. Part of the Army curated by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*
+*Part of the Cursor IDE Army curated by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*

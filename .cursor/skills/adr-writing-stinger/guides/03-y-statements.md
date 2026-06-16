@@ -32,13 +32,13 @@ All five clauses are required. Omitting "accepting" turns the statement into a m
 
 ### Good Y-statement
 
-> In the context of a multi-tenant SaaS with relational data and a team with strong SQL experience, facing the need for ACID transactions and row-level security, we decided to use PostgreSQL via Supabase, to achieve data integrity and simplified multi-tenancy, accepting that horizontal write scaling will require migration if write throughput exceeds 10k/s.
+> In the context of Hivemind retrieval over a Deep Lake dataset where embeddings are optional, facing offline and cold-start states with no vectors, we decided to fall back to a BM25 lexical ranker when embeddings are unavailable, to achieve usable results with zero model dependency, accepting that BM25 ranking is coarser than dense similarity for paraphrased queries.
 
 Every clause is present. The "accepting" clause names a concrete, non-trivial trade-off.
 
 ### Weak Y-statement (missing "accepting")
 
-> In the context of building a web app, we decided to use React, to achieve a fast UI.
+> In the context of the TypeScript monorepo, we decided to ship as an ESM-only npm package, to achieve a modern module layout.
 
 No "accepting" clause. No stated concern. Useless as an engineering record.
 
@@ -53,9 +53,9 @@ In an `adr-log.md`:
 
 | # | Title | Status | Summary |
 |---|---|---|---|
-| 0012 | Use PostgreSQL | Accepted | In the context of... accepting that... |
+| 0012 | Fall back to BM25 when embeddings off | Accepted | In the context of... accepting that... |
 | 0013 | Adopt trunk-based development | Accepted | In the context of... accepting that... |
-| 0014 | Use server-side rendering | Superseded by 0021 | — |
+| 0014 | String-based pre-tool-use gate | Superseded by 0021 |, |
 ```
 
 ---
@@ -72,4 +72,4 @@ The Y-statement maps onto Nygard sections as follows:
 | "to achieve" | Consequences (positive) |
 | "accepting" | Consequences (negative / trade-off) |
 
-It does NOT map to Alternatives Considered — that is why Y-statements should supplement, not replace, full ADRs for consequential decisions.
+It does NOT map to Alternatives Considered, that is why Y-statements should supplement, not replace, full ADRs for consequential decisions.

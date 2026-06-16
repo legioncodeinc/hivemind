@@ -1,54 +1,70 @@
-# Guide: quality-worker-bee
+# Quality Worker-Bee - Beekeeper-Suit's Guide
 
-Quality assurance specialist that verifies implementations against their source plan.
+The Beekeeper-Suit routing skill's record of when to invoke `quality-worker-bee`. Use this guide to decide whether a user request belongs to this Bee.
+
+**Bee:** [`.cursor/agents/quality-worker-bee.md`](../../../agents/quality-worker-bee.md)
+**Stinger:** [`.cursor/skills/quality-stinger/`](../../quality-stinger/)
+**Trigger policy:** proactive (the final checkpoint of every plan execution loop)
 
 ---
 
-## What this Bee owns
+## Domain
 
-The final checkpoint before any work is considered done. `quality-worker-bee` audits a completed implementation against the plan that guided it, looking for:
+`quality-worker-bee` is the final checkpoint in the plan to implement to security to QA loop. It verifies a completed implementation against its source plan document (a feature PRD or an issue IRD) for completeness, correctness, alignment, and regressions, and produces a structured findings report classified by severity. It owns one job: catch gaps between plan and code before work is marked done. It does not write implementations, choose the plan, or substitute its own judgment for what the plan actually specified. It runs after `security-worker-bee`, never before.
 
-- **Completeness** — is every requirement in the plan addressed in code?
-- **Correctness** — does the code do what the plan said it should?
-- **Alignment** — do the file paths, data structures, and interfaces match the plan?
-- **Regressions** — did the implementation break anything adjacent?
+## Trigger phrases
 
-The output is a structured findings report. When the audit is tied to a feature, it goes to `library/requirements/features/feature-<###>-<title>/reports/<date>-qa-report.md`. When tied to an issue, it goes to `library/requirements/issues/issue-<###>-<title>/reports/<date>-qa-report.md`. Standalone QA goes to `library/qa/<domain>/<date>-qa-report.md`.
+Route to `quality-worker-bee` when the user says any of:
 
-## When to invoke
+- "QA this" / "run quality-worker-bee"
+- "Check the implementation" / "audit the implementation"
+- "Audit against the plan" / "check the plan against the code" / "verify the PRD was built"
+- "Is this done?"
 
-Delegate to `quality-worker-bee`:
+Or at the end of every plan execution, immediately after `security-worker-bee` has run.
 
-- Automatically at the end of every plan execution. This is the final step of the canonical loop.
-- When the user says "QA this" / "check the implementation" / "audit against the plan" / "is this done?".
-- After `security-worker-bee` has completed its pass (see ordering below).
+## Do NOT route when
 
-Do **not** invoke before an implementation is complete. QA requires something to audit.
+- The user wants the security audit (injection, the pre-tool-use gate, trace PII, supply chain) - that is `security-worker-bee`, which runs first.
+- The user wants the implementation itself - that is the relevant domain Bee.
+- The user wants to judge plan quality - that is `library-worker-bee` (this Bee treats the plan as the source of truth).
+- `quality-worker-bee` has already run for this cycle, or `security-worker-bee` has not yet run - flag the ordering violation and wait.
 
-Do **not** invoke before `security-worker-bee`. If you route to `quality-worker-bee` first, `security-worker-bee` may later force changes that invalidate the QA report, wasting work.
+If a request straddles two Bees' domains, prefer the narrower-scoped Bee and let this one act as backup.
 
-## Paired Stinger
+## Inputs the Bee needs
 
-`.cursor/skills/quality-stinger/` — contains the audit checklist, the report template for `library/qa/`, and heuristics for classifying findings.
+Before invoking, ensure the user has provided (or you can infer):
 
-## Expected input
+- The source plan document (the feature PRD or issue IRD the implementation was built against).
+- The completed implementation (the branch or files to audit).
+- Confirmation that `security-worker-bee` has already run for this cycle.
 
-- A pointer to the plan document — typically a feature PRD at `library/requirements/features/feature-<###>-<title>/prd-feature-<###>-<title>.md` or an issue IRD at `library/requirements/issues/issue-<###>-<title>/ird-issue-<###>-<title>.md`.
-- The completed implementation, accessible via `git diff` and `git status` or a branch reference.
-- Any context the user wants to emphasize.
+If the source plan is missing, do not invoke yet - ask the user which plan to audit against.
 
-## Expected output
+## Outputs the Bee produces
 
-- A findings report saved alongside the source plan (under its `reports/` subfolder) or to `library/qa/<domain>/` for standalone audits, following the template.
-- Findings classified by severity and category (completeness, correctness, alignment, regression).
-- A clear final verdict: ship, conditionally ship, or do-over.
+- A structured QA findings report classified by severity (Critical / Warning / Suggestion), each finding citing `file.ts:LN` plus a snippet.
+- The report lands in the source plan's `reports/` subfolder, or in `library/qa/<domain>/<date>-qa-report.md` for standalone audits.
+- A full report even on a clean pass (no silent passes).
 
-## Critical directives to respect when routing
+## Multi-Bee sequences this Bee participates in
 
-- Ordering matters. `quality-worker-bee` runs after `security-worker-bee` — never before. If the user invokes `quality-worker-bee` out of order, this Bee itself will flag the ordering problem.
-- The plan document is the ground truth. `quality-worker-bee` does not judge whether the plan was wise, only whether the implementation matches it.
-- If the plan is ambiguous, `quality-worker-bee` flags the ambiguity rather than guessing.
+- **Plan execution loop** - the implementation Bee produces the change, `security-worker-bee` audits and remediates Critical/High findings, then `quality-worker-bee` verifies the final implementation against the source plan. Running QA before security is a documented anti-pattern.
 
-## Typical failure modes
+## Critical directives the orchestrator should respect
 
--
+- **Evidence over opinion** - every finding cites `file.ts:LN` plus a snippet.
+- **The plan is the source of truth** - plan says X, code does Y, that is a gap regardless of whether Y is reasonable.
+- **Severity matters** - Critical blocks ship; inflating severity erodes trust.
+- **No silent passes** - even a clean audit produces the full report.
+- **Report, don't fix.**
+- **Run after `security-worker-bee`, never before** - flag and halt on an ordering violation.
+
+(Full list lives in the Bee file's `## Critical directives` section.)
+
+---
+
+*Part of Beekeeper-Suit's roster. See [`.cursor/skills/beekeeper-suit/SKILL.md`](../SKILL.md) for the full Army.*
+
+*Part of the Cursor IDE Army curated by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*

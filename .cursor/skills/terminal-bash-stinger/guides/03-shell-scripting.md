@@ -31,7 +31,7 @@ set -euo pipefail
 |---|---|---|
 | `"$var"` | Correct | Prevents word-splitting and globbing |
 | `$var` | Dangerous | Splits on whitespace, expands globs |
-| `"$(command)"` | Correct | Same — command substitution output needs quoting |
+| `"$(command)"` | Correct | Same - command substitution output needs quoting |
 | `"${arr[@]}"` | Correct | Expands each array element as a separate word |
 | `${#arr[@]}` | Correct | Array length; no quoting needed |
 | Inside `$((...))` | No quoting | Arithmetic context does not word-split |

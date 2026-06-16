@@ -12,7 +12,7 @@ A worked before/after example showing how `readme-writing-worker-bee` applies th
 # data-sync-worker
 
 This is a data synchronization worker service. It was built to sync data between our
-production PostgreSQL database and the data warehouse on Snowflake. It runs on the 
+production Deep Lake dataset and the downstream search index. It runs on the
 infra-prod-2 cluster.
 
 ## Getting Started
@@ -31,7 +31,7 @@ Copy the env file:
 cp .env.example .env
 ```
 
-You'll need to fill in the Snowflake credentials. Ask your manager for the values.
+You'll need to fill in the dataset and index credentials. Ask your manager for the values.
 
 ## Running
 
@@ -51,11 +51,11 @@ Talk to the platform team if something breaks.
 | Section | Status | Notes |
 |---|---|---|
 | What problem this solves | ⚠️ warn | Buried in first paragraph; not its own section |
-| Who maintains this | ❌ fail | "Talk to the platform team" — no name, no Slack channel |
+| Who maintains this | ❌ fail | "Talk to the platform team", no name, no Slack channel |
 | Where it runs | ⚠️ warn | "infra-prod-2 cluster" but no environment breakdown |
-| Setup / install | ⚠️ warn | Credentials: "ask your manager" — where exactly? Which 1Password vault? |
+| Setup / install | ⚠️ warn | Credentials: "ask your manager", where exactly? Which 1Password vault? |
 | Usage | ❌ fail | `npm start` is not enough; what does it do? How do I know it's working? |
-| Architecture notes | — | Absent; unusual design choices not documented |
+| Architecture notes |, | Absent; unusual design choices not documented |
 
 **Overall:** Reader cannot get to "running" without human help. The credential setup is a blocker.
 
@@ -66,10 +66,10 @@ Talk to the platform team if something breaks.
 ```markdown
 # data-sync-worker
 
-Syncs production PostgreSQL data to Snowflake on a 15-minute cron schedule. Runs in
+Syncs the production Deep Lake dataset to the downstream search index on a 15-minute cron schedule. Runs in
 the `infra-prod` namespace across all three environments (dev / staging / prod).
 
-**Owner:** Platform team — `#platform-eng` on Slack  
+**Owner:** Platform team, `#platform-eng` on Slack  
 **On-call escalation:** PagerDuty → "Platform On-Call" rotation
 
 ---
@@ -96,7 +96,7 @@ cp .env.example .env
 ```
 
 Fill in `.env` from the `data-sync-worker` item in **1Password > Platform** vault.  
-Required keys: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD`, `PG_URL`.
+Required keys: `DATASET_PATH`, `DATASET_TOKEN`, `SEARCH_INDEX_URL`, `SEARCH_INDEX_KEY`.
 
 ---
 
@@ -104,7 +104,7 @@ Required keys: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD`, `PG_
 
 ```bash
 npm start
-# Connects to dev Snowflake and dev PG by default (.env defaults point to dev)
+# Connects to the dev dataset and dev search index by default (.env defaults point to dev)
 # Logs: "Sync complete: 1,234 rows synced in 2.3s" on success
 ```
 
@@ -121,17 +121,17 @@ TABLE=users npm run sync:once
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `SNOWFLAKE_AUTH_ERROR` on startup | Token expired | Re-run `npm run auth:refresh` |
-| Sync stalls at > 5 min | PG replica lag | Check `#db-alerts` for replication warnings |
+| `DATASET_AUTH_ERROR` on startup | Token expired | Re-run `npm run auth:refresh` |
+| Sync stalls at > 5 min | Dataset read lag | Check `#db-alerts` for dataset warnings |
 | "0 rows synced" | Watermark stuck | Run `npm run reset:watermark -- --table=<tablename>` |
 
 ---
 
 ## Architecture
 
-The worker uses a watermark-based incremental sync: for each table, it reads the `updated_at` value of the last synced row and fetches only rows updated after that timestamp. The watermark is stored in `redis:data-sync:watermark:<table>`.
+The worker uses a watermark-based incremental sync: for each table, it reads the `updated_at` value of the last synced row and fetches only rows updated after that timestamp. The watermark is stored in a small local state file at `.hivemind/data-sync/watermark-<table>.json`.
 
-This means: full re-syncs are rare and expensive — do not run `npm run sync:full` in production without alerting `#platform-eng` first.
+This means: full re-syncs are rare and expensive, do not run `npm run sync:full` in production without alerting `#platform-eng` first.
 
 ---
 
@@ -147,7 +147,7 @@ Changes go through PR → review by 1 platform team member → merge. Run `npm t
 | Change | Principle |
 |---|---|
 | Renamed intro to "what it does + who owns it" | Internal register: context first, not pitch |
-| Added owner + on-call escalation prominently | The most critical missing piece — "talk to the platform team" is not actionable |
+| Added owner + on-call escalation prominently | The most critical missing piece, "talk to the platform team" is not actionable |
 | Added environments table with dashboard links | Teammates need operational context, not marketing |
 | Specified credential location (1Password vault) | Broke the "ask your manager" blocker |
 | Added expected log output for `npm start` | "How do I know it's working?" is the #1 internal tool question |

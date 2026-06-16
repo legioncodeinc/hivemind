@@ -1,4 +1,4 @@
-# Guide 02 — Issue IRD Authoring
+# Guide 02 - Issue IRD Authoring
 
 Covers creating and managing IRDs (Issue Resolution Documents) for reactive bug and incident work.
 
@@ -31,7 +31,7 @@ library/issues/backlog/ird-<###>-<kebab-slug>/
 
 ## Naming rules
 
-- Folder: `ird-<###>-<kebab-slug>/` — `###` is the GitHub issue number (3-digit zero-padded)
+- Folder: `ird-<###>-<kebab-slug>/` - `###` is the GitHub issue number (3-digit zero-padded)
 - Index file: `ird-<###>-<kebab-slug>-index.md`
 - Slugs: lowercase kebab-case, ≤ 60 chars
 - No sub-IRDs. One issue = one IRD. Keep scope tight.

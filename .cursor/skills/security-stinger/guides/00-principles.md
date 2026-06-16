@@ -1,14 +1,14 @@
-# 00 — Principles
+# 00 - Principles
 
 These are the operating rules for every security audit. Read this first, every time.
 
 ---
 
-## Ordering — non-negotiable
+## Ordering - non-negotiable
 
 **`security-worker-bee` runs immediately before `quality-worker-bee`.**
 
-Why: `quality-worker-bee` verifies the whole implementation against the plan. If your fixes land after its report, that report is stale — it verified unfixed code. Running out of order silently invalidates QA.
+Why: `quality-worker-bee` verifies the whole implementation against the plan. If your fixes land after its report, that report is stale - it verified unfixed code. Running out of order silently invalidates QA.
 
 **What to do if you detect the ordering is already broken:**
 
@@ -23,16 +23,17 @@ Why: `quality-worker-bee` verifies the whole implementation against the plan. If
 
 ## Scope
 
-**In scope (full fidelity):** React, Next.js, TypeScript, Node.js codebases. Every rule in the guides is tuned for this stack.
+**In scope (full fidelity):** the Hivemind codebase - the TypeScript (ESM, Node >=22) CLI, the MCP server, the six harness integrations, the Deep Lake HTTP persistence layer (`src/deeplake-api.ts` + `src/utils/sql.ts`), the pre-tool-use gate and VFS (`src/hooks/pre-tool-use.ts`, `src/shell/deeplake-fs.ts`), credential/auth handling (`~/.deeplake/credentials.json`, device flow, org RBAC), the skillify pipeline (`src/skillify/`), and the OpenClaw supply-chain surface. Every rule in the guides is tuned for this stack.
 
-**Out of scope (degraded fidelity, not silence):** Go, Python, Ruby, Rust, PHP, Java back-ends. You can still spot universal patterns (hardcoded secrets, missing HTTPS, PII in logs) but you should NOT pretend the OWASP Top 10 Next.js-specific patterns apply verbatim. When auditing such a codebase, open the Executive Summary with:
+**Out of scope (degraded fidelity, not silence):** any surface this Stinger does not cover - a new datastore introduced by the branch, a non-TypeScript subsystem, an unfamiliar harness protocol. You can still spot universal patterns (hardcoded secrets, tokens in logs, dependency CVEs) but you should NOT pretend the Hivemind-specific patterns apply verbatim. When auditing such a surface, open the Executive Summary with:
 
-> "Scope note: this project includes non-Next.js server code (Go/Python/etc.). I checked for universal patterns (hardcoded secrets, PII in logs, dependency CVEs) but recommend a stack-specific security audit for full coverage of [specific framework]."
+> "Scope note: this branch introduces a surface outside the Stinger's catalog ([name it]). I checked for universal patterns (hardcoded secrets, tokens in logs, dependency CVEs) but recommend a follow-up audit dedicated to that surface for full coverage."
 
 **Out of scope (delegate to another Bee):**
 - Verifying implementation matches plan → `quality-worker-bee`
 - Architectural planning / design documents → `library-worker-bee`
-- Asset pipeline correctness → `asset-worker-bee`
+- Deep Lake schema / query-layer ownership → `deeplake-dataset-worker-bee`
+- Dependency tree + OpenClaw bundle ownership → `dependency-audit-worker-bee`
 
 ---
 
@@ -40,14 +41,14 @@ Why: `quality-worker-bee` verifies the whole implementation against the plan. If
 
 | Severity | What qualifies | Remediation action |
 |---|---|---|
-| **Critical** | Financial exposure, PII leak to external parties, authentication bypass, RCE, PCI DSS violation (raw card on server), secrets committed to repo, unpatched Tier 1 CVE in `research/cve-watchlist.md` | Fix in this session. No exceptions. |
-| **High** | IDOR / broken object-level auth, SQL/NoSQL/command injection, session fixation, token or secret exposure, unencrypted PII in client storage, XSS via unsanitized `dangerouslySetInnerHTML`, missing JWT algorithm whitelist, Server Actions missing auth, missing Stripe webhook signature | Fix in this session. No exceptions. |
-| **Medium** | Missing security headers, verbose error responses, GDPR erasure/portability gaps, missing rate limits, over-fetching without direct PII impact, `'unsafe-inline'` in CSP | Document in report. Fix only if the patch is under ~5 lines. |
-| **Low** | Non-sensitive hygiene — unused deps, inconsistent cookie `Path`, dead auth code | Document only. |
+| **Critical** | Activeloop token / JWT / org-id exposure, SQL injection into the Deep Lake API via a missing `sqlIdent` on a config-driven identifier, authentication bypass, pre-tool-use gate bypass that lets a memory write escape the VFS, secrets committed to repo or shipped past `pack-check.mjs`, unpatched Critical advisory in `research/cve-watchlist.md` | Fix in this session. No exceptions. |
+| **High** | Cross-org / cross-scope read of the `sessions` or `memory` tables (broken object-level / scope authorization), unescaped value interpolated into a Deep Lake SQL statement, prompt-injection poisoning path that reaches recalled-memory or skill-injection context, captured PII or tokens leaking to logs/telemetry, tampering with the deliberate `gate-runner.ts` bypass symbols, `me|team` scope coercion to a wider org | Fix in this session. No exceptions. |
+| **Medium** | Missing API-client hardening (no retry/backoff on 429/5xx, no concurrency cap), verbose error responses echoing org id or resolved memory paths, over-capture into `sessions`/`memory` without redaction, missing capture opt-out honoring | Document in report. Fix only if the patch is under ~5 lines. |
+| **Low** | Non-sensitive hygiene - unused deps, inconsistent log formatting, dead auth code | Document only. |
 
 ### Never-downgrade rule
 
-**Financial and PII findings are Critical or High by construction.** Never downgrade them to save session time. The blast radius of a leaked SSN, card number, or OAuth token dwarfs the cost of thorough remediation. If a finding feels "borderline Critical / High" and the data involved is PII or money, the correct answer is Critical.
+**Credential and captured-trace PII findings are Critical or High by construction.** Never downgrade them to save session time. The blast radius of a leaked Activeloop JWT, an org id that enables cross-tenant access, or a `memory` row full of raw user prompts dwarfs the cost of thorough remediation. If a finding feels "borderline Critical / High" and the data involved is a credential or captured trace content, the correct answer is Critical.
 
 ---
 
@@ -55,28 +56,7 @@ Why: `quality-worker-bee` verifies the whole implementation against the plan. If
 
 1. **Fix, don't just flag.** Critical and High are remediated in-session. A report that says "found but didn't fix" defeats the Bee's purpose.
 2. **Evidence over opinion.** Every finding cites `path/to/file.ts:LINE` and quotes the specific vulnerable code. Reports without coordinates are not audits.
-3. **Minimal blast radius.** Each fix changes only the lines necessary to close the vulnerability. No opportunistic refactoring — it contaminates the diff and risks breaking unrelated behavior.
+3. **Minimal blast radius.** Each fix changes only the lines necessary to close the vulnerability. No opportunistic refactoring - it contaminates the diff and risks breaking unrelated behavior.
 4. **Verify after fixing.** Run `git diff` after all remediations to confirm no unintended changes snuck in. Screenshot the diff summary into the report's "Files Changed" table.
 5. **Never silent pass.** Even a clean audit produces the full report confirming each category was checked. An empty scorecard is suspicious; explicit "None detected" per category is credibility.
-6. **Minimum-two sources for claims.** If you cite a statistic or CVE in the report, it must trace to either `research/cve-watchlist.md` or a dated note in `research/`. No folk knowledge.
-
----
-
-## When the rulebook is silent
-
-If you encounter a pattern not covered by any guide in this Stinger:
-
-1. Classify it provisionally using the severity rubric (be conservative — when in doubt, go High).
-2. Document it in the report under "Recommended Follow-Up (architectural)" even if you fix it in-session.
-3. Note it in `research/open-questions.md` for the next `forge-stinger` pass to extend the catalog.
-
-Your job is to make the codebase safer today, not to wait for a rule that fits exactly.
-
----
-
-## See also
-
-- `guides/01-scan-procedure.md` — how to execute Phase 1 mechanically.
-- `examples/critical-pci-violation.md` — worked Critical triage example.
-- `examples/medium-missing-header.md` — worked "fix if cheap, else document" example.
-- `research/cve-watchlist.md` — is your intelligence still fresh?
+6. **Minimum-two sources for claims.** If yo

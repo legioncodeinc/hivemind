@@ -35,17 +35,17 @@ Any command that can be undone:
 
 | Change type | Example | Rollback |
 |---|---|---|
-| Scale deployment up | `kubectl scale deploy/api --replicas=5` | Scale back: `kubectl scale deploy/api --replicas=2` (or original value) |
-| Change feature flag | `launchdarkly flag set payments.v2 true` | Reset to prior value: `launchdarkly flag set payments.v2 false` |
-| Restart service | `kubectl rollout restart deploy/api -n payments` | Revert to prior deployment: `kubectl rollout undo deploy/api -n payments` |
-| Flush cache | `redis-cli FLUSHDB` | Cache cannot be restored; add note: "Cache will rebuild automatically over ~15 minutes" |
-| Update config | `aws ssm put-parameter --name /prod/api/max-pool --value 50` | Restore original: `aws ssm put-parameter --name /prod/api/max-pool --value 10` |
+| Lower embed concurrency | `npm run embeddings:config -- --set concurrency=2` | Restore: `npm run embeddings:config -- --set concurrency=8` (or original value) |
+| Toggle BM25 fallback | `npm run retrieval:config -- --set forceFallback=true` | Reset to prior value: `npm run retrieval:config -- --set forceFallback=false` |
+| Restart daemon | `npm run embeddings:restart` | Re-run is idempotent; if worse, restore the queue snapshot from the pre-change backup |
+| Clear local cache | `npm run cache:clear` | Cache cannot be restored; add note: "Cache will rebuild automatically over the next few retrievals" |
+| Pin retrieval to a prior embedding version | `npm run retrieval:config -- --set embeddingVersion=11` | Restore: `npm run retrieval:config -- --set embeddingVersion=latest` |
 
 **Capture original values before changing them.** Add a read step before the change:
 ```
-Step 5a (capture): kubectl get deploy/api -n payments -o jsonpath='{.spec.replicas}'
-  # Record the output. This is ORIGINAL_REPLICAS. You will need it if you roll back.
-Step 5b (change): kubectl scale deploy/api -n payments --replicas=5
+Step 5a (capture): npm run embeddings:config -- --get concurrency
+  # Record the output. This is ORIGINAL_CONCURRENCY. You will need it if you roll back.
+Step 5b (change): npm run embeddings:config -- --set concurrency=2
 ```
 
 ---
@@ -59,13 +59,13 @@ Some changes cannot be undone. Irreversible changes require:
 
 **Template for irreversible step:**
 ```markdown
-#### Step 8: Drop the stuck migration lock
+#### Step 8: Force-release the stuck schema-heal lock
 
-```sql
-DELETE FROM schema_migrations_lock WHERE locked = true AND locked_by = 'deploy-job';
+```bash
+npm run dataset:heal -- --release-lock --dataset "$DATASET"
 ```
 
-⚠️ IRREVERSIBLE: This modifies the migrations lock table directly. Risk: if a migration job is legitimately running (not stuck), this command will cause it to re-run on next deploy, potentially double-applying a migration. Mitigation: Before executing, confirm the job named in `locked_by` is not running by checking `kubectl get jobs -n $NAMESPACE | grep deploy`. If running, do NOT execute this step — escalate to the Database team (Tier 2) instead.
+WARNING IRREVERSIBLE: This force-releases the Deep Lake schema-heal lock. Risk: if a heal pass is legitimately running (not stuck), releasing the lock lets a second heal start concurrently, which can double-apply a tensor migration. Mitigation: Before executing, confirm no heal is running with `npm run dataset:heal -- --status --dataset "$DATASET"`. If a heal is active, do NOT execute this step, escalate to the dataset team (Tier 2) instead.
 ```
 
 ---
@@ -79,17 +79,17 @@ If at any point the steps above did not resolve the incident, or if you need to 
 
 **Precondition:** Note which action steps you executed. Only undo steps that you actually ran.
 
-**Rollback Step 1 (undoes Action Step 5):** Restore original replica count
-  kubectl scale deploy/$SERVICE -n $NAMESPACE --replicas=ORIGINAL_REPLICAS
-  # Replace ORIGINAL_REPLICAS with the value captured in Step 5a.
-  Verify: kubectl get deploy/$SERVICE -n $NAMESPACE
-  Expected: DESIRED matches ORIGINAL_REPLICAS
+**Rollback Step 1 (undoes Action Step 5):** Restore original embed concurrency
+  npm run embeddings:config -- --set concurrency=ORIGINAL_CONCURRENCY
+  # Replace ORIGINAL_CONCURRENCY with the value captured in Step 5a.
+  Verify: npm run embeddings:config -- --get concurrency
+  Expected: returns ORIGINAL_CONCURRENCY
 
-**Rollback Step 2 (undoes Action Step 3):** Restore original connection pool setting
-  aws ssm put-parameter --name /prod/$SERVICE/max-pool --value ORIGINAL_POOL_SIZE --overwrite
-  # Replace ORIGINAL_POOL_SIZE with the value captured in Step 3a.
-  Verify: aws ssm get-parameter --name /prod/$SERVICE/max-pool --query Parameter.Value
-  Expected: Returns ORIGINAL_POOL_SIZE
+**Rollback Step 2 (undoes Action Step 3):** Restore the prior retrieval embedding-version pin
+  npm run retrieval:config -- --set embeddingVersion=ORIGINAL_VERSION
+  # Replace ORIGINAL_VERSION with the value captured in Step 3a.
+  Verify: npm run retrieval:config -- --get embeddingVersion
+  Expected: returns ORIGINAL_VERSION
 
 After executing rollback:
 1. Document all changes made and rollbacks executed in the incident channel.

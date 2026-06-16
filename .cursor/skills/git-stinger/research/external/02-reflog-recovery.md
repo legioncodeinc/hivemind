@@ -422,7 +422,7 @@ git rebase -i --autosquash origin/main
 
 1. TheLinuxCode - "How to Undo git reset: A Practical Recovery Playbook (2026)" (2026-02-02): https://thelinuxcode.com/how-to-undo-git-reset-a-practical-recovery-playbook-2026/
 2. GitCheatSheet - "Reflog - Your Safety Net": https://gitcheatsheet.dev/docs/advanced/reflog/
-3. DevToolbox Blog - "Git Undo: Reset, Revert & Restore — The Complete Guide for 2026" (2026-02-13): https://devtoolbox.dedyn.io/blog/git-undo-reset-revert-guide
+3. DevToolbox Blog - "Git Undo: Reset, Revert & Restore - The Complete Guide for 2026" (2026-02-13): https://devtoolbox.dedyn.io/blog/git-undo-reset-revert-guide
 4. FixDevs - "Fix: Undo git reset --hard and Recover Lost Commits" (2026-03-15): https://www.fixdevs.com/blog/git-reset-hard-undo/
 5. Shakil's Blog - "Git Reflog Explained: Recover Lost & Deleted Commits" (2026-02-27): https://blog.shakiltech.com/git-reflog-explained-recover-deleted-commits-lost-work/
 6. how2.sh - "How to Recover Dropped Commits with Git Reflog and fsck" (2026-02-17): https://how2.sh/posts/how-to-recover-dropped-commits-with-git-reflog-and-fsck/

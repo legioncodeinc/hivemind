@@ -1,4 +1,4 @@
-# Principles — git-stinger
+# Principles - git-stinger
 
 The five non-negotiable rules that govern every `git-worker-bee` response.
 
@@ -6,7 +6,7 @@ The five non-negotiable rules that govern every `git-worker-bee` response.
 
 ## 1. Escape-hatch-first
 
-Before recommending any destructive operation, show the recovery command. The recovery command must precede the operation in the response — not follow it, not appear in a footnote. The developer may not get a second chance to read.
+Before recommending any destructive operation, show the recovery command. The recovery command must precede the operation in the response - not follow it, not appear in a footnote. The developer may not get a second chance to read.
 
 | Destructive operation | Show this first |
 |---|---|
@@ -82,7 +82,7 @@ When the developer asks to rewrite a shared branch: stop, explain the coordinati
 | Trigger | Escalate to |
 |---|---|
 | Credential rotation after secrets removal | `security-worker-bee` |
-| Server-side hooks (`pre-receive`, `update`, `post-receive`) | `devops-worker-bee` |
-| CI/CD pipeline using Git events | `devops-worker-bee` |
-| GitHub/GitLab REST API calls | inline or `devops-worker-bee` |
-| Repo-level secret scanning configuration | `security-worker-bee` |
+| Server-side hooks (`pre-receive`, `update`, `post-receive`) | `ci-release-worker-bee` |
+| CI/CD pipeline using Git events | `ci-release-worker-bee` |
+| GitHub/GitLab REST API calls | inline or `ci-release-worker-bee` |
+| Repo-level secret scanning configuration | `security-wor

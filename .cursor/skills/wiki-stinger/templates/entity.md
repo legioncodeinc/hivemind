@@ -26,7 +26,7 @@ sources: []
 ## Signature / Definition
 
 ```ts
-[code signature, type declaration, or schema — keep terse, no full bodies]
+[code signature, type declaration, or schema - keep terse, no full bodies. Use the tree-sitter `signature` field (body already stripped).]
 ```
 
 ## Behavior
@@ -48,20 +48,22 @@ sources: []
 - **Created:** commit `{sha}` by {author} on {YYYY-MM-DD}
 - **Last touched:** commit `{sha}` by {author} on {YYYY-MM-DD}
 - **Recent activity:**
-  - `{sha}` — {message} ({date})
-  - `{sha}` — {message} ({date})
+  - `{sha}` - {message} ({date})
+  - `{sha}` - {message} ({date})
 
 ## Sources
 
-- `path/to/source/file.ts` (lines X–Y)
+- `path/to/source/file.ts` (lines X-Y)
 
 ---
 
 **Frontmatter notes for sub-types** (see [`references/frontmatter-schema.md`](../references/frontmatter-schema.md) for the full enum):
 
-- `entity_type` MUST be one of: `function`, `class`, `module`, `service`, `endpoint`, `env-var`, `config-key`, `data-model`, `react-component`, `sql-table`, `queue`, `cron-job`, `feature-flag`.
-- For `react-component`: add `props_summary: "comma-separated prop names"`.
-- For `service`: add `endpoints:` and `env_vars:` lists.
-- For `queue`: add `triggers:` (handler entity) and `queue_framework: bullmq | inngest | sqs | other`.
-- For `cron-job`: add `schedule: "cron expression"` and `triggers:`.
-- For `feature-flag`: add `flag_provider: openfeature | launchdarkly | growthbook | env-var | other` and `read_at:` (call sites).
+- `entity_type` MUST be one of: `function`, `class`, `module`, `service`, `mcp-tool`, `env-var`, `config-key`, `data-model`, `exported-symbol`, `deeplake-table`, `queue`, `scheduled-hook`, `feature-flag`.
+- For `mcp-tool`: add `tool_name:`, `handler:` (function entity), and `server:`.
+- For `service`: add `mcp_tools:`, `env_vars:`, and `deeplake_tables:` lists.
+- For `deeplake-table`: add `table_name:`, `columns:`, `primary_key:`, and `data_model:`.
+- For `queue`: add `triggers:` (handler entity), `worker_kind: spawned-process | daemon | lifecycle-hook`, and `gated_by:`.
+- For `scheduled-hook`: add `hook_kind: interval-tick | lifecycle-hook | session-hook`, `event:` (for lifecycle/session hooks), `interval_source:`, and `triggers:`.
+- For `feature-flag`: add `flag_kind: env-toggle`, `default_value:`, `gates:`, and `read_at:` (branch sites).
+- For `exported-symbol`: add `symbol_kind: const | enum | object | factory | singleton`, `shape_summary:`, and `is_default_export:`.

@@ -16,8 +16,8 @@ April 2026 adversarial analysis. Valuable as the counterpoint source - surfaces 
 ## Key quotations / statistics
 
 - "Feature branches collide at merge time. Trunk-based commits collide at deploy time."
-- "Feature flags are technical debt with a timer. Every flag is a branch in your code — an if statement that doubles the execution paths. Two flags means four paths. Ten flags? Your code has more conditional branches than a choose-your-own-adventure book, and nobody has tested all the combinations."
-- "Flags that are never cleaned up — the 'temporary' flag that has been in production for eight months — become invisible dependencies. New code is written assuming the flag is on. Someone turns it off during a rollback, and features that were never behind that flag break because they depended on a code path that only exists when the flag is enabled."
+- "Feature flags are technical debt with a timer. Every flag is a branch in your code - an if statement that doubles the execution paths. Two flags means four paths. Ten flags? Your code has more conditional branches than a choose-your-own-adventure book, and nobody has tested all the combinations."
+- "Flags that are never cleaned up - the 'temporary' flag that has been in production for eight months - become invisible dependencies. New code is written assuming the flag is on. Someone turns it off during a rollback, and features that were never behind that flag break because they depended on a code path that only exists when the flag is enabled."
 - "How senior is your team? Trunk-based development requires every developer to understand the blast radius of their changes. It requires small commits by instinct, not by policy. A team of senior engineers who have worked in this way will thrive. A team of mixed experience levels needs the guardrails that feature branches provide."
 - "How fast is your CI? Trunk-based development without fast CI is a recipe for a broken trunk. If your test suite takes 30 minutes, developers will not wait. They will merge and hope. 'Merge and hope' is not a strategy."
 

@@ -7,7 +7,7 @@ url: https://www.conventionalcommits.org/en/v1.0.0/
 fetched: 2026-05-20
 ---
 
-# Conventional Commits v1.0.0 — Synthesis
+# Conventional Commits v1.0.0 - Synthesis
 
 ## Format
 
@@ -52,7 +52,7 @@ semantic-release (2026 canonical version management tool) maps Conventional Comm
 
 ## Tooling integration
 
-- `commitlint` with `@commitlint/config-conventional` — enforces format at commit time
-- `semantic-release` — automates version bumps and CHANGELOG generation from commit history
-- `commitizen` — interactive prompt for Conventional Commit format
-- GitHub Actions `amannn/action-semantic-pull-request` — validates PR titles follow CC format
+- `commitlint` with `@commitlint/config-conventional` - enforces format at commit time
+- `semantic-release` - automates version bumps and CHANGELOG generation from commit history
+- `commitizen` - interactive prompt for Conventional Commit format
+- GitHub Actions `amannn/action-semantic-pull-request` - validates PR titles follow CC format

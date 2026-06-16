@@ -1,4 +1,4 @@
-# Reflog Recovery — git-stinger
+# Reflog Recovery - git-stinger
 
 Undoing destructive operations using `git reflog`, `ORIG_HEAD`, and the three reset types.
 

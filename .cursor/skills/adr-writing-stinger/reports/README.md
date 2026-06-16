@@ -4,9 +4,9 @@ This folder accumulates dated audit and usage reports for the `adr-writing-sting
 
 ## Report types
 
-- **ADR log audits** — periodic reviews of a project's ADR corpus for completeness, format consistency, supersession integrity, and coverage of major decisions.
-- **Onboarding readiness assessments** — evaluations of whether the ADR log is usable as an onboarding artifact (index present, recent entries, linked from code, Log4brains site published).
-- **Format migration reports** — records of converting an existing ADR corpus from one format to another (e.g., Nygard to MADR).
+- **ADR log audits**, periodic reviews of a project's ADR corpus for completeness, format consistency, supersession integrity, and coverage of major decisions.
+- **Onboarding readiness assessments**, evaluations of whether the ADR log is usable as an onboarding artifact (index present, recent entries, linked from code, Log4brains site published).
+- **Format migration reports**, records of converting an existing ADR corpus from one format to another (e.g., Nygard to MADR).
 
 ## Naming convention
 

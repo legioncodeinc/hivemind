@@ -24,7 +24,7 @@ sources: []
 
 ## Confidence
 
-[draft | solid | definitive] — [why]
+[draft | solid | definitive] - [why]
 
 ## Related
 
@@ -36,6 +36,6 @@ sources: []
 
 **When wiki-worker-bee files a question:**
 
-- Phase 5 ADR detection encountered a low-confidence commit signal — the question asks the human to confirm whether the commit encoded an architectural decision.
-- Phase 6 contradiction protocol detected a contract change but the resolution is ambiguous — the question proposes the conflict and asks for human judgment.
-- Phase 1 entity parsing encountered a referenced symbol whose definition wasn't in the chunk — the question records the gap.
+- Phase 5 ADR detection encountered a low-confidence commit signal - the question asks the human to confirm whether the commit encoded an architectural decision.
+- Phase 6 contradiction protocol detected a contract change but the resolution is ambiguous - the question proposes the conflict and asks for human judgment.
+- Phase 1 entity parsing encountered a referenced symbol whose definition wasn't in the chunk (a tree-sitter `raw_call` or `unresolved:` edge target) - the question records the gap.

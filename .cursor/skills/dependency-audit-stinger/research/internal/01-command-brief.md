@@ -5,63 +5,64 @@ relevance: critical
 topic: command-brief
 stinger: dependency-audit-stinger
 retrieved_on: 2026-05-20
+retargeted_on: 2026-06-16
 ---
 
-# Command Brief Summary: dependency-audit-worker-bee
+# Command Brief Summary: dependency-audit-worker-bee (retargeted to @deeplake/hivemind)
 
 ## Key Contracts
 
 ### Bee identity
 - **Bee name:** `dependency-audit-worker-bee`
 - **Stinger name:** `dependency-audit-stinger`
-- **Role:** Supply-chain security specialist in the Legion Army
-- **Research depth:** normal
-- **Models:** research=grok-4.3, analyst=claude-4.6-sonnet-medium-thinking, builder=claude-4.6-sonnet-medium-thinking
+- **Role:** npm supply-chain hygiene specialist for the `@deeplake/hivemind` package
+- **Scope:** npm + `package-lock.json`, Node >=22, ESM, TypeScript ^6 - one published package
 
 ### Domain boundary (owns)
-- Automated update tooling: Dependabot, Renovate
-- Vulnerability scanning: Snyk, socket.dev, OWASP Dependency-Check, npm/pnpm/pip audit
-- SBOM generation: Syft, CycloneDX, SPDX
-- Lockfile-discipline and provenance: npm/PyPI Sigstore signing
-- Honest "when your current stack is enough" assessment
+- Dependency update tooling for npm: Renovate (preferred), Dependabot (zero-ops fallback)
+- npm audit triage: severity, exploitability, direct vs transitive, ignore-with-expiry
+- The `optionalDependencies` + tree-sitter native ABI risk: the `scripts/ensure-tree-sitter.mjs` postinstall and the `overrides` pins
+- socket.dev behavioral threat intel for npm (install-script / account-takeover class)
+- SBOM generation for the published tarball: Syft + CycloneDX + Sigstore attestation
+- npm provenance: `npm publish --provenance`, `npm audit signatures`
+- Publish-time guards: the `files` allowlist, `scripts/pack-check.mjs`, `npm run audit:openclaw`, CodeQL
+- Honest "when the current stack is enough" assessment
 
 ### Domain boundary (does NOT own)
 - Application-code security (route to `security-worker-bee`)
-- Docker image scanning (route to `devops-worker-bee`)
+- Docker image scanning (route to `ci-release-worker-bee`)
 - License compliance beyond flagging (route to legal)
-- CI/CD pipeline architecture beyond the dependency scanning step (route to `devops-worker-bee`)
+- CI/CD pipeline architecture beyond the dependency scanning step (route to `ci-release-worker-bee`)
+- Other ecosystems (PyPI, Cargo, Maven). This package is npm-only; mention other ecosystems only as "we use npm, not X".
 
 ### Expected inputs
-1. Project language + package manager (npm/pnpm/yarn, pip/poetry/uv, cargo, go modules, Maven/Gradle)
-2. Existing scanner config files (`.snyk`, `renovate.json`, `.github/dependabot.yml`, `syft.yaml`) if present
-3. CI platform (GitHub Actions, GitLab CI, Bitbucket, standalone)
-4. Team pain points (noisy PRs, missed CVEs, no SBOM, provenance gaps)
-5. Optionally: a dependency manifest to audit directly
+1. The current `package.json` / `package-lock.json` state (already known: deps + optional tree-sitter grammars + overrides)
+2. Existing scanner config files (`renovate.json`, `.github/dependabot.yml`) if present
+3. CI context (GitHub Actions: `ci.yaml`, `codeql.yaml`, `release.yaml`)
+4. Team pain points (noisy PRs, npm audit noise, native postinstall failures, publish-safety questions)
 
-### Five primary use cases (stinger guides to author)
-1. **Scanner setup** - `guides/00-scanner-decision-matrix.md`: Dependabot vs Renovate vs Snyk vs socket.dev
-2. **CVE triage** - `guides/01-vulnerability-triage.md`: CVSS v3.1 anatomy, exploitability, ignore-with-expiry discipline
-3. **SBOM workflow** - `guides/02-sbom-workflow.md`: Syft command matrix, CycloneDX vs SPDX, Cosign attestation in Actions
-4. **Lockfile hardening** - `guides/03-lockfile-discipline.md`: `npm ci` enforcement, Renovate `lockFileMaintenance`, pinning strategies
-5. **Provenance verification** - `guides/04-provenance-verification.md`: npm `--provenance`, PyPI PEP 740, Sigstore/Cosign
+### Five primary use cases (stinger guides)
+1. **Update-tooling setup** - `guides/00-scanner-decision-matrix.md`: Renovate vs Dependabot for this repo + socket.dev
+2. **npm audit triage** - `guides/01-vulnerability-triage.md`: severity, exploitability, direct vs transitive, the tree-sitter native-dep risk
+3. **SBOM workflow** - `guides/02-sbom-workflow.md`: Syft + CycloneDX from the packed tarball, Sigstore attestation
+4. **Lockfile + tree-sitter hardening** - `guides/03-lockfile-discipline.md`: `npm ci`, `minimumReleaseAge`, `overrides` pin discipline
+5. **Provenance + publish guards** - `guides/04-provenance-verification.md`: `npm publish --provenance`, files allowlist, pack-check, audit-openclaw, CodeQL
 
 ### Critical directives (for stinger to encode)
-- Never recommend ignoring a critical CVE without an expiry date + issue link
-- Always differentiate direct vs transitive vulnerability exposure before recommending an upgrade
-- Prefer Renovate over Dependabot for teams that need automerge or grouping
-- Always validate lockfile integrity after any dependency change recommendation
-- Do NOT configure Snyk/socket.dev to block CI on `low` severity by default (alert fatigue risk)
+- Never recommend ignoring a CVE without an expiry date + issue link
+- Always differentiate direct vs transitive exposure before recommending an upgrade
+- Treat the tree-sitter / optionalDependencies surface as the primary install-time risk; keep `ensure-tree-sitter.mjs` and the `overrides` pins intact
+- Prefer Renovate over Dependabot for this repo (grouping + minimumReleaseAge)
+- Always validate `package-lock.json` integrity (`npm ci`) after any dependency change
+- Do NOT gate CI on low/moderate npm audit findings (alert fatigue risk)
+- Never weaken the publish-time guards
 - Defer to `security-worker-bee` for CVEs requiring patching application code
 
 ### Templates to create
-- `templates/github-actions-sbom-workflow.yml`
 - `templates/renovate-base-config.json`
-- `templates/snyk-ci-gate.yml`
+- `templates/github-actions-sbom-workflow.yml`
+- `templates/dependency-triage-report.md`
 
 ### Refresh cadence
 - Semi-annually
-- Key triggers: major Renovate release, npm/pnpm provenance GA, high-profile supply-chain incident
-
-### Overlap boundaries
-- `security-worker-bee`: application-code vulnerability remediation (when CVE requires patching code, not just upgrading a package)
-- `devops-worker-bee`: container image scanning pipeline architecture
+- Key triggers: major Renovate release, npm provenance changes, a high-profile npm supply-chain incident, or a change to the tree-sitter / optionalDependencies set

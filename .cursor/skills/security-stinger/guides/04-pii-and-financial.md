@@ -1,248 +1,183 @@
-# 04 — PII Exposure and Financial Data Patterns (Catalog C)
+# 04 - Captured-Trace PII and Credential Exposure Patterns (Catalog C)
 
-Financial and PII findings are **Critical or High by construction** (never downgrade — see `guides/00-principles.md`). The blast radius of a leaked card number, SSN, or OAuth token is measured in regulator fines and permanent brand damage, not engineering hours.
+Credential and captured-trace findings are **Critical or High by construction** (never downgrade - see `guides/00-principles.md`). The blast radius of a leaked Activeloop JWT, an org id that enables cross-tenant access, or a `memory` row full of raw user prompts is measured in cross-tenant data exposure and broken trust, not engineering hours.
 
 This catalog has nine patterns. Each maps to a scan step in `guides/01-scan-procedure.md` and a remediation playbook in `guides/05-remediation-playbooks.md`.
 
 ---
 
-## C1 — `NEXT_PUBLIC_` Environment Variable Misuse
+## C1 - Credential File Misconfiguration
 
-**What it is:** any `NEXT_PUBLIC_*` variable is embedded in the **client-side JavaScript bundle** and visible to every user who loads your site.
+**What it is:** the Activeloop token lives in `~/.deeplake/credentials.json`. It must be written mode `0600`, in a directory created mode `0700`. Relying on the process umask instead of an explicit mode can leave the token group- or world-readable.
 
-**Must NEVER be `NEXT_PUBLIC_`:** API keys (`OPENAI_API_KEY`, `GOOGLE_API_KEY`), JWT secrets, database URLs, Stripe **secret** keys (`sk_live_*`, `sk_test_*`), internal auth tokens, webhook secrets.
+**Must be tightly scoped:** the credential file itself, any cache of the JWT, the device-flow token exchange.
 
-**Allowed as `NEXT_PUBLIC_`:** app name, public API endpoint base URL, Stripe **publishable** key (`pk_live_*`, `pk_test_*`), Google Analytics ID, Sentry public DSN (but not the auth token).
+**Scan for:** `writeFile` / `mkdir` calls in `src/cli/auth.ts`, `src/commands/auth*.ts`, `src/config.ts` that touch the `.deeplake` directory without an explicit `{ mode: 0o600 }` / `{ mode: 0o700, recursive: true }`.
 
-**Scan for:** grep `.env*` files for `NEXT_PUBLIC_` variables whose name contains `key`, `secret`, `token`, `password`, whose value matches `sk_live_`, `sk_test_`, begins with `-----BEGIN`, or is a JWT-shaped string.
+**Severity:** **High** (a readable token file is one `cat` away from full account takeover; **Critical** if the file is also committed or copied elsewhere).
 
-**Severity:** **Critical** (secrets leaked to the client = already compromised; rotate immediately).
-
-**Fix:** move to a non-prefixed env var, reference server-side only, rotate the leaked secret.
+**Fix:** write with explicit modes; `chmod` defensively after write. Never copy the token out of the credential store.
 
 ---
 
-## C2 — PII in Logging
+## C2 - Tokens / PII in Logging
 
-**What it is:** shipping personally identifiable information into logs, error trackers, or session replay tools.
+**What it is:** shipping the Activeloop token, the `Authorization` header, the org id paired with a token, or raw captured-trace content into logs, stdout, or telemetry.
 
 **Vulnerable:**
 ```ts
-console.log('User:', user);                                        // user has email, phone, SSN
-Sentry.captureException(err, { contexts: { payment: cardData } }); // PII in Sentry
-Sentry.Replay({ maskAllText: false });                             // records form input
-LogRocket.identify(user.id, { email: user.email, ssn: user.ssn });
+console.log('deeplake request', { url, headers });        // headers has Bearer <jwt>
+console.log('captured', session);                         // raw prompts / responses
+logger.error('auth failed', { token, orgId });            // token in a log line
 ```
 
-Downstream services (Sentry, LogRocket, Datadog, Rollbar) become unintended PII processors — often crossing GDPR / CCPA boundaries into a whole new compliance posture.
+**Severity:** **Critical** if a token / credential is logged (rotate immediately). **High** if raw captured-trace PII (prompts, tool calls, responses from `sessions`/`memory`) is logged.
 
-**Severity:** **High** (Critical if PII includes SSN, card number, government ID, health data).
+**Fix:** use a `safeLog()` helper that redacts sensitive keys before anything reaches a log or telemetry sink. Reference implementation: `templates/safe-log.ts`. Playbook: `guides/05-remediation-playbooks.md` §safeLog.
 
-**Fix:** use a `safeLog()` helper that redacts sensitive keys before shipping anything to a log or telemetry sink. Reference implementation: `templates/safe-log.ts`. Playbook: `guides/05-remediation-playbooks.md` §safeLog.
-
-**Keys to redact by default:** `ssn`, `socialSecurityNumber`, `taxId`, `cardNumber`, `card_number`, `cvv`, `cvc`, `password`, `token`, `apiKey`, `secret`, `authorization`, `cookie`, `pin`, `dob`, `dateOfBirth`, `driverLicense`, `passport`.
+**Keys to redact by default:** `authorization`, `token`, `accessToken`, `refreshToken`, `bearer`, `secret`, `apiKey`, `cookie`, `orgId` (when paired with a token), plus any captured-trace field carrying raw prompt/response text.
 
 ---
 
-## C3 — PII in URL Query Parameters
+## C3 - Org Id / Scope in Untrusted Inputs
 
-**What it is:** sensitive data in GET URLs. URLs are stored in server logs, CDN logs, browser history, analytics, and `Referer` headers to every outbound link.
-
-**Vulnerable:**
-```
-GET /api/password-reset?email=john@example.com&token=abc123
-GET /users?ssn=123-45-6789
-```
-
-**Fix:** use POST with request body for any sensitive identifier. For password reset, use a single opaque token in the path segment (`/reset/<token>`) that maps server-side to the email, not the email itself in the query string.
-
-**Severity:** **High**.
-
-**Scan for:** `router.query.(email|ssn|phone|token|password|card)` or `req.query.(...)` accessing sensitive field names in GET routes.
-
----
-
-## C4 — Over-Fetching Database Records
-
-**What it is:** ORM queries that return all columns by default — including fields the caller never needs (and the caller's consumer never had authorization to see).
+**What it is:** taking the `X-Activeloop-Org-Id` value or the `me|team` scope from request-scoped input (an MCP tool argument, a CLI flag passed through, a captured payload) instead of from the authenticated credential context.
 
 **Vulnerable:**
 ```ts
-const user = await prisma.user.findUnique({ where: { id } });
-// returns id, email, passwordHash, stripeCustomerId, ssnEnc, internalNotes, ...
-return Response.json(user);
+// org id from the tool call argument - caller picks their own tenant
+const orgId = toolArgs.orgId;
+await api.query(sql, { orgId });
 ```
 
-**Fix:** always use an explicit `select:` (or equivalent) at the boundary. Define a DTO type that enumerates what's OK to leave the server.
+**Fix:** derive org id and scope from the credential store / authenticated session only. The caller never names their own org or widens their own scope.
 
-```ts
-const user = await prisma.user.findUnique({
-  where: { id },
-  select: { id: true, displayName: true, avatarUrl: true },
-});
-```
+**Severity:** **High** (scope coercion / broken access control; Critical if it reaches another tenant's captured PII).
 
-**Severity:** **High** if the over-fetched fields are PII. **Medium** if merely inefficient.
+**Scan for:** `orgId` / `scope` assignments sourced from tool args, `req.*`, or parsed captured content rather than `config` / the credential context.
 
 ---
 
-## C5 — Stripe / Payment Processing Violations (PCI DSS)
+## C4 - Over-Capture into `sessions` / `memory`
 
-This is the single costliest category to get wrong. The compliance tier swings from **SAQ A** (~22 self-assessed controls) to **SAQ D** (~300 controls + external ASV scans + quarterly pen tests) the moment raw card data touches your server. Research: `research/2026-04-24-stripe-pci-dss.md`.
+**What it is:** capture hooks that store more of a prompt, tool call, or response than is needed - including secrets the agent happened to handle, full request headers, or other-user content.
 
-### Critical — raw card data on your server
+**Vulnerable:**
+```ts
+capture({ prompt, toolCalls, rawHeaders, env: process.env }); // captures everything
+```
+
+**Fix:** capture only the fields needed for recall, redact tokens/headers before write, and never persist `process.env` or `Authorization` content into a trace.
+
+**Severity:** **High** if the over-captured fields include credentials or another user's data. **Medium** if merely verbose.
+
+---
+
+## C5 - Token or Secret Persisted into a Captured Trace
+
+This is the costliest category to get wrong, because the `sessions` and `memory` tables are recalled into FUTURE agents' context. A token written into a trace today is replayed into someone's prompt tomorrow. Research: `research/cve-watchlist.md`.
+
+### Critical - credential material in a trace
 
 Any of these is **Critical**:
-- `req.body.cardNumber`, `req.body.cvv`, `req.body.cvc`, `req.body.exp_month`, `req.body.exp_year`.
-- A database column named `card_number`, `cvv`, `cvc`, `pan`, or similar.
-- A Stripe charge created with a raw card string instead of a token / PaymentMethod ID.
-- Card data logged anywhere (stdout, files, analytics).
+- An `Authorization: Bearer <jwt>` header captured into a `sessions` row.
+- The contents of `~/.deeplake/credentials.json` captured anywhere.
+- An API key / secret that the agent handled, persisted verbatim into `memory`.
+- A token logged AND captured (double exposure).
 
-**Fix:** migrate to Stripe Elements / Payment Element / Checkout. Card data flows directly from the user's browser to Stripe; your server only ever sees `pm_*` or `pi_*` tokens. Delete the card columns. Rotate Stripe keys. Re-run the audit.
+**Fix:** redact at the capture boundary using `safeLog`-style key redaction before the INSERT. Delete any existing trace rows that contain credential material (scoped `UPDATE ... SET summary = ...` or row delete through the proper API). Rotate the Activeloop token. Re-run the audit.
 
-### Critical — missing webhook signature verification
+### Critical - capture firing despite opt-out
+
+`HIVEMIND_CAPTURE=false` must mean zero INSERTs. A capture path that writes anyway is a Critical trust violation - the user explicitly opted out.
 
 ```ts
-// vulnerable
-const event = JSON.parse(body);
-
-// correct
-const event = stripe.webhooks.constructEvent(
-  body,
-  req.headers.get('stripe-signature'),
-  process.env.STRIPE_WEBHOOK_SECRET!
-);
+const CAPTURE = process.env.HIVEMIND_CAPTURE !== 'false';
+// every INSERT site must be guarded by CAPTURE
+if (CAPTURE) await api.insert(row);
 ```
-
-Without verification, any attacker can POST a forged `checkout.session.completed` event and trigger entitlement grants (subscription upgrades, credit issuance, etc.).
 
 ### Worked example
 
-`examples/critical-pci-violation.md` walks the full Critical triage — vulnerable code, finding text, severity rationale, remediation diff.
+`examples/critical-pci-violation.md` walks the full Critical triage - a `Bearer` token leaked into a log line and a captured trace, with the redaction remediation.
 
 ---
 
-## C6 — Unencrypted PII in Client-Side Storage
+## C6 - Token in Client/Temp Storage or Shell Output
 
-**What it is:** storing sensitive data in `localStorage` / `sessionStorage`, both of which are plain-text accessible to any JavaScript on the page (and therefore to any XSS payload).
+**What it is:** copying the token out of the credential store into a temp file, an env dump, shell command output, or a VFS-visible path under `~/.deeplake/memory`.
 
 **Vulnerable:**
 ```ts
-localStorage.setItem('user', JSON.stringify({
-  id, email, ssn, cardToken, phone,
-}));
+writeFileSync('/tmp/dl-token.txt', token);                 // token on disk, world-readable
+runShell(`curl -H "Authorization: Bearer ${token}" ...`);  // token in process args / shell history
 ```
 
 **Fix:**
-- Never store PII or auth tokens in `localStorage` / `sessionStorage`.
-- Session state: use an `httpOnly` + `secure` + `sameSite` cookie (`guides/03-owasp-top-10.md` B3.5).
-- Profile data needed across pages: fetch from server per session, or cache only non-sensitive fields client-side.
+- Keep the token in memory; reference it from the credential store at request time.
+- Never put a token in a shell argument (visible in `ps` / shell history) - build the request in-process via the Deep Lake client.
+- Never write the token under `~/.deeplake/memory` (it is recall-visible).
 
-**Severity:** **High**.
+**Severity:** **Critical**.
 
-**Scan for:** `localStorage.setItem(`, `sessionStorage.setItem(` in files under `src/components/**`, `app/**`, especially those touching profile or payment flows.
-
----
-
-## C7 — Missing Field-Level Authorization
-
-**What it is:** resolver or endpoint returns a field the caller should not see.
-
-**GraphQL vulnerable:**
-```ts
-const resolvers = {
-  User: {
-    ssn: (parent) => parent.ssn,           // no role check
-    bankAccount: (parent) => parent.bankAccount,
-    internalNotes: (parent) => parent.internalNotes,
-  },
-};
-```
-
-**Fix:** guard each sensitive field:
-```ts
-const resolvers = {
-  User: {
-    ssn: (parent, _, ctx) => {
-      if (ctx.user.id !== parent.id && ctx.user.role !== 'admin') return null;
-      return parent.ssn;
-    },
-  },
-};
-```
-
-Or apply `graphql-shield` rules centrally. Better: split sensitive fields into a `UserPrivate` type that's only accessible through an authorized path.
-
-**REST vulnerable:** endpoints that return the full user row when only display fields were needed. Same fix pattern as C4 — explicit `select:`, DTO types.
-
-**Severity:** **High** (Critical if the field is financial or government-ID).
+**Scan for:** `token` flowing into `writeFile`, `runShell`, template-literal shell commands, or any path under the VFS root.
 
 ---
 
-## C8 — Server Components Leaking Data to the Client Bundle
+## C7 - Missing Role / Field-Level Authorization on Recall
 
-**What it is:** a Next.js Server Component passes an ORM model object as a prop to a `'use client'` component. Server Component return values are serialized into the JavaScript bundle sent to the browser — the client receives every field of the model, not just the ones it renders.
+**What it is:** a recall or MCP tool that returns a `sessions` / `memory` field the caller should not see - another user's summary, an org-internal note, or a field that may contain residual sensitive text.
+
+**Vulnerable:**
+```ts
+// returns every column of every matching row, ignoring scope
+return await api.query(`SELECT * FROM "${tbl}" WHERE path LIKE '${sqlLike(prefix)}%'`);
+```
+
+**Fix:** select only the fields the recall needs, and scope the query by org + `me|team` (see `guides/03-owasp-top-10.md` B4). For MCP tool results, never include fields outside the caller's scope.
+
+**Severity:** **High** (Critical if the field carries credential material or cross-org PII).
+
+---
+
+## C8 - Recalled Content Injected as Instructions (Poisoning)
+
+**What it is:** recalled-memory content or a mined skill injected into agent context (SessionStart / UserPromptSubmit) and treated as trusted instructions. Because traces are attacker-influenceable, this lets a poisoned trace steer future agents - potentially into exfiltrating the token.
 
 **Vulnerable:**
 ```tsx
-// app/profile/page.tsx (Server Component)
-export default async function ProfilePage({ params }) {
-  const user = await prisma.user.findUnique({ where: { id: params.id } });
-  return <UserProfile user={user} />;
-}
-
-// components/UserProfile.tsx
-'use client';
-export function UserProfile({ user }) { return <h1>{user.displayName}</h1>; }
+const systemPrompt = base + '\n' + recalled.map(r => r.summary).join('\n'); // injected as instructions
 ```
-
-The browser receives `user.email`, `user.ssn`, `user.stripeCustomerId`, `user.passwordHash` — even though the UI only uses `user.displayName`.
 
 **Fix:**
-```tsx
-// app/profile/page.tsx
-import 'server-only';
-export default async function ProfilePage({ params }) {
-  const user = await prisma.user.findUnique({
-    where: { id: params.id },
-    select: { displayName: true, avatarUrl: true }, // DTO
-  });
-  return <UserProfile user={user} />;
-}
-```
+- Delimit and label recalled content as untrusted DATA at the injection boundary, not instructions.
+- Ensure the Haiku skillify gate (`src/skillify/`) runs before a mined skill is propagated.
+- Never inject one org's / user's content into another's context.
 
-Put `import 'server-only'` in every data-access module so that accidentally importing it from a client component fails at build time.
-
-**Severity:** **High** (Critical if sensitive fields end up in the serialized payload).
+**Severity:** **High** (Critical for cross-org poisoning). Full treatment: `guides/02-vibe-coding-patterns.md` A6.
 
 ---
 
-## C9 — GDPR / Compliance Gaps
+## C9 - Data-Handling / Retention Gaps
 
-Research: `research/2026-04-24-gdpr-17-20.md`.
+### C9.1 Capture opt-out honored everywhere
 
-### C9.1 Right to Erasure (GDPR Article 17)
+- **Required:** every INSERT site in the hooks is guarded by `HIVEMIND_CAPTURE !== 'false'`. A single unguarded write site → **High** (silent capture against opt-out).
 
-- **Required:** a `DELETE /api/user` endpoint or equivalent that performs a **hard delete** (not just `deletedAt = NOW()`). Must cascade to analytics, CRM, payment processors, Sentry/LogRocket user records, and — within the backup window — backups.
-- **Required:** an audit-log entry recording that the erasure was performed (tamper-evident).
-- **Severity:** **Medium** generally. **Critical** if the product stores EU-user personal data on a paid tier (from the Command Brief's explicit rule).
+### C9.2 Scope & org integrity
 
-### C9.2 Right to Data Portability (GDPR Article 20)
-
-- **Required:** authenticated endpoint (`GET /api/user/export`) returning a structured, machine-readable copy (JSON preferred) of the data the user provided — profile, posts, uploads, orders.
-- **Must be rate-limited** to prevent enumeration.
-- **Should deliver via signed short-TTL URL** if the payload is large.
-- **Severity:** **Medium**.
+- **Required:** captured rows are written with the correct `me|team` scope and the authenticated org id; neither can be widened by a caller.
+- **Severity:** **High** generally; **Critical** if a trace can be read across orgs.
 
 ### C9.3 Other gaps
 
-- No consent tracking for third-party data sharing → **Medium**.
-- No documented retention policy (logs stored indefinitely) → **Medium**.
+- No documented retention / scoping expectation for the `sessions` and `memory` tables → **Medium**.
+- No way to purge a user's captured traces on request → **Medium**.
 
 ---
 
 ## See also
 
-- `guides/05-remediation-playbooks.md` — canonical fixes for every pattern above.
-- `templates/safe-log.ts` — PII-redacting logger reference implementation.
-- `examples/critical-pci-violation.md` — C5 worked case.
+- `guides/05-remediation-playbooks.md` - canonical fixes for every pattern above.
+- `templates/safe-log.ts` - token/PII-redacting logger reference implementation.
+- `examples/critical-pci-violation.md` - C2 / C5 worked case.

@@ -65,7 +65,7 @@ git grep "wJalrXUtnFEMI" $(git log --all --format="%H") # should return nothing
 ## Step 4: Re-add the remote and force-push
 
 ```bash
-# filter-repo removes the remote — add it back:
+# filter-repo removes the remote - add it back:
 git remote add origin https://github.com/org/repo.git
 
 # Force-push all branches:
@@ -85,7 +85,7 @@ Notify the team:
 >
 > `git clone https://github.com/org/repo.git`
 >
-> Do NOT merge, rebase, or cherry-pick from your old local clone — it contains the old history."
+> Do NOT merge, rebase, or cherry-pick from your old local clone - it contains the old history."
 
 Any PRs open against rewritten branches need to be rebased onto the new history.
 
@@ -99,7 +99,7 @@ History rewrite does NOT undo the exposure. The credential must be rotated:
 3. Update all systems that used the old key.
 4. Audit access logs for the period the key was exposed.
 
-This step is `security-worker-bee`'s domain — escalate immediately.
+This step is `security-worker-bee`'s domain - escalate immediately.
 
 ---
 

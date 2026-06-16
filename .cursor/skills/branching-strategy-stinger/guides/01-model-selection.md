@@ -1,6 +1,6 @@
 # Model Selection: Decision Tree and Migration Paths
 
-**Research sources:** `research/external/2026-03-31-tbd-vs-gitflow-comparison-novvista.md` (primary — 9-factor matrix, DORA stats, mobile SDK case study), `research/external/2026-04-18-gitflow-github-flow-comparison-palakorn.md` (80/15/4/1 split confirmation).
+**Research sources:** `research/external/2026-03-31-tbd-vs-gitflow-comparison-novvista.md` (primary - 9-factor matrix, DORA stats, mobile SDK case study), `research/external/2026-04-18-gitflow-github-flow-comparison-palakorn.md` (80/15/4/1 split confirmation).
 
 **Example:** `examples/happy-path-github-flow.md`, `examples/edge-case-gitflow-justified.md`
 
@@ -54,10 +54,10 @@ Does the team support multiple live product versions simultaneously?
 5. Deploy from main (or tag main for releases).
 
 **Branch naming convention:**
-- `feat/short-description` — new feature
-- `fix/short-description` — bug fix
-- `chore/short-description` — maintenance, refactor
-- `hotfix/short-description` — emergency fix (see `guides/02-release-and-hotfix.md`)
+- `feat/short-description` - new feature
+- `fix/short-description` - bug fix
+- `chore/short-description` - maintenance, refactor
+- `hotfix/short-description` - emergency fix (see `guides/02-release-and-hotfix.md`)
 
 ---
 
@@ -83,11 +83,11 @@ GitFlow is justified ONLY for:
 **The mobile SDK case study** (from `research/external/2026-03-31-tbd-vs-gitflow-comparison-novvista.md`): A 25-engineer mobile SDK team used GitFlow's release branch model during App Store review cycles. The external constraint (app approval can take 3-14 days) forced a stabilization window. GitFlow's release branch was a natural fit. The team acknowledged TBD + feature flags + a release train approach could have achieved the same outcome but required more upfront investment.
 
 **GitFlow branch map:**
-- `main` — production-ready code, tagged at each release
-- `develop` — integration branch; source for feature branches
-- `feature/X` — branched from develop, merged back to develop
-- `release/X.Y.Z` — branched from develop when entering release-candidate phase; bug-fix only; merged to main AND develop on release
-- `hotfix/X` — branched from main tag; merged to main AND develop; triggers patch version
+- `main` - production-ready code, tagged at each release
+- `develop` - integration branch; source for feature branches
+- `feature/X` - branched from develop, merged back to develop
+- `release/X.Y.Z` - branched from develop when entering release-candidate phase; bug-fix only; merged to main AND develop on release
+- `hotfix/X` - branched from main tag; merged to main AND develop; triggers patch version
 
 ---
 
@@ -100,4 +100,4 @@ Quick reference:
 - **GitFlow → GitHub Flow:** Gradually shorten feature branch lifetimes, introduce feature flags for incomplete work, merge develop into main and delete develop once the team is comfortable. See `guides/05-migration-playbook.md` for the 5-step sequence.
 - **GitHub Flow → TBD:** Deploy feature flag infrastructure first. Do not attempt until flag infra is live.
 
-> TODO: open question — GitLab Merge Trains coverage. The Command Brief notes Merge Queue availability varies by platform. Teams on GitLab need guidance on merge trains, which differ from GitHub's queue. See `research/external/2026-05-20-gitlab-merge-trains.md` for the limited coverage available. A targeted search is recommended before advising GitLab teams on merge trains specifically. (`research/research-summary.md` open question 1)
+> TODO: open question - GitLab Merge Trains coverage. The Command Brief notes Merge Queue availability varies by platform. Teams on GitLab need guidance on merge trains, which differ from GitHub's queue. See `research/external/2026-05-20-gitlab-merge-trains.md` for the limited coverage available. A targeted search is recommended before advising GitLab teams on merge trains specifically. (`research/research-summary.md` open question 1)

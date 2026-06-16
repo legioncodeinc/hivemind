@@ -8,7 +8,7 @@ See also: `examples/happy-path.md` for a worked dotfile setup from scratch.
 
 ---
 
-## Step 1 — Identify the shell and version
+## Step 1 - Identify the shell and version
 
 ```bash
 echo "$SHELL"          # current shell path
@@ -19,7 +19,7 @@ fish --version         # Fish version
 
 Flag if the developer is on macOS Bash 3.2 (Apple ships this for licensing reasons). Recommend `brew install bash` and setting it as default.
 
-## Step 2 — Check for the critical anti-patterns
+## Step 2 - Check for the critical anti-patterns
 
 Scan the config file for these red flags:
 
@@ -32,7 +32,7 @@ Scan the config file for these red flags:
 | Duplicate PATH additions | Accumulates on each shell open | Add idempotency guard (see `guides/00-principles.md`) |
 | `cd /some/path` at top level | Changes directory on shell start | Move to a function or alias |
 
-## Step 3 — Check init snippet completeness for modern tools
+## Step 3 - Check init snippet completeness for modern tools
 
 For each modern CLI tool the developer has installed, verify the init snippet is present:
 
@@ -55,14 +55,14 @@ eval "$(starship init bash)"  # Bash
 starship init fish | source   # Fish
 ```
 
-## Step 4 — Check environment variable hygiene
+## Step 4 - Check environment variable hygiene
 
 - `HISTSIZE` and `HISTFILESIZE` should be large (≥10000) for useful history.
 - `HISTCONTROL=ignoredups:erasedups` to deduplicate history.
 - `EDITOR` and `VISUAL` should be set (needed by git, etc.).
-- Sensitive secrets must NOT be in dotfiles — they belong in a secrets manager or `.env` (gitignored).
+- Sensitive secrets must NOT be in dotfiles - they belong in a secrets manager or `.env` (gitignored).
 
-## Step 5 — Produce the audit report
+## Step 5 - Produce the audit report
 
 Use `templates/findings-report.md` as the output shape. Summarize:
 - Shell version and OS

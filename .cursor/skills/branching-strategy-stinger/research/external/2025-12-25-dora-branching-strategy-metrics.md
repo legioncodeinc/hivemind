@@ -17,13 +17,13 @@ Data-backed correlation between branching strategy and DORA metrics. The most qu
 
 - "According to the State of DevOps Reports, elite performers are 3.1x more likely to use Trunk-Based Development than low performers."
 - "Code developed on branches that live longer than 24 hours takes 33% longer to review and merge." (DORA & LinearB benchmarks)
-- "Your branching strategy isn't just a workflow preference — it's a mathematical cap on your deployment frequency."
+- "Your branching strategy isn't just a workflow preference - it's a mathematical cap on your deployment frequency."
 - "Data from thousands of engineering teams shows a clear correlation: as branch lifespan increases, DORA metrics plummet."
 
 ## Three hidden costs of long-lived branches
 1. **Merge Conflict Tax**: The probability of a merge conflict increases non-linearly with branch age
 2. **Context Switching Tax**: Managing multiple active branches forces developers to constantly switch contexts between "dev", "release-1.2", and "hotfix"
-3. **Inventory Tax**: Code sitting in a branch is inventory — it has value (cost to write) but zero revenue (not in production)
+3. **Inventory Tax**: Code sitting in a branch is inventory - it has value (cost to write) but zero revenue (not in production)
 
 ## DORA metric correlations by branching strategy
 (Approximate, based on DORA/LinearB benchmarks)

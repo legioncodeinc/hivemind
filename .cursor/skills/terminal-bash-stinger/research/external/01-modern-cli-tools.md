@@ -1,4 +1,4 @@
-# Modern CLI Tools — Research Note
+# Modern CLI Tools - Research Note
 
 **Source type:** community synthesis
 **Authority:** high
@@ -13,7 +13,7 @@
 - Version 14.x as of 2026; actively maintained by BurntSushi.
 - Key flags: `--type`, `--glob`, `--hidden`, `--no-ignore`, `--multiline`, `-A/-B/-C` (context), `--json` (machine-readable).
 - `.ripgreprc` file supports persistent config (set `--type-add`, `--smart-case`, etc.).
-- Respects `.gitignore`, `.ignore`, `.rgignore` by default — use `--no-ignore` to disable.
+- Respects `.gitignore`, `.ignore`, `.rgignore` by default - use `--no-ignore` to disable.
 - **Gotcha:** does NOT search hidden files by default; add `--hidden` or set in `.ripgreprc`.
 
 ## fd
@@ -28,7 +28,7 @@
 
 - Version 0.50+; interactive fuzzy finder.
 - Shell integration: `CTRL-R` (history), `CTRL-T` (file picker), `ALT-C` (cd).
-- `--preview` spawns a subshell — use `bat --color=always {}` for syntax-highlighted preview.
+- `--preview` spawns a subshell - use `bat --color=always {}` for syntax-highlighted preview.
 - `FZF_DEFAULT_COMMAND` env var controls the source (default: `find`; recommend `fd --type f`).
 - **Gotcha:** `--preview` is CPU-intensive; add `--preview-window=hidden` to toggle on demand.
 
@@ -50,9 +50,9 @@
 ## zoxide
 
 - Version 0.9+; smart `cd` that learns frequently-visited directories.
-- Init: `eval "$(zoxide init bash)"` / `zsh` / `fish` — adds `z` command and optionally `cd` override.
+- Init: `eval "$(zoxide init bash)"` / `zsh` / `fish` - adds `z` command and optionally `cd` override.
 - `z partial_path` fuzzes across visited dirs; `zi` drops into fzf for interactive selection.
-- **Gotcha:** first-time use requires building a visits database — directories must be visited at least once before `z` can jump to them.
+- **Gotcha:** first-time use requires building a visits database - directories must be visited at least once before `z` can jump to them.
 
 ## Recommended aliases (all shells)
 

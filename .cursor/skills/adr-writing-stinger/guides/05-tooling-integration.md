@@ -23,11 +23,11 @@ npm install -g adr-tools
 adr init docs/decisions
 
 # Create a new ADR (opens $EDITOR)
-adr new "Use PostgreSQL as the primary data store"
-# → creates docs/decisions/0001-use-postgresql-as-the-primary-data-store.md
+adr new "Fall back to BM25 when embeddings are disabled"
+# -> creates docs/decisions/0001-bm25-fallback-when-embeddings-off.md
 
 # Create an ADR that supersedes ADR-0001
-adr new -s 1 "Use Neon instead of Supabase"
+adr new -s 1 "Append-only version-bump for embedding rows"
 # → creates 0002-..., adds "Supersedes: 0001" to header
 
 # Regenerate table of contents
@@ -50,7 +50,7 @@ adr-tools does NOT:
 
 ---
 
-## Log4brains (thomvaill/log4brains) — v1.1.0, December 2024
+## Log4brains (thomvaill/log4brains), v1.1.0, December 2024
 
 Log4brains converts a markdown ADR corpus into a searchable, filterable HTML site. It supports mono-repo and multi-package layouts, and can be integrated into a CI/CD pipeline to publish the site on every merge.
 
@@ -92,7 +92,7 @@ npx log4brains adr new "Adopt trunk-based development"
 
 # Build static site for deployment
 npx log4brains build
-# Output: .log4brains/out/ — deploy this folder to GitHub Pages, Netlify, or Vercel
+# Output: .log4brains/out/, deploy this folder to GitHub Pages, Netlify, or Vercel
 
 # Superscede using Log4brains UI
 # (Use the "Supersede" button in the preview UI, or run adr-tools -s N and 

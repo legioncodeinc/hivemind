@@ -1,25 +1,21 @@
 # Example: System Overview (Abbreviated)
 
-This is an abbreviated example of a `library/knowledge/private/architecture/system-overview.md`. It shows the exact format, section structure, and Mermaid diagram style.
-
-The full version for `legion-code` lives at:
-`legion-code/library/knowledge/private/architecture/system-overview.md`
+This is an abbreviated example of a `library/knowledge/private/architecture/system-overview.md`. It shows the exact format, section structure, and Mermaid diagram style. The full version lives at `library/knowledge/private/architecture/system-overview.md`.
 
 ---
 
 ```markdown
 # System Overview
 
-> Category: Architecture | Version: 1.0 | Date: May 2026 | Status: Active
+> Category: Architecture | Version: 1.0 | Date: June 2026 | Status: Active
 
-Master architecture diagram and component summary for the Vibe by Legion Code platform.
+How Hivemind is laid out as a monorepo, the major subsystems, and how a shared core fans out into six per-agent integrations backed by a single Deep Lake substrate.
 
 **Related:**
-- [`request-lifecycle.md`](request-lifecycle.md)
-- [`resolver-placement.md`](resolver-placement.md)
-- [`../ai/resolver-overview.md`](../ai/resolver-overview.md)
-- [`ADR-001-stack-theia-react-reactflow.md`](ADR-001-stack-theia-react-reactflow.md)
-- [`ADR-002-llm-gateway-resolver-portkey.md`](ADR-002-llm-gateway-resolver-portkey.md)
+- [`session-lifecycle.md`](session-lifecycle.md)
+- [`desktop-harness-overview.md`](desktop-harness-overview.md)
+- [`../ai/hybrid-recall-pipeline.md`](../ai/hybrid-recall-pipeline.md)
+- [`../data/deeplake-tables-schema.md`](../data/deeplake-tables-schema.md)
 
 ---
 
@@ -27,59 +23,53 @@ Master architecture diagram and component summary for the Vibe by Legion Code pl
 
 ```mermaid
 flowchart TB
-    subgraph Browser [Learner Browser]
-        Shell[Theia Shell\nReact 19 + TypeScript]
+    subgraph agents["Host assistants"]
+        claudeCode["Claude Code"]
+        codex["Codex"]
+        cursor["Cursor"]
+        openclaw["OpenClaw"]
+        hermes["Hermes"]
+        pi["pi"]
     end
 
-    subgraph ControlPlane [DigitalOcean Control Plane]
-        Fastify[Fastify API\nHTTP + WebSocket + Bull]
-        Resolver[Resolver Service\nPROMPT CASCADE + RAG + SSE]
+    subgraph core["Shared core (src/)"]
+        capture["Session capture"]
+        recall["Hybrid recall (grep-core)"]
+        embed["Embeddings daemon"]
+        mcp["MCP server"]
     end
 
-    subgraph DataLayer [DigitalOcean Data Layer]
-        Postgres[(Managed Postgres 17)]
-        Valkey[(Managed Valkey)]
-        Spaces[(DO Spaces)]
+    subgraph substrate["Deep Lake"]
+        tables[("7 tables: memory, sessions,\nskills, rules, goals, kpis, codebase")]
     end
 
-    subgraph WorkerFleet [Worker Fleet]
-        Container[Learner Container\nNode 22 + Block Storage]
-    end
-
-    subgraph ExternalServices [External Services]
-        Portkey[Portkey Gateway]
-        Clerk[Clerk Auth]
-        Stripe[Stripe Billing]
-        Qdrant[Qdrant Cloud]
-    end
-
-    Shell -->|Clerk JWT, TLS| Fastify
-    Fastify --> Resolver
-    Resolver -->|stream=true| Portkey
-    Fastify <-->|Prisma| Postgres
-    Fastify <-->|get/set| Valkey
-    Fastify <-->|S3 API| Spaces
-    Fastify <-->|HTTPS| Clerk
-    Fastify <-->|HTTPS| Stripe
-    Fastify <-->|Docker Engine API| Container
-    Resolver <-->|vector search| Qdrant
+    claudeCode --> core
+    codex --> core
+    cursor --> core
+    openclaw --> core
+    hermes --> core
+    pi --> core
+    capture --> tables
+    recall --> tables
+    embed --> tables
+    mcp --> tables
 ```
 
 ---
 
 ## Component summary
 
-### Theia shell (browser)
+### Host assistants
 
-The learner's primary surface. Built on Theia as a library (not forked) per [ADR-013](ADR-013-theia-as-library.md). [...]
+Six coding assistants (Claude Code, Codex, Cursor, OpenClaw, Hermes, pi), each with its own distribution model and native lifecycle events. Each gets a thin shim under `src/hooks/` that maps its events onto the shared capture and recall calls. [...]
 
-### Fastify API (control plane)
+### Shared core (`src/`)
 
-A single Fastify process on a DigitalOcean Droplet. Handles all HTTP routes, WebSocket endpoints, Bull background jobs, and webhook handlers. [...]
+Everything durable and agent-agnostic: the Deep Lake API client, auth, config, SQL utils, the embeddings daemon, and the MCP server. The Claude Code hooks are the reference implementation; the other harnesses re-express the same handlers. [...]
 
-### Resolver service
+### Deep Lake substrate
 
-The most security-critical component. Assembles the 5-layer prompt cascade, runs RAG retrieval, and proxies to Portkey. Skill content never reaches the client. [...]
+A single Deep Lake dataset holding all seven tables, defined once in `src/deeplake-schema.ts`. Both `CREATE TABLE` and lazy schema healing iterate the same column lists. [...]
 
 ---
 
@@ -87,20 +77,19 @@ The most security-critical component. Assembles the 5-layer prompt cascade, runs
 
 | Decision | Choice | ADR |
 |---|---|---|
-| IDE framework | Theia as library + React 19 | [ADR-001](ADR-001-stack-theia-react-reactflow.md) |
-| LLM gateway | Resolver + Portkey | [ADR-002](ADR-002-llm-gateway-resolver-portkey.md) |
-| Storage | Postgres + Valkey + Qdrant + DO Spaces | [ADR-003](ADR-003-storage-postgres-valkey-qdrant-spaces.md) |
-| Container runtime | Docker + three-tier hibernation | [ADR-004](ADR-004-dev-container-runtime-docker-hibernating.md) |
+| Integration model | Write memory logic once, wrap per agent | [system-overview](system-overview.md) |
+| Storage substrate | Single Deep Lake dataset, 7 tables | [data/deeplake-tables-schema](../data/deeplake-tables-schema.md) |
+| Recall | Hybrid lexical + semantic UNION ALL | [ai/hybrid-recall-pipeline](../ai/hybrid-recall-pipeline.md) |
 ```
 
 ---
 
 ## What makes this a good system overview
 
-1. **Architecture diagram is the first thing** — not buried below prose
-2. **Diagram uses subgraphs** to show logical groupings (Browser, Control Plane, Data Layer, etc.)
+1. **Architecture diagram is the first thing** - not buried below prose
+2. **Diagram uses subgraphs** to show logical groupings (Host assistants, Shared core, Deep Lake)
 3. **No explicit colors** in the Mermaid diagram (breaks dark mode)
-4. **Component summary table** at the end cross-references each component to its detailed doc
+4. **Component summary table** cross-references each component to its detailed doc
 5. **Key design decisions table** links every major choice to its ADR
-6. **Related section** links to the two companion docs readers typically need next
-7. **Concise prose** — the component summaries are 1-3 sentences each, not paragraphs
+6. **Related section** links to the companion docs readers typically need next
+7. **Concise prose** - the component summaries are 1-3 sentences each, not paragraphs

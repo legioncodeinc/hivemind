@@ -4,9 +4,9 @@ ai_description: |
   ADRs MUST live in architecture/ADR-<n>-<kebab-slug>.md.
   Engineering standards MUST live in standards/documentation-framework.md.
   Other domain folders (<domain>/) are repo-specific and may be created as
-  needed (ai/, auth/, data/, frontend/, infrastructure/, integrations/,
-  marketing/, operations/, personas/, reporting/, roadmap/, scanners/,
-  security/, strategy/, etc.).
+  needed. In this repo: ai/, architecture/, auth/, collaboration/, data/,
+  frontend/, infrastructure/, integrations/, multi-tenant/, operations/,
+  plugins/, security/, standards/.
   Do NOT file customer-facing content here (that goes in knowledge/public/).
   Write path: library/knowledge/private/<domain>/<kebab-slug>.md.
 human_description: |
@@ -18,7 +18,7 @@ human_description: |
   When creating a new domain folder, add a README.md explaining what belongs.
 ---
 
-# Knowledge — Private
+# Knowledge - Private
 
 Internal documentation for engineers, product, and AI agents.
 
@@ -31,10 +31,10 @@ Internal documentation for engineers, product, and AI agents.
 
 ## Optional domain folders
 
-Create any of these as needed: `ai/`, `auth/`, `data/`, `frontend/`, `infrastructure/`, `integrations/`, `marketing/`, `operations/`, `personas/`, `reporting/`, `roadmap/`, `scanners/`, `security/`, `strategy/`, `reference/`, `<product>-ux-ui/`.
+Create any of these as needed (the set this repo uses): `ai/`, `auth/`, `collaboration/`, `data/`, `frontend/`, `infrastructure/`, `integrations/`, `multi-tenant/`, `operations/`, `plugins/`, `security/`. Add a `README.md` to any new domain folder explaining what belongs.
 
 ## What does NOT belong here
 
 - Customer-facing content (put in `knowledge/public/`)
 - PRDs or IRDs (put in `requirements/` or `issues/`)
-- Brand assets (put in `legion-shared/brands/`)
+- Binary asset

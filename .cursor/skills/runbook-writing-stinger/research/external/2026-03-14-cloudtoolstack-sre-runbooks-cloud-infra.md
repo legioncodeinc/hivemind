@@ -8,7 +8,7 @@ topic: runbook-structure
 stinger: runbook-writing-stinger
 ---
 
-# Building SRE Incident Response Runbooks for Cloud Infrastructure — CloudToolStack
+# Building SRE Incident Response Runbooks for Cloud Infrastructure - CloudToolStack
 
 Published: 2026-03-14
 

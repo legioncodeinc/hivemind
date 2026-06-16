@@ -1,4 +1,4 @@
-# Research Summary — terminal-bash-stinger
+# Research Summary - terminal-bash-stinger
 
 **Depth tier consumed:** shallow
 **Time window:** 2025-11 to 2026-05
@@ -11,13 +11,13 @@
 
 ### Modern CLI tools (ripgrep, fd, fzf, bat, eza, zoxide)
 
-All six tools are actively maintained as of 2026. ripgrep 14.x remains the gold standard for text search — significantly faster than grep on large repos, respects `.gitignore` by default. fd 10.x is the idiomatic `find` replacement with simpler syntax and parallel execution. fzf 0.50+ ships with a built-in preview window and improved shell integration. bat 0.24+ supports syntax-highlighted paging with a `--plain` flag for pipe-safe output. eza (successor to exa) is maintained and supports git-aware column output. zoxide 0.9+ integrates with all three major shells via `eval "$(zoxide init <shell>)"`.
+All six tools are actively maintained as of 2026. ripgrep 14.x remains the gold standard for text search - significantly faster than grep on large repos, respects `.gitignore` by default. fd 10.x is the idiomatic `find` replacement with simpler syntax and parallel execution. fzf 0.50+ ships with a built-in preview window and improved shell integration. bat 0.24+ supports syntax-highlighted paging with a `--plain` flag for pipe-safe output. eza (successor to exa) is maintained and supports git-aware column output. zoxide 0.9+ integrates with all three major shells via `eval "$(zoxide init <shell>)"`.
 
-**Key gotcha:** bat is NOT a drop-in `cat` replacement in pipes — `--plain --no-pager` flags are required, or use `batcat` alias on Debian. fzf's `--preview` flag spawns a subshell, so it is CPU-intensive in large repos.
+**Key gotcha:** bat is NOT a drop-in `cat` replacement in pipes - `--plain --no-pager` flags are required, or use `batcat` alias on Debian. fzf's `--preview` flag spawns a subshell, so it is CPU-intensive in large repos.
 
 ### Shell scripting best practices
 
-The `set -euo pipefail` trio remains the standard preamble for non-interactive Bash scripts. shellcheck v0.10 (2025) is available as a GitHub Action and VSCode extension. Key patterns: always quote `"$variable"`, use `$(...)` not backticks, use `local` for function variables, use `trap cleanup EXIT` for teardown, prefer `[[ ]]` over `[ ]` for Bash conditionals. POSIX portability is a separate concern — scripts targeting `sh` must avoid Bash-isms entirely.
+The `set -euo pipefail` trio remains the standard preamble for non-interactive Bash scripts. shellcheck v0.10 (2025) is available as a GitHub Action and VSCode extension. Key patterns: always quote `"$variable"`, use `$(...)` not backticks, use `local` for function variables, use `trap cleanup EXIT` for teardown, prefer `[[ ]]` over `[ ]` for Bash conditionals. POSIX portability is a separate concern - scripts targeting `sh` must avoid Bash-isms entirely.
 
 ### Tmux vs Zellij
 
@@ -29,17 +29,17 @@ tmux 3.4 (2024) is stable and widely deployed. Zellij 0.40+ (2026) offers a Rust
 
 ### Shell prompts (Starship, p10k)
 
-Starship 1.20+ (2026) is the cross-shell choice — works identically in Bash, Zsh, Fish, and Nu. Powerlevel10k remains the most feature-rich Zsh-only option but the maintainer has reduced activity; the community is migrating to `p10k`-compatible themes for Starship. Fish's built-in prompt is configurable via `fish_prompt` function; `tide` is the community favorite.
+Starship 1.20+ (2026) is the cross-shell choice - works identically in Bash, Zsh, Fish, and Nu. Powerlevel10k remains the most feature-rich Zsh-only option but the maintainer has reduced activity; the community is migrating to `p10k`-compatible themes for Starship. Fish's built-in prompt is configurable via `fish_prompt` function; `tide` is the community favorite.
 
 ---
 
 ## Five most influential sources
 
-1. BashFAQ (mywiki.wooledge.org) — canonical reference for quoting, globbing, and `set` options; authority = very high.
-2. ripgrep README (github.com/BurntSushi/ripgrep) — definitive source for rg flags, `.ripgreprc`, and performance tuning.
-3. just README (github.com/casey/just) — comprehensive reference for justfile syntax, parameters, and cross-platform patterns.
-4. shellcheck wiki (github.com/koalaman/shellcheck/wiki) — SC-code-annotated explanations for every warning shellcheck emits.
-5. Zellij docs (zellij.dev/documentation) — `config.kdl` reference and plugin API.
+1. BashFAQ (mywiki.wooledge.org) - canonical reference for quoting, globbing, and `set` options; authority = very high.
+2. ripgrep README (github.com/BurntSushi/ripgrep) - definitive source for rg flags, `.ripgreprc`, and performance tuning.
+3. just README (github.com/casey/just) - comprehensive reference for justfile syntax, parameters, and cross-platform patterns.
+4. shellcheck wiki (github.com/koalaman/shellcheck/wiki) - SC-code-annotated explanations for every warning shellcheck emits.
+5. Zellij docs (zellij.dev/documentation) - `config.kdl` reference and plugin API.
 
 ---
 

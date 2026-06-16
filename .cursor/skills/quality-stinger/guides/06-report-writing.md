@@ -1,4 +1,4 @@
-# 06 — Report Writing
+# 06, Report Writing
 
 How to produce the findings-report markdown. Use `templates/qa-report.md` as the skeleton and fill each section in order.
 
@@ -14,7 +14,7 @@ Pick the path that matches the source plan. Reports are dated, so multiple audit
 
 Examples:
 
-- Plan `library/requirements/features/feature-007-billing/prd-feature-007-billing.md` → report at `library/requirements/features/feature-007-billing/reports/2026-04-26-qa-report.md`.
+- Plan `library/requirements/features/feature-007-search/prd-feature-007-search.md` -> report at `library/requirements/features/feature-007-search/reports/2026-04-26-qa-report.md`.
 - Plan `library/requirements/issues/issue-042-stale-cache/ird-issue-042-stale-cache.md` → report at `library/requirements/issues/issue-042-stale-cache/reports/2026-04-26-qa-report.md`.
 - Standalone audit of the auth surface → `library/qa/auth/2026-04-26-qa-report.md`.
 
@@ -26,30 +26,30 @@ Create the `reports/` subfolder (or `library/qa/<domain>/`) if it does not exist
 
 ## Writing each section
 
-### Summary (2–3 sentences)
+### Summary (2-3 sentences)
 
 Open with the verdict, then the headline findings, then the recommendation. Voice: calm, factual, no hedging.
 
 Good:
 
-> The phase-3 billing implementation is largely complete with one Critical gap (missing retry on failed invoices, US-3) and three Warnings. Recommend addressing the retry logic before merge; the Warnings can be deferred to a follow-up.
+> The phase-3 library-search implementation is largely complete with one Critical gap (missing BM25 fallback, US-3) and three Warnings. Recommend addressing the fallback logic before merge; the Warnings can be deferred to a follow-up.
 
 Bad:
 
-> Overall the PR seems to be in good shape! There are a few things to look at but nothing too serious. I think maybe the retry stuff should be revisited.
+> Overall the PR seems to be in good shape! There are a few things to look at but nothing too serious. I think maybe the fallback stuff should be revisited.
 
 ### Scorecard
 
-A five-row table, one row per axis. Use ✅ / ⚠️ / ❌ exclusively — no yellow-light ambiguity.
+A five-row table, one row per axis. Use ✅ / ⚠️ / ❌ exclusively, no yellow-light ambiguity.
 
 ```markdown
 | Category       | Status | Notes |
 |---------------|--------|-------|
-| Completeness  | ⚠️ | 1 of 7 plan items missing (US-3 retry logic) |
+| Completeness  | ⚠️ | 1 of 7 plan items missing (US-3 BM25 fallback) |
 | Correctness   | ✅ | Implementations match plan behavior |
-| Alignment     | ✅ | Naming and structure match `library/requirements/features/feature-007-billing/prd-feature-007-billing.md` |
-| Gaps          | ⚠️ | Missing empty-state for invoice list; no loading.tsx |
-| Detrimental   | ⚠️ | N+1 in `invoice-service.ts:listInvoices` |
+| Alignment     | ✅ | Naming and structure match `library/requirements/features/feature-007-search/prd-feature-007-search.md` |
+| Gaps          | ⚠️ | Missing empty-result message; no degraded-mode label |
+| Detrimental   | ⚠️ | N+1 dataset read in `search-service.ts:search` |
 ```
 
 ### Findings sections
@@ -59,28 +59,28 @@ Three sections in this order: Critical, Warnings, Suggestions. Each is a checkbo
 Each finding follows this shape:
 
 ```markdown
-- [ ] **<one-line title>** — `path/to/file.ts:LN-LN`
+- [ ] **<one-line title>**, `path/to/file.ts:LN-LN`
 
-  <2–4 sentences explaining what's wrong, why it matters, and a suggested remediation.>
+  <2-4 sentences explaining what's wrong, why it matters, and a suggested remediation.>
 
   ```ts
-  <1–6 lines of offending or missing code>
+  <1-6 lines of offending or missing code>
   ```
 ```
 
 Example:
 
 ```markdown
-- [ ] **Missing retry on failed invoice (US-3)** — `src/billing/invoice-service.ts:88-104`
+- [ ] **Missing BM25 fallback when embeddings off (US-3)**, `src/search/search-service.ts:88-104`
 
-  The plan §3.3 specifies that a failed invoice (Stripe `payment_failed`) must trigger a retry with exponential backoff. The current handler logs the failure and returns — no retry is scheduled. This leaves the user in a "payment failed" state indefinitely, which the plan explicitly prohibits.
+  The plan §3.3 specifies that when embeddings are disabled, search must fall back to a BM25 lexical ranker and label the result mode. The current handler logs the unavailability and returns, no fallback runs. This leaves search returning nothing offline, which the plan explicitly prohibits.
 
-  Suggested: schedule a retry job (via existing `queue.enqueue`) with a 1h / 6h / 24h backoff, then mark the invoice `dunning` after three failures.
+  Suggested: call the BM25 ranker over the library corpus and tag the result mode `bm25-fallback`.
 
   ```ts
-  if (event.type === "invoice.payment_failed") {
-    logger.warn("Invoice payment failed", { invoiceId });
-    return;  // ← missing retry
+  if (!embeddingsAvailable) {
+    logger.warn("embeddings unavailable");
+    return;  // <- missing BM25 fallback
   }
   ```
 ```
@@ -93,11 +93,11 @@ If a section has no findings, include an empty list with "None" below:
 None.
 ```
 
-Do not omit empty sections — the reader needs to see that each tier was considered.
+Do not omit empty sections, the reader needs to see that each tier was considered.
 
 ### Plan Item Traceability
 
-Full table from step 3. Don't abbreviate. If a plan has 40 requirements, the table has 40 rows. Use horizontal scroll or wrap — do not cut rows.
+Full table from step 3. Don't abbreviate. If a plan has 40 requirements, the table has 40 rows. Use horizontal scroll or wrap, do not cut rows.
 
 Include non-goals as rows (prefix `NG-`) so the reader sees scope was audited.
 
@@ -106,10 +106,10 @@ Include non-goals as rows (prefix `NG-`) so the reader sees scope was audited.
 One-line summary per file. Derived from the inventory in step 2.
 
 ```markdown
-- `src/api/invoices/route.ts` (M) — added GET with cursor pagination per US-1
-- `src/billing/invoice-service.ts` (A) — new service; contains the retry gap (US-3)
-- `src/db/schema.prisma` (M) — added `Invoice` and `InvoiceLineItem` models
-- `docs/billing/invoice-architecture.md` (A) — architecture note per §2.1
+- `src/retrieval/rank.ts` (M), added cursor-capped ranking per US-1
+- `src/search/search-service.ts` (A), new service; contains the fallback gap (US-3)
+- `src/dataset/schema.ts` (M), added the search index tensor to the Deep Lake schema
+- `docs/SUMMARIES.md` (M), architecture note per §2.1
 ```
 
 Group by file path (alphabetical within the group) rather than by status.
@@ -121,8 +121,8 @@ Group by file path (alphabetical within the group) rather than by status.
 - **Direct.** "The handler does not retry." Not "Looks like there might be no retry here, maybe?"
 - **Cite evidence.** Every finding has a file, line, and (usually) a snippet.
 - **Suggest, don't mandate.** "Suggested:" rather than "You must:". The author owns the fix.
-- **No adjectives.** "Appalling", "terrible", "lovely" — none of these. Severity lives in the tier, not the prose.
-- **No apologies or softeners.** "I think maybe", "just a thought", "probably" — cut all of these.
+- **No adjectives.** "Appalling", "terrible", "lovely", none of these. Severity lives in the tier, not the prose.
+- **No apologies or softeners.** "I think maybe", "just a thought", "probably", cut all of these.
 
 ---
 
@@ -151,7 +151,7 @@ Run through this list:
 - [ ] Every finding has `file:line` coordinates.
 - [ ] Every finding has a severity matching `guides/05-severity-classification.md`.
 - [ ] The Scorecard has exactly five rows.
-- [ ] The traceability table includes every plan requirement — no silent omissions.
+- [ ] The traceability table includes every plan requirement, no silent omissions.
 - [ ] The Files Changed list matches the inventory from step 2 exactly.
 - [ ] No findings appear in more than one severity section.
 - [ ] No section is missing (write "None" if empty).

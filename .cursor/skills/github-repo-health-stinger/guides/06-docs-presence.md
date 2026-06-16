@@ -1,4 +1,4 @@
-# 06 — Docs Presence Audit
+# 06 - Docs Presence Audit
 
 *Research basis: `research/external/04-issue-pr-templates-docs.md`*
 
@@ -55,13 +55,13 @@ See `research/external/04-issue-pr-templates-docs.md` for full rubric. Summary:
 | README.md | ✅ | Has quickstart, badges |
 | LICENSE | ✅ | MIT |
 | CONTRIBUTING.md | ✅ | |
-| SECURITY.md | ❌ | Missing — responsible disclosure policy needed |
+| SECURITY.md | ❌ | Missing - responsible disclosure policy needed |
 | CODE_OF_CONDUCT.md | ❌ | Missing |
 | SUPPORT.md | N/A | |
 
 **Findings:**
 - RECOMMEND: Add `SECURITY.md` documenting how to report security vulnerabilities (effort: 20 minutes; GitHub provides a template at github.com/nicowillis/security).
-- RECOMMEND: Add `CODE_OF_CONDUCT.md` — use Contributor Covenant (contributor-covenant.org) as the starting point.
+- RECOMMEND: Add `CODE_OF_CONDUCT.md` - use Contributor Covenant (contributor-covenant.org) as the starting point.
 ```
 
 ## Handoff

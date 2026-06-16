@@ -11,16 +11,16 @@
 
 ## Summary
 
-Veracode analyzed 80 curated coding tasks across 100+ LLMs in Java, JavaScript, Python, and C#. Headline finding: AI produces functional code, but introduces security vulnerabilities in ~45% of cases. JavaScript failure rate is in the 38–45% range (security pass rate ≈ 55–62%, i.e., worse than the brief's original "57%" figure but in the same ballpark).
+Veracode analyzed 80 curated coding tasks across 100+ LLMs in Java, JavaScript, Python, and C#. Headline finding: AI produces functional code, but introduces security vulnerabilities in ~45% of cases. JavaScript failure rate is in the 38-45% range (security pass rate ≈ 55-62%, i.e., worse than the brief's original "57%" figure but in the same ballpark).
 
 ## Key statistics to preserve
 
 - **45%** of AI-generated code contains security flaws (all languages, aggregate).
-- **JavaScript:** 38–45% failure rate → ~55–62% pass rate. (The Bee body says "57%"; Veracode's blog language places JS at the higher end of risk alongside Python and C#.)
+- **JavaScript:** 38-45% failure rate → ~55-62% pass rate. (The Bee body says "57%"; Veracode's blog language places JS at the higher end of risk alongside Python and C#.)
 - **Java:** >70% failure rate (riskiest).
 - **Cross-site scripting (CWE-80):** models failed in **86%** of cases.
 - **Log injection (CWE-117):** models failed in **88%** of cases.
-- Larger models did **not** outperform smaller models on security — "systemic, not a scaling problem."
+- Larger models did **not** outperform smaller models on security - "systemic, not a scaling problem."
 
 ## Key quotations
 

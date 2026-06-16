@@ -1,4 +1,4 @@
-# Worktrees — git-stinger
+# Worktrees - git-stinger
 
 Parallel branch work without stashing, context-switching overhead, or re-cloning.
 
@@ -49,7 +49,7 @@ git push origin hotfix/critical-bug
 
 # Continue working on feature-a in the original directory
 cd ../my-repo
-# feature-a is still exactly as you left it — no stash needed
+# feature-a is still exactly as you left it - no stash needed
 ```
 
 ---

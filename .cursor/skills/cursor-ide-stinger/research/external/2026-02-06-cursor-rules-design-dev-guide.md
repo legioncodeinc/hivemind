@@ -37,9 +37,7 @@ Published February 6, 2026. Comprehensive practitioner guide covering the comple
 - "Tip: Use `.cursor/rules/` with `.mdc` files when you need fine-grained control over when rules activate. Use `AGENTS.md` when you want simple, always-on instructions in plain markdown."
 - "Team Rules can be enforced by team admins, preventing users from disabling them."
 
-## Annotations for stinger-forge
+## Relevance to the stinger
 
-- The 5-level priority hierarchy should be a table in `guides/01-principles.md` - it is clearer than anything in the official docs.
-- The AGENTS.md alternative is worth documenting in guide 02 as the "no frontmatter, no complexity" option for simple projects.
-- The enforced vs. advisory Team Rules distinction is important for Enterprise users - include in guide 02.
-- The common scoping patterns (SQL files, TSX components, test files, API routes) are excellent worked examples for guide 02.
+- Practitioner backing for `guides/01-principles.md` and `guides/02-rule-file-authoring.md`: the rule priority hierarchy and common glob scoping patterns.
+- Secondary source; the authoritative rules reference is the official docs note and this repo's own `.cursor/rules/*.mdc`.

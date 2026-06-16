@@ -1,4 +1,4 @@
-# Prototype Pollution — Node.js / TypeScript Defense
+# Prototype Pollution - Node.js / TypeScript Defense
 
 **Sources:**
 - https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html
@@ -17,11 +17,11 @@ Prototype pollution: attacker submits JSON like `{"__proto__": {"isAdmin": true}
 
 1. **Schema-validate with Zod `.strict()`** (or `.passthrough(false)`). Rejects unknown keys like `__proto__`, `constructor`, `prototype`. This is the primary defense.
 2. **Use `Object.hasOwn(obj, key)`** instead of `obj.key` or `key in obj` when checking flags like `isAdmin`.
-3. **Use `Object.create(null)`** for internal maps and lookup tables — objects without a prototype cannot be polluted.
+3. **Use `Object.create(null)`** for internal maps and lookup tables - objects without a prototype cannot be polluted.
 4. **`Map`** instead of plain objects for user-keyed caches.
 5. **Node flags:** `--disable-proto=delete` removes `__proto__` entirely. Useful defense in depth but NOT sufficient alone (`constructor.prototype` still reachable).
 
-## Example — DOMPurify fix (CVE-2024-45801)
+## Example - DOMPurify fix (CVE-2024-45801)
 
 DOMPurify patched its own prototype-pollution bug by switching internal lookups to `Object.hasOwn()` + `Object.create(null)`. Cite as the canonical example in the remediation playbook.
 

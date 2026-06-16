@@ -5,22 +5,22 @@ ai_description: |
   Sub-trees: knowledge/ (public and private docs), requirements/ (product
   work: PRDs), issues/ (reactive bug/incident work: IRDs), notes/ (junk
   drawer, read-only to agents).
-  Schema reference: legion-shared/standards/library-schema-v2.md.
-  Standardize script: pnpm standardize-library --repository <name>.
+  Schema v2 is described inline here and in each sub-folder's README
+  frontmatter (ai_description / human_description).
 human_description: |
   Root of this repository's documentation library.
   - knowledge/: reference documentation split by audience (public vs private)
   - requirements/: planned product work (PRDs) with backlog/in-work/completed lifecycle
   - issues/: reactive bug and incident work (IRDs) with same lifecycle
-  - notes/: unstructured scratch space — only humans write here
-  Run `pnpm standardize-library --repository <name>` to scaffold any missing structure.
+  - notes/: unstructured scratch space - only humans write here
+  Each sub-folder carries a README explaining what belongs in it.
 ---
 
 # Library
 
 Documentation root for this repository. Schema version: **v2**.
 
-See [`legion-shared/standards/library-schema-v2.md`](../../legion-shared/standards/library-schema-v2.md) for the full specification.
+The schema is self-describing: this README plus each sub-folder's `README.md` (which carry `ai_description` / `human_description` frontmatter) define what belongs where. Start at the sub-folder READMEs for the per-tree invariants.
 
 ## Top-level layout
 
@@ -34,6 +34,6 @@ See [`legion-shared/standards/library-schema-v2.md`](../../legion-shared/standar
 
 ## What does NOT belong here
 
-- Brand assets → `legion-shared/brands/`
-- Wiki entity pages → `legion-wiki/<repo>/wiki/` (derived, never edit)
-- Library mirrors → `legion-wiki/<repo>/library/` (derived, never edit)
+- Binary assets (images, fonts, PDFs) -> an `assets/` or `public/` folder outside `library/`
+- Generated source code or build output -> stays in the source tree, never mirrored here
+- Wiki entity pages authored by `wiki-worker-bee` DO belong here, under `knowledge/` - they are not a separate mirror

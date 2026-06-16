@@ -1,6 +1,6 @@
 ---
 name: github-repo-health-stinger
-description: Repository hygiene auditor for GitHub repos — branching strategy, branch protection rulesets, PR culture, commit history (Conventional Commits), CI workflow density, README/docs presence, .gitignore coverage, CODEOWNERS, issue/PR templates, and repo settings (merge strategy, secret scanning, auto-delete). Use when the user says "audit this repo", "repo health check", "review our branching strategy", "check branch protection", "CODEOWNERS audit", "are our CI checks configured correctly", "check PR templates", or "GitHub repo settings review". Do NOT use for deep CI/CD architecture (devops-worker-bee), code correctness (security-worker-bee, react-worker-bee), or database schema (db-worker-bee).
+description: Repository hygiene auditor for GitHub repos - branching strategy, branch protection rulesets, PR culture, commit history (Conventional Commits), CI workflow density, README/docs presence, .gitignore coverage, CODEOWNERS, issue/PR templates, and repo settings (merge strategy, secret scanning, auto-delete). Use when the user says "audit this repo", "repo health check", "review our branching strategy", "check branch protection", "CODEOWNERS audit", "are our CI checks configured correctly", "check PR templates", or "GitHub repo settings review". Do NOT use for deep CI/CD architecture (ci-release-worker-bee), code correctness (security-worker-bee, typescript-node-worker-bee), or Deep Lake dataset schema (deeplake-dataset-worker-bee).
 license: MIT
 ---
 
@@ -8,7 +8,7 @@ license: MIT
 
 You are equipped to audit GitHub repositories across eight hygiene dimensions and produce a scored report with a prioritized remediation plan. This stinger encodes the 2026 authoritative checklist derived from GitHub's official documentation, the Conventional Commits specification, and community best practices.
 
-**Always start with `guides/00-principles.md`** — it defines the audit-only boundary, the scoring rubric, the API scope declaration, and the handoff rules to `devops-worker-bee`.
+**Always start with `guides/00-principles.md`** - it defines the audit-only boundary, the scoring rubric, the API scope declaration, and the handoff rules to `ci-release-worker-bee`.
 
 ---
 
@@ -33,9 +33,9 @@ You are equipped to audit GitHub repositories across eight hygiene dimensions an
 
 Three modes supported; declare which is in use in the report header:
 
-1. **Local clone + `gh` CLI** — most complete; requires `gh auth login` and `gh repo view --json` access.
-2. **GitHub REST API** — requires a personal access token with `repo` scope for private repos; fine-grained tokens supported.
-3. **Local clone only** — inspects file system (workflows, .gitignore, CODEOWNERS, templates) without API calls; branch protection data is unavailable.
+1. **Local clone + `gh` CLI** - most complete; requires `gh auth login` and `gh repo view --json` access.
+2. **GitHub REST API** - requires a personal access token with `repo` scope for private repos; fine-grained tokens supported.
+3. **Local clone only** - inspects file system (workflows, .gitignore, CODEOWNERS, templates) without API calls; branch protection data is unavailable.
 
 Declare coverage gaps when running in mode 3. See `guides/00-principles.md` §2.
 
@@ -47,7 +47,7 @@ Declare coverage gaps when running in mode 3. See `guides/00-principles.md` §2.
 2. **Cite the exact path or GitHub Settings URL for every finding.**
 3. **Score every dimension**, even when the score is perfect.
 4. **Prioritize by impact × effort**, not by dimension order. The remediation list must be ranked.
-5. **Hand off CI architecture depth to `devops-worker-bee`.** Workflow gap findings surface the issue and name `devops-worker-bee` as the next step; they do not deep-dive into workflow design.
+5. **Hand off CI architecture depth to `ci-release-worker-bee`.** Workflow gap findings surface the issue and name `ci-release-worker-bee` as the next step; they do not deep-dive into workflow design.
 6. **Hand off secret scanning results to `security-worker-bee`.** Whether secret scanning is *enabled* is this Bee's check; what leaked secrets *mean* is `security-worker-bee`'s job.
 7. **Declare API scope** used for data collection at the top of every report.
 
@@ -80,4 +80,4 @@ Overall score = sum(dimension_score × weight). Report as a percentage (0-100).
 - Worked examples: `examples/`
 - Audit report template: `templates/audit-report.md`
 - CODEOWNERS template: `templates/CODEOWNERS.example`
-- Research: `research/research-summary.md` (executive summary), `research/index.md` (manifest)
+- Research: `research/research-summary.md` (executi

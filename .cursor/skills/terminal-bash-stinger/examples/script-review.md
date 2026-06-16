@@ -1,6 +1,6 @@
-# Script Review — Real-World Deployment Script
+# Script Review - Real-World Release-Sync Script
 
-A worked example of `terminal-bash-worker-bee` reviewing a shell script that deploys a Node.js app to a VPS.
+A worked example of `terminal-bash-worker-bee` reviewing a shell script that builds the Hivemind package and syncs the smoke-test to a staging host.
 
 Demonstrates: audit procedure, finding classification, fix generation.
 
@@ -10,21 +10,21 @@ References: `guides/03-shell-scripting.md`, `guides/00-principles.md`
 
 ## Input
 
-Developer submits `scripts/deploy.sh` for review:
+Developer submits `scripts/sync-smoke.sh` for review:
 
 ```bash
 #!/bin/bash
 SERVER=$1
 BRANCH=$2
 
-echo "Deploying $BRANCH to $SERVER"
+echo "Syncing $BRANCH to $SERVER"
 
 ssh $SERVER "
-  cd /app
+  cd /opt/hivemind
   git pull origin $BRANCH
-  npm install
+  npm ci
   npm run build
-  pm2 restart app
+  npx vitest run smoke
 "
 ```
 
@@ -42,7 +42,7 @@ ssh $SERVER "
 
 ### Escalation note
 
-This script runs on a VPS (production server). For CI-triggered deploys, `devops-worker-bee` should review the CI step that calls this script. `terminal-bash-worker-bee` covers the script's shell safety; `devops-worker-bee` covers the CI integration.
+This script runs on a staging host. For CI-triggered release sync, `ci-release-worker-bee` should review the CI step that calls this script. `terminal-bash-worker-bee` covers the script's shell safety; `ci-release-worker-bee` covers the CI integration.
 
 ### Fixed script
 
@@ -70,11 +70,11 @@ echo "Deploying branch '${BRANCH}' to server '${SERVER}'"
 # (EOFDEPLOY is single-quoted, so $BRANCH is expanded locally before ssh)
 ssh "$SERVER" "
   set -euo pipefail
-  cd /app
+  cd /opt/hivemind
   git pull origin '${BRANCH}'
-  npm install --production
+  npm ci
   npm run build
-  pm2 restart app
+  npx vitest run smoke
 "
 
 echo "Deploy complete."
@@ -83,6 +83,6 @@ echo "Deploy complete."
 ### Report summary
 
 - **Critical fixes:** 3 (missing safety preamble, unquoted variable expansions, missing arg validation)
-- **Medium fixes:** 1 (injection risk in heredoc — resolved by expanding locally and quoting in remote shell)
+- **Medium fixes:** 1 (injection risk in heredoc - resolved by expanding locally and quoting in remote shell)
 - **Low fixes:** 1 (shebang portability)
-- **Escalation:** recommend `devops-worker-bee` reviews the CI step that invokes this script.
+- **Escalation:** recommend `ci-release-worker-bee` reviews the CI step that invokes this script.

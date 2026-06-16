@@ -66,10 +66,10 @@ git config --global rebase.autoSquash true
 ## Escape hatches
 
 ```bash
-# Before rebase — save sha:
+# Before rebase - save sha:
 git log -1 --format=%H
 
-# After rebase — undo:
+# After rebase - undo:
 git reset --hard ORIG_HEAD
 
 # Find pre-rebase sha in reflog:

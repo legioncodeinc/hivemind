@@ -1,14 +1,14 @@
-# 05 — CI Workflow Density Audit
+# 05 - CI Workflow Density Audit
 
 *Research basis: `research/external/01-github-rulesets-docs.md` (required status checks), `research/external/05-repo-security-settings.md` (dependency review)*
 
-> **Scope boundary:** This guide audits workflow *presence and density* — are the right stages configured, and are they triggered correctly? It does NOT audit workflow architecture (Dockerfile hygiene, reusable workflow design, OIDC, cache backends). Hand those to `devops-worker-bee`.
+> **Scope boundary:** This guide audits workflow *presence and density* - are the right stages configured, and are they triggered correctly? It does NOT audit workflow architecture (reusable workflow design, release pipeline, OIDC, cache backends, cross-node matrix). Hand those to `ci-release-worker-bee`.
 
 ## What to inspect
 
 For each workflow file in `.github/workflows/`:
 
-1. **Triggers:** `push`, `pull_request`, `schedule`, `workflow_dispatch` — are the right events covered?
+1. **Triggers:** `push`, `pull_request`, `schedule`, `workflow_dispatch` - are the right events covered?
 2. **Stage coverage:** Does the workflow have at least lint, test, and build stages?
 3. **Missing stages:** Security scan, dependency review, E2E tests, type check?
 4. **Timeout settings:** Missing timeouts allow runaway jobs.
@@ -21,12 +21,12 @@ For each workflow file in `.github/workflows/`:
 # List all workflow files
 ls .github/workflows/
 
-# List triggers for each workflow
-for f in .github/workflows/*.yml; do
+# List triggers for each workflow (Hivemind uses .yaml)
+for f in .github/workflows/*.y*ml; do
   echo "=== $f ==="; grep -A 10 '^on:' "$f"; done
 
 # Check jobs in each workflow
-for f in .github/workflows/*.yml; do
+for f in .github/workflows/*.y*ml; do
   echo "=== $f jobs ==="; grep '^  [a-z].*:$' "$f"; done
 ```
 
@@ -36,11 +36,11 @@ Score each active workflow out of 10, then average across all workflows:
 
 | Stage present | Points |
 |---|---|
-| Lint (ESLint, Ruff, etc.) | +2 |
-| Type check (tsc, pyright, mypy) | +2 |
-| Unit/integration tests | +2 |
-| Build (compile, next build, docker build) | +2 |
-| Security scan (Trivy, Snyk, CodeQL, dependency-review) | +2 |
+| Quality gate (duplication via jscpd, format/lint where present) | +2 |
+| Type check (`tsc --noEmit`) | +2 |
+| Unit/integration tests (Vitest, cross-node, windows-smoke) | +2 |
+| Build (tsc + esbuild bundle) | +2 |
+| Security scan (CodeQL, dependency-review, Snyk) | +2 |
 
 Deductions:
 - No `timeout-minutes` on any job: -1
@@ -52,20 +52,20 @@ Deductions:
 ```markdown
 ### CI Workflow Density (Score: X/10)
 
-**Workflows found:** 2 (pr-ci.yml, deploy.yml)
+**Workflows found:** 3 (ci.yaml, codeql.yaml, release.yaml)
 
-| Workflow | Triggers | Lint | Type | Test | Build | Security | Timeout | In required checks |
+| Workflow | Triggers | Quality | Type | Test | Build | Security | Timeout | In required checks |
 |---|---|---|---|---|---|---|---|---|
-| pr-ci.yml | pull_request | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| deploy.yml | push:main | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | N/A |
+| ci.yaml | pull_request | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| release.yaml | push:tags | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | N/A |
 
 **Findings:**
-- RECOMMEND: Add `dependency-review` action to `pr-ci.yml` to block PRs that introduce vulnerable dependencies.
-- RECOMMEND: Add `timeout-minutes: 20` to `deploy.yml` jobs to prevent runaway deployments.
-- HAND OFF: `devops-worker-bee` — `deploy.yml` uses deprecated `actions/cache@v2`; recommend upgrading to v4 and evaluating Depot for build acceleration.
+- RECOMMEND: Add `dependency-review` action to `ci.yaml` to block PRs that introduce vulnerable dependencies.
+- RECOMMEND: Add `timeout-minutes: 20` to `release.yaml` jobs to prevent runaway publishes.
+- HAND OFF: `ci-release-worker-bee` - `release.yaml` uses a deprecated `actions/cache@v2`; recommend upgrading to v4 and tightening the publish-smoke-test gate.
 ```
 
 ## Handoff trigger
 
-When findings include Dockerfile issues, workflow architecture improvements (reusable workflows, OIDC), or cache/runner optimization — explicitly name `devops-worker-bee` in the finding and do not prescribe the solution. Example:
-> "Workflow architecture issue: `pr-ci.yml` rebuilds Docker base image on every run with no cache backend configured. Recommend invoking `devops-worker-bee` to evaluate BuildKit cache mounts and Depot integration."
+When findings include release-pipeline issues, workflow architecture improvements (reusable workflows, OIDC, cross-node matrix), or cache/runner optimization - explicitly name `ci-release-worker-bee` in the finding and do not prescribe the solution. Example:
+> "Workflow architecture issue: `ci.yaml` reinstalls the full toolchain on ever

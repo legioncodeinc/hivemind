@@ -1,4 +1,4 @@
-# Prisma N+1 Query Problem — Detection and Fixes
+# Prisma N+1 Query Problem - Detection and Fixes
 
 **Sources:**
 - https://www.prisma.io/docs/orm/prisma-client/queries/advanced/query-optimization-performance
@@ -12,12 +12,12 @@
 
 ## Summary
 
-The N+1 query problem: one query fetches a list of N parent records, then N additional queries fetch related data — one per parent — instead of a single batched query. This is the single most common performance regression in ORM-backed Next.js apps and a leading Detrimental Pattern the Bee should flag.
+The N+1 query problem: one query fetches a list of N parent records, then N additional queries fetch related data - one per parent - instead of a single batched query. This is the single most common performance regression in ORM-backed Next.js apps and a leading Detrimental Pattern the Bee should flag.
 
 ## Detection signatures (for code review)
 
 1. **Loop-over-findUnique/findFirst:** any code of the shape `for (const item of items) { await prisma.x.findUnique(...) }` or `items.map(i => prisma.x.findUnique(...))` without `Promise.all` or `include`.
-2. **Missing `include` on a list read followed by per-item field access:** `prisma.user.findMany()` returning `users`, followed by `users.map(u => u.posts)` where `posts` is a relation — Prisma won't populate `posts` without `include: { posts: true }`, and calling `.posts()` in a loop is the canonical N+1.
+2. **Missing `include` on a list read followed by per-item field access:** `prisma.user.findMany()` returning `users`, followed by `users.map(u => u.posts)` where `posts` is a relation - Prisma won't populate `posts` without `include: { posts: true }`, and calling `.posts()` in a loop is the canonical N+1.
 3. **Server component fetch-per-item:** in Next.js server components, repeated awaits inside a `.map()` over a list.
 4. **Missing FK index:** any column used in a Prisma `include`, `where`, or `orderBy` that lacks `@@index` or `@index` in `schema.prisma`.
 

@@ -9,8 +9,8 @@ For generation guidance see `guides/02-review-checklist.md`.
 ## Phase 1: Author checklist (before opening the PR)
 
 - [ ] PR description has all six elements (motivation, context, what changed, what did NOT change, testing proof, reviewer hints)
-- [ ] PR is under 400 changed lines — if not, I've documented why it cannot be split
-- [ ] PR has a single logical concern — no mixed-scope changes
+- [ ] PR is under 400 changed lines - if not, I've documented why it cannot be split
+- [ ] PR has a single logical concern - no mixed-scope changes
 - [ ] All CI checks pass on my branch
 - [ ] I have self-reviewed the diff: no debug artifacts, no `console.log`, no `TODO` without a tracking issue
 - [ ] I have added or updated tests for new logic branches
@@ -20,7 +20,7 @@ For generation guidance see `guides/02-review-checklist.md`.
 
 ## Phase 2: Reviewer checklist (during review)
 
-### Correctness (highest priority — review first)
+### Correctness (highest priority - review first)
 - [ ] Does the code do what the PR description says it does?
 - [ ] Are all edge cases handled? (null/undefined, empty collections, auth failures, timeouts)
 - [ ] Are there race conditions or shared-state mutations without proper synchronization?
@@ -40,7 +40,7 @@ For generation guidance see `guides/02-review-checklist.md`.
 
 ### Security (surface to `security-worker-bee` if findings are found)
 - [ ] Are user inputs validated and sanitized before use in queries, templates, or commands?
-- [ ] Are secrets and credentials managed via env vars or secret stores — not hardcoded?
+- [ ] Are secrets and credentials managed via env vars or secret stores - not hardcoded?
 - [ ] Is PII handled appropriately? (Not logged, not over-exposed in API responses)
 
 ### Style and readability (nit-tier)
@@ -54,29 +54,31 @@ For generation guidance see `guides/02-review-checklist.md`.
 
 Add the relevant section(s) below based on the file types in the diff.
 
-### Python / Django additions
-- [ ] ORM queries: no N+1 (use `select_related` / `prefetch_related` as needed)
-- [ ] Migrations: follows expand-backfill-contract (no destructive change in a single migration)
-- [ ] Celery tasks: idempotent? `acks_late=True`? retry limit set?
+### TypeScript / Node (ESM) additions
+- [ ] No stray `any`; types are strict and exported where they cross module boundaries
+- [ ] Relative imports include the explicit `.js` extension (ESM resolution)
+- [ ] No accidental CommonJS interop pitfalls (default-import shape, `__dirname` in ESM)
+- [ ] `tsc --noEmit` passes and no new `jscpd` duplication is introduced
 
-### TypeScript / React additions
-- [ ] Server/client component boundary is correct — no server-only imports in client components
-- [ ] Hook dependency arrays are complete — no stale closure bugs
-- [ ] React Server Component rules respected (no `useState` / `useEffect` in RSCs)
+### Deep Lake dataset additions
+- [ ] Tensor schema and commit semantics are correct; no orphaned commits
+- [ ] Recall query filters are bounded and embedding dimensions match the index
+- [ ] Writes are idempotent and safe to retry
 
-### SQL / migration additions
-- [ ] Migration is zero-downtime safe (no `NOT NULL` without a default on an existing column)
-- [ ] Index is created `CONCURRENTLY` if on a production table
+### Harness integration additions
+- [ ] Adapter honors the shared integration contract across all six harnesses
+- [ ] Transcript parsing handles empty and malformed inputs
 
-### Auth code additions
-- [ ] Token handling follows established patterns — no tokens in URL params or logs
-- [ ] Session management uses the existing session library — no bespoke session logic
+### MCP tool / protocol additions
+- [ ] Tool schema matches the documented shape in `mcp-tool-docs`
+- [ ] Error envelopes follow the protocol; payloads are bounded
+- [ ] Session management uses the existing session library - no bespoke session logic
 - [ ] Privilege escalation paths are validated
 
 ### API route additions
 - [ ] Status codes are accurate (200 for success, 201 for create, 404 for not found, not 200-for-everything)
 - [ ] Input is validated at the route layer before hitting business logic
-- [ ] Auth middleware is applied — endpoint is not accidentally public
+- [ ] Auth middleware is applied - endpoint is not accidentally public
 
 ### Config / environment additions
 - [ ] No secrets hardcoded in config files
@@ -98,4 +100,4 @@ Add the relevant section(s) below based on the file types in the diff.
 
 ---
 
-*Template from `code-review-pr-stinger`. Full guide at `guides/02-review-checklist.md`.*
+*Template

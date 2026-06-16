@@ -7,12 +7,12 @@ ai_description: |
   Do NOT create new PRD folders here; create them in backlog/ first,
   then move to in-work/ when implementation starts.
 human_description: |
-  PRDs currently being implemented. Do not start new PRDs here —
+  PRDs currently being implemented. Do not start new PRDs here -
   create them in backlog/ and move the folder here when work begins.
   When work ships, move the entire folder to completed/.
 ---
 
-# Requirements — In Work
+# Requirements - In Work
 
 PRDs currently being implemented. Folder location = lifecycle state.
 

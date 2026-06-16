@@ -8,7 +8,7 @@ topic: runbook-structure
 stinger: runbook-writing-stinger
 ---
 
-# Incident Runbook Template: The Essential Guide for SRE Teams in 2026 — The Good Shell
+# Incident Runbook Template: The Essential Guide for SRE Teams in 2026 - The Good Shell
 
 Published: 2026-04-22
 
@@ -26,7 +26,7 @@ Published: 2026-04-22
 
 ## Direct quotes
 
-- "The alert must link directly to the runbook. Not to the wiki homepage, not to the team folder — to the specific runbook for that specific alert. Engineers under stress should not have to navigate."
+- "The alert must link directly to the runbook. Not to the wiki homepage, not to the team folder - to the specific runbook for that specific alert. Engineers under stress should not have to navigate."
 - "Runbooks must be version controlled. Every change should be trackable. When an incident reveals an inaccurate runbook step, you need to know who changed it and when."
 - "Build the runbook, link it to the alert, review it after every incident, and assign a human owner who is responsible for keeping it accurate. That combination, not any specific tool, is what reduces MTTR."
 - "Blameless does not mean actionless. If the incident happened because a deployment bypassed the staging environment, the action item is to enforce the deployment pipeline, not to blame the engineer who deployed. But there must be an action item."

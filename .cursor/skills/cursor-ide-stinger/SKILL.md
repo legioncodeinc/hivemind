@@ -1,89 +1,117 @@
 ---
 name: cursor-ide-stinger
-description: Equips cursor-ide-worker-bee to master Cursor IDE as a development platform — project rules (.cursorrules migration, .cursor/rules/*.mdc authoring), custom modes, MCP server integration, Cloud Agents and the Agents Window, keybindings and productivity patterns, and the @cursor/sdk API for programmatic agent automation. Use when the user asks about configuring Cursor, extending it with MCP tools, building automations with the SDK, or maximising their IDE workflow. Do NOT use for code quality of what agents produce (language worker-bees), prompt engineering for external LLMs (mind-worker-bee), or CI/CD pipelines that happen to run SDK jobs (devops-worker-bee).
+description: Equips cursor-ide-worker-bee to own Hivemind's Cursor surface: the Cursor 1.7+ hooks harness (~/.cursor/hooks.json, 6 lifecycle events) wired by src/cli/install-cursor.ts, the first-party VS Code/Cursor extension at harnesses/cursor/extension/, registering the Hivemind MCP server (src/mcp/server.ts) in Cursor, and the .cursor/ Bee Army platform this repo ships (rules .mdc format, agents, skills/Stingers, the-beekeeper/the-smoker commands, model-comparison-matrix). Use when the task touches Cursor hook wiring, .cursor/rules/*.mdc authoring, MCP registration in Cursor, the cursor extension build, or the Army's .cursor/ structure. Do NOT use for code quality of TS source (typescript-node-worker-bee), the MCP protocol internals of server.ts (mcp-protocol-worker-bee), or harness wiring for Claude/Codex/other agents (harness-integration-worker-bee).
 license: MIT
 ---
 
 # cursor-ide Stinger
 
-The knowledge repository for `cursor-ide-worker-bee`. Covers every platform surface of Cursor IDE: rule files, MCP integration, SDK authoring, Agents Window workflows, and productivity patterns.
+The knowledge repository for `cursor-ide-worker-bee`. Covers Hivemind's real Cursor surface: the Cursor 1.7+ hooks harness, the first-party Cursor extension, registering the Hivemind MCP server in Cursor, and the `.cursor/` Bee Army platform (rules, agents, skills, commands, model matrix) that this repo ships.
+
+This is the platform knowledge that keeps the Army working inside Cursor: the rules `.mdc` format, the hooks lifecycle, MCP registration, the agents/skills/commands layout, and the cursor harness install.
 
 ## When this stinger applies
 
-Load whenever `cursor-ide-worker-bee` is invoked. Typical triggers (any of these phrases, even without naming Cursor explicitly):
+Load whenever `cursor-ide-worker-bee` is invoked. Typical triggers (any of these phrases):
 
-- "review my `.cursorrules`" / "migrate my rules to MDC"
-- "add an MCP server" / "register a custom tool in Cursor"
-- "build an automation with the Cursor SDK" / "`Agent.create`" / "`@cursor/sdk`"
-- "create a custom mode" / "design a Cursor mode for X"
-- "background agents" / "cloud agents" / "Agents Window" / `/multitask`
-- "Cursor keybindings" / "Cursor shortcuts" / "power user Cursor"
-- "Cursor plugin" / "Cursor extension"
+- "wire the Cursor hooks" / "what does install-cursor do" / "hooks.json" / "Cursor 1.7 hooks"
+- "add a `.cursor/rules/*.mdc`" / "fix this rule" / "rule frontmatter" / "alwaysApply / globs"
+- "register the Hivemind MCP server in Cursor" / "mcp.json in Cursor"
+- "the cursor extension" / "harnesses/cursor/extension" / "the dashboard webview / status bar"
+- "the Bee Army layout" / "where do agents/skills/commands live" / "the-beekeeper / the-smoker"
+- "model-comparison-matrix"
 
 Do NOT load for:
 
-- Code quality produced by Cursor agents (language-specific worker-bees).
-- Prompt engineering for OpenAI / Anthropic / etc. (mind-worker-bee).
-- CI/CD pipelines that orchestrate Cursor SDK (devops-worker-bee owns the pipeline; this stinger authors the SDK code itself).
+- Code quality / typing of the TypeScript source itself (`typescript-node-worker-bee`).
+- The MCP protocol internals of `src/mcp/server.ts`: tool schemas, transport (`mcp-protocol-worker-bee`).
+- Harness wiring for Claude Code, Codex, Hermes, or other agents (`harness-integration-worker-bee`).
 
 ## First action when loaded
 
 Read in order before acting:
 
-1. **`guides/01-principles.md`** — rule file philosophy, context budget constraints, the MDC vs `.cursorrules` decision, activation mode taxonomy. This is the mental model foundation.
-2. **`guides/02-rule-file-authoring.md`** — full frontmatter spec, glob patterns, migration checklist from legacy `.cursorrules`, anti-patterns.
-3. Then pull the task-specific guide: `03` for MCP, `04` for SDK, `05` for modes/productivity, `06` for extensions.
+1. **`guides/01-principles.md`**: the Hivemind Cursor surface map, the rules `.mdc` mental model, and the hard directives (idempotent hook merge, em-dash ban, Cursor field shape).
+2. The task-specific guide:
+   - `02` for `.cursor/rules/*.mdc` authoring.
+   - `03` for registering the Hivemind MCP server in Cursor.
+   - `04` for the Cursor hooks lifecycle (the 6 events + `install-cursor.ts`).
+   - `05` for the `.cursor/` Bee Army layout.
+   - `06` for the cursor extension build.
 
 ## Folder layout
 
 ```text
 cursor-ide-stinger/
-+- SKILL.md                          (this file — master index)
++- SKILL.md                          (this file, master index)
 +- guides/
-|  +- 01-principles.md               (philosophy: rule activation, context budget, MDC vs legacy)
-|  +- 02-rule-file-authoring.md      (frontmatter spec, glob patterns, migration)
-|  +- 03-mcp-integration.md          (mcp.json schema, tool authoring, OAuth, Extension API)
-|  +- 04-sdk-api.md                  (Agent lifecycle, run.stream, errors, local vs cloud)
-|  +- 05-modes-and-productivity.md   (custom modes, Agents Window, keybindings, slash commands)
-|  +- 06-extension-development.md    (plugin manifests, quality gates, marketplace checklist)
+|  +- 01-principles.md               (the Hivemind Cursor surface; rules model; hard directives)
+|  +- 02-rule-file-authoring.md      (.cursor/rules/*.mdc frontmatter, globs, activation modes)
+|  +- 03-mcp-integration.md          (registering the Hivemind MCP server in Cursor)
+|  +- 04-cursor-hooks-lifecycle.md   (hooks.json 1.7+, the 6 events, install-cursor.ts wiring)
+|  +- 05-cursor-army-layout.md       (.cursor/ rules + agents + skills + commands + model matrix)
+|  +- 06-extension-development.md    (harnesses/cursor/extension build, contributions, MCP/hooks surface)
 +- examples/
-|  +- rule-file-examples.md          (worked .mdc examples for common scenarios)
-|  +- mcp-server-example.md          (minimal TypeScript MCP server + mcp.json entry)
-|  +- sdk-agent-example.md           (create, stream, error-handle pattern)
+|  +- rule-file-examples.md          (worked .mdc examples, including this repo's live rules)
+|  +- mcp-server-example.md          (registering hivemind in Cursor mcp.json + the extension path)
+|  +- hooks-wiring-example.md        (a real ~/.cursor/hooks.json after install-cursor)
 +- templates/
 |  +- rule-file-template.mdc         (canonical .mdc frontmatter template)
-|  +- mcp-json-template.json         (mcp.json with both stdio and remote stubs)
-|  +- sdk-script-template.ts         (Agent.create + run.stream + error handling)
+|  +- hooks-json-template.json       (Cursor 1.7+ hooks.json wiring template)
 +- reports/
 |  +- README.md
-+- research/                         (populated by scripture-historian, 18 files)
++- research/                         (Cursor 1.7+ hooks/rules notes, dated 2026-06-16)
    +- research-plan.md
    +- research-summary.md
    +- index.md
-   +- internal/  (4 files)
-   +- external/  (11 files)
+   +- internal/  (live repo artifacts)
+   +- external/  (Cursor hooks + rules docs)
 ```
 
-## Critical directives (lifted from the Command Brief)
+## Critical directives
 
-These are stinger-level non-negotiables that `cursor-ide-worker-bee` must enforce on every invocation:
+Stinger-level non-negotiables that `cursor-ide-worker-bee` enforces on every invocation:
 
-- **Check Cursor version before referencing features.** Why: Cursor ships weekly; Cloud Agents, Agents Window, and SDK capabilities are version-gated. Use Cursor 3 (April 2026+) as the modern baseline.
-- **Never write `.cursorrules` for a project already using `.cursor/rules/`.** Why: `.cursorrules` is silently ignored in Agent mode and the two formats produce silent precedence conflicts.
-- **MCP tools must have explicit JSON Schema for every parameter.** Why: Cursor silently rejects tools with malformed schemas with no UI feedback.
-- **Prefer `alwaysApply: false` with narrow globs over `alwaysApply: true`.** Why: `alwaysApply: true` rules consume the shared context budget (2,000-token cap across all `alwaysApply` rules).
-- **Always show `CursorAgentError` handling in SDK examples.** Why: SDK runs fail silently without it.
+- **Cursor's hooks.json schema differs from Claude/Codex.** Array entries under each event are command objects directly (`{ type, command, timeout }`), with NO outer `{ hooks: [...] }` wrapper and NO top-level `matcher` wrapper. See `guides/04`.
+- **Hook merges must stay idempotent and Windows-safe.** `install-cursor.ts` strips prior Hivemind entries (matched on a normalized `/.cursor/hivemind/bundle/` path so backslash paths on Windows do not duplicate) before re-adding, and only rewrites `hooks.json` when content changed so it does not perturb Cursor's trust fingerprint.
+- **`.cursor/rules/*.mdc` is the only rules format.** This repo ships `.mdc` rules with frontmatter (`description` / `globs` / `alwaysApply`). Never introduce a `.cursorrules` file here.
+- **Prefer `alwaysApply: false` with a narrow glob or a sharp `description`.** Reserve `alwaysApply: true` for short, always-true directives (this repo uses it only for `no-em-dashes.mdc`).
+- **NO em dashes, ever.** Write hyphens directly. This is enforced by `.cursor/rules/no-em-dashes.mdc` and applies to every file this Bee authors.
 
 ## Key facts by domain (quick reference)
 
-### Rules
+### The Hivemind Cursor surface (what this repo actually ships)
 
-| Format | Agent mode? | Multi-file? | Glob scoping? |
-|---|---|---|---|
-| `.cursorrules` | No (silently ignored) | No | No |
-| `.cursor/rules/*.mdc` | Yes | Yes | Yes |
+| Surface | Path | Purpose |
+|---|---|---|
+| Hook installer | `src/cli/install-cursor.ts` | Merges `~/.cursor/hooks.json`, copies the bundle to `~/.cursor/hivemind/bundle/` |
+| Hook bundle | `harnesses/cursor/bundle/` | Built hook scripts (`session-start.js`, `capture.js`, `pre-tool-use.js`, `graph-on-stop.js`, `session-end.js`) |
+| Extension | `harnesses/cursor/extension/` | First-party VS Code/Cursor extension: status bar, onboarding, dashboard webview, codebase graph, skill sync |
+| MCP server | `src/mcp/server.ts` | stdio server exposing `hivemind_search` / `hivemind_read` / `hivemind_index` |
+| Bee Army | `.cursor/` | `rules/*.mdc`, `agents/*.md`, `skills/<base>-stinger/`, `commands/`, `model-comparison-matrix.md` |
 
-Four MDC activation modes (frontmatter drives which one applies):
+### Cursor 1.7+ hooks (`~/.cursor/hooks.json`)
+
+```jsonc
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart":        [{ "type": "command", "command": "node \"...bundle/session-start.js\"", "timeout": 30 }],
+    "beforeSubmitPrompt":  [{ "type": "command", "command": "node \"...bundle/capture.js\"", "timeout": 10 }],
+    "preToolUse":          [{ "type": "command", "command": "node \"...bundle/pre-tool-use.js\"", "timeout": 30, "matcher": "Shell" }],
+    "postToolUse":         [{ "type": "command", "command": "node \"...bundle/capture.js\"", "timeout": 15 }],
+    "afterAgentResponse":  [{ "type": "command", "command": "node \"...bundle/capture.js\"", "timeout": 15 }],
+    "stop":                [{ "...": "capture.js + graph-on-stop.js" }],
+    "sessionEnd":          [{ "...": "session-end.js + graph-on-stop.js" }]
+  }
+}
+```
+
+Six lifecycle events are wired: `sessionStart`, `beforeSubmitPrompt`, `preToolUse` (Shell matcher rewrites grep/rg against `~/.deeplake/memory/` into a SQL fast path), `postToolUse`, `afterAgentResponse`, `stop`, and `sessionEnd`. `graph-on-stop.js` auto-builds the code graph on `stop` and `sessionEnd` (gated, async, never blocks Cursor).
+
+### Rules (`.cursor/rules/*.mdc`)
+
+Cursor project rules are `.mdc` files with frontmatter. Activation is driven by three fields:
 
 | Mode | `alwaysApply` | `globs` | `description` |
 |---|---|---|---|
@@ -92,46 +120,11 @@ Four MDC activation modes (frontmatter drives which one applies):
 | Apply Intelligently | `false` | unset | set |
 | Apply Manually | `false` | unset | unset |
 
-**Budget:** keep total `alwaysApply: true` content under ~2,000 tokens across all rule files.
+This repo's live rules: `no-em-dashes.mdc` (alwaysApply), `plan-construction-protocol.mdc`, `respect-agent-work-boundaries.mdc`.
 
-### MCP
+### MCP registration in Cursor
 
-Config hierarchy: project `.cursor/mcp.json` > global `~/.cursor/mcp.json` (same-name project wins). Restart Cursor after editing either file. Tool auto-approval is off by default (Settings > MCP > allow tool auto-run). Interpolation variables: `${env:NAME}`, `${userHome}`, `${workspaceFolder}`, `${workspaceFolderBasename}`, `${pathSeparator}`.
-
-### SDK (`@cursor/sdk` >= 1.0.7, public beta April 29, 2026)
-
-```typescript
-const agent = await Agent.create({ local: { cwd, model: "claude-sonnet-4-5" } });
-const run = agent.send("do X");
-for await (const msg of run.stream()) {
-  if (msg.type === "assistant") process.stdout.write(msg.text ?? "");
-}
-await run.wait(); // resolves RunResult
-await agent.dispose();
-```
-
-Error handling: all errors extend `CursorAgentError { isRetryable, code }`. Cloud agents: one active run at a time — watch for `AgentBusyError` (code: `agent_busy`, `isRetryable: false`).
-
-### Agents Window (Cursor 3, April 2026)
-
-- Background Agents renamed to **Cloud Agents** in Cursor 3.
-- **Agents Window**: unified sidebar for all agents (local, cloud, mobile, Slack, GitHub, Linear).
-- **Agent Tabs**: tiled multi-pane layout (added April 13, 2026).
-- **`/multitask`**: async parallel subagents within a single task.
-- Cloud Agents: isolated Ubuntu VMs, dedicated `agent/` branch, auto-PR on completion.
-
-## Open questions (from research)
-
-1. **Plan tier detection from SDK:** No documented public API for detecting Free / Pro / Business / Enterprise from within an SDK run. Flag as "not publicly documented" in guide 04.
-2. **MCP tool name length:** No specific Cursor-documented limit found; best practice is <64 chars, namespace with `server-name.tool-name`.
-3. **Custom modes file format:** `.cursor/modes.json` was "under consideration" as of May 2026; current method is UI-only (Settings > Features > Chat > Custom Modes). Do not document the file path until confirmed.
-4. **Extension guide source gap:** `vscode.cursor.plugins.registerPath` Extension API found; full manifest schema needs direct fetch from `cursor.com/docs/plugins`.
-
-## Refresh cadence
-
-- Guides `01`-`05`: refresh every 3 months or on any Cursor major version.
-- Guide `06`: refresh when extension/plugin manifest format changes.
-- Research folder: re-run `scripture-historian` at `shallow` tier on any Cursor major release.
+The Hivemind MCP server (`src/mcp/server.ts`, stdio) exposes `hivemind_search`, `hivemind_read`, `hivemind_index`. To use it inside Cursor, add a `mcpServers` entry to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global) pointing at the built server. See `guides/03`.
 
 ## Pairing
 
@@ -139,10 +132,15 @@ Error handling: all errors extend `CursorAgentError { isRetryable, code }`. Clou
 |---|---|
 | This stinger | `.cursor/skills/cursor-ide-stinger/` |
 | Paired Bee | `.cursor/agents/cursor-ide-worker-bee.md` |
-| Command Brief | `ai-tools/command-briefs/cursor-ide-worker-bee-command-brief.md` |
-| Cursor SDK skill (installed) | `.cursor/skills-cursor/sdk/SKILL.md` |
-| create-rule skill | `.cursor/skills-cursor/create-rule/SKILL.md` |
+| Harness Bee (other agents) | `.cursor/agents/harness-integration-worker-bee.md` |
+| MCP protocol Bee | `.cursor/agents/mcp-protocol-worker-bee.md` |
+| Orchestrator commands | `.cursor/commands/the-beekeeper.md`, `.cursor/commands/the-smoker.md` |
+
+## Refresh cadence
+
+- Guides `01`-`06`: refresh on any Cursor major version, or when `install-cursor.ts` / the extension `package.json` changes.
+- Research folder: re-run on any Cursor 1.x hooks API change.
 
 ---
 
-*Forged by `stinger-forge` from `cursor-ide-worker-bee-command-brief.md` and `research/`. Part of the Legion AI Tools Factory by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*
+*Part of the Cursor IDE Army curated by [Mario Aldayuz a.k.a @thenotoriousllama](https://github.com/thenotoriousllama).*

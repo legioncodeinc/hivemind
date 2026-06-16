@@ -1,11 +1,11 @@
 #!/usr/bin/env -S node --loader tsx
-// scripts/scan.ts — TypeScript port of scan.sh.
+// scripts/scan.ts - TypeScript port of scan.sh, tuned for the Hivemind codebase.
 //
 // Prefer this on Windows / non-Bash environments. Same outputs, same intent:
-// populate reports/scan-output/ with deterministic findings so the Bee can
-// focus on judgment calls (IDOR, PCI architecture, business-logic trust).
+// populate .scan-output/ with deterministic findings so the Bee can focus on
+// judgment calls (missing sqlIdent, gate path weakness, scope coercion).
 //
-// Usage (from repo root being audited):
+// Usage (from the Hivemind repo root):
 //   npx tsx .cursor/skills/security-stinger/scripts/scan.ts
 //
 // Exits with code 0 regardless. The Bee decides what is fatal.
@@ -14,7 +14,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-const OUT_DIR = resolve('reports/scan-output');
+const OUT_DIR = resolve('.scan-output');
 mkdirSync(OUT_DIR, { recursive: true });
 
 const write = (name: string, body: string) =>
@@ -32,42 +32,25 @@ const safeExec = (cmd: string): string => {
 // 1. npm audit
 // ---------------------------------------------------------------------------
 hr('1. npm audit');
-let auditJson = 'no lockfile found';
-if (existsSync('pnpm-lock.yaml')) auditJson = safeExec('pnpm audit --prod --audit-level=high --json');
-else if (existsSync('package-lock.json')) auditJson = safeExec('npm audit --audit-level=high --json');
-else if (existsSync('yarn.lock')) auditJson = safeExec('yarn npm audit --severity=high --recursive --json');
+let auditJson = 'no package-lock.json found';
+if (existsSync('package-lock.json')) auditJson = safeExec('npm audit --audit-level=high --json');
 write('npm-audit.json', auditJson);
 console.log('  ->', join(OUT_DIR, 'npm-audit.json'));
 
 // ---------------------------------------------------------------------------
-// 2. CVE version gate
+// 2. OpenClaw bundle static scan (ClawHub parity)
 // ---------------------------------------------------------------------------
-hr('2. CVE version gate');
-let versionReport = 'CVE watchlist:\n';
-versionReport += '  CVE-2025-29927 (Next.js middleware bypass) — patched: 14.2.25 / 15.2.3\n';
-versionReport += '  CVE-2025-55182 (React2Shell RCE)           — patched: react 19.0.1 / 19.1.2 / 19.2.1\n\n';
+hr('2. OpenClaw bundle scan');
+let openclaw = 'audit:openclaw script not found in package.json';
 if (existsSync('package.json')) {
-  versionReport += '--- package.json (declared) ---\n';
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-  const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
-  for (const n of ['next', 'react', 'react-dom']) {
-    if (allDeps[n]) versionReport += `  ${n}: ${allDeps[n]}\n`;
-  }
+  if (pkg.scripts && pkg.scripts['audit:openclaw']) openclaw = safeExec('npm run audit:openclaw');
 }
-for (const lock of ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock']) {
-  if (existsSync(lock)) {
-    const txt = readFileSync(lock, 'utf8');
-    const hits = txt.split('\n')
-      .filter((l) => /(next|react|react-dom)@?\d+\.\d+\.\d+/.test(l))
-      .slice(0, 40);
-    versionReport += `\n--- ${lock} (resolved, first 40 matches) ---\n${hits.join('\n')}\n`;
-  }
-}
-write('cve-version-check.txt', versionReport);
-console.log('  ->', join(OUT_DIR, 'cve-version-check.txt'));
+write('openclaw-audit.txt', openclaw);
+console.log('  ->', join(OUT_DIR, 'openclaw-audit.txt'));
 
 // ---------------------------------------------------------------------------
-// 3. Rules File Backdoor — hidden Unicode
+// 3. Rules File Backdoor - hidden Unicode
 // ---------------------------------------------------------------------------
 hr('3. Unicode scan (AI rules files)');
 const UNICODE_RE = /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
@@ -88,7 +71,7 @@ const walk = (p: string) => {
     body.split('\n').forEach((line, i) => {
       if (UNICODE_RE.test(line)) {
         UNICODE_RE.lastIndex = 0;
-        unicodeHits.push(`${p}:${i + 1} — hidden Unicode detected`);
+        unicodeHits.push(`${p}:${i + 1} - hidden Unicode detected`);
       }
     });
   }
@@ -97,18 +80,19 @@ for (const t of RULE_TARGETS) walk(t);
 write('unicode-scan.txt',
   unicodeHits.length
     ? unicodeHits.join('\n')
-    : 'clean — no zero-width or bidirectional Unicode detected');
+    : 'clean - no zero-width or bidirectional Unicode detected');
 console.log('  ->', join(OUT_DIR, 'unicode-scan.txt'));
 
 // ---------------------------------------------------------------------------
-// 4. Pattern sweeps
+// 4. Pattern sweeps - Hivemind-specific
 // ---------------------------------------------------------------------------
 hr('4. Vulnerable-pattern sweep');
-const IGNORE_DIRS = new Set(['node_modules', '.next', '.git', 'dist', 'build', 'out', 'coverage']);
-const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|prisma|sql|env|env.local|env.production)$/i;
+const IGNORE_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'out', 'coverage']);
+const CODE_EXT = /\.(ts|mjs|cjs|js)$/i;
 
 const files: string[] = [];
 const collect = (dir: string) => {
+  if (!existsSync(dir)) return;
   for (const e of readdirSync(dir)) {
     if (IGNORE_DIRS.has(e)) continue;
     const p = join(dir, e);
@@ -117,39 +101,38 @@ const collect = (dir: string) => {
     else if (st.isFile() && (CODE_EXT.test(e) || e.startsWith('.env'))) files.push(p);
   }
 };
-collect('.');
+collect('src');
+collect('scripts');
+for (const f of ['.env', '.env.local', '.env.production']) if (existsSync(f)) files.push(f);
 
-const patterns: { name: string; re: RegExp }[] = [
-  { name: 'NEXT_PUBLIC_ leaks',
-    re: /NEXT_PUBLIC_.*(sk_live_|sk_test_|SECRET|PRIVATE|TOKEN|PASSWORD)/ },
-  { name: 'Hardcoded secrets',
-    re: /(sk_live_[A-Za-z0-9]{10,}|sk_test_[A-Za-z0-9]{10,}|-----BEGIN\s+(RSA|OPENSSH|PRIVATE)|AIza[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16})/ },
-  { name: 'dangerouslySetInnerHTML',
-    re: /dangerouslySetInnerHTML/ },
-  { name: 'localStorage / sessionStorage writes',
-    re: /(localStorage|sessionStorage)\.setItem\(/ },
-  { name: 'Raw card fields (PCI)',
-    re: /(cardNumber|card_number|\bcvv\b|\bcvc\b|exp_month|exp_year)/ },
-  { name: 'jwt.verify without pinned algorithm (manual review)',
-    re: /jwt\.(verify|decode)\(/ },
+const patterns: { name: string; re: RegExp; pathFilter?: RegExp }[] = [
+  { name: 'Interpolated SQL identifiers (must be sqlIdent-wrapped)',
+    re: /(FROM|INTO|UPDATE|TABLE)\s+"\$\{/ },
+  { name: 'Token / Bearer / JWT in source',
+    re: /(Bearer\s+\$\{|\beyJ[A-Za-z0-9._-]{10,}|sk_(live|test)_[A-Za-z0-9]{10,}|-----BEGIN)/ },
+  { name: 'console.* near auth / api / hooks (token-in-logs risk)',
+    re: /console\.(log|error|info|warn)\(/,
+    pathFilter: /(deeplake-api|[\\/](cli|commands|hooks)[\\/])/ },
+  { name: 'Credential file references (check explicit 0600/0700 mode)',
+    re: /(credentials\.json|\.deeplake)/ },
+  { name: 'Capture sites (must honor HIVEMIND_CAPTURE=false)',
+    re: /HIVEMIND_CAPTURE/ },
+  { name: 'Org id / scope sourced from input (scope coercion risk)',
+    re: /(orgId|org_id|scope)\s*[:=]\s*(toolArgs|args|req|input|params)\./ },
+  { name: 'Runtime-computed paths near the gate (gate bypass risk)',
+    re: /(os\.homedir\(\)|process\.env\.HOME)\s*[+,]/,
+    pathFilter: /[\\/](hooks|shell)[\\/]/ },
+  { name: 'Child-process / spawn (confirm only the documented gate-runner bypass)',
+    re: /(child_process|execFileSync|execSync|spawn\(|exec\(\s*`)/ },
   { name: 'Prototype pollution sinks',
     re: /(Object\.assign\(.*JSON\.parse|_\.merge\(|_\.defaultsDeep\()/ },
-  { name: 'SQL template literal in db.query',
-    re: /(db|pool|connection|client)\.query\(\s*`/ },
-  { name: 'Command injection shape',
-    re: /(child_process\.)?exec\(\s*`/ },
-  { name: 'Wildcard CORS',
-    re: /Access-Control-Allow-Origin.*['"]\*['"]/ },
-  { name: 'console.* / Sentry in api / payment paths',
-    re: /(console\.(log|error|info)|Sentry\.captureException|LogRocket)/ },
 ];
 
 const sections: string[] = [];
 for (const p of patterns) {
   const hits: string[] = [];
   for (const f of files) {
-    // skip console.* sweep outside relevant paths
-    if (p.name.startsWith('console.*') && !/(^|\/)(app\/(api|actions)|pages\/api|src\/(lib|server))(\/|$)/.test(f)) continue;
+    if (p.pathFilter && !p.pathFilter.test(f)) continue;
     const text = readFileSync(f, 'utf8');
     text.split('\n').forEach((line, i) => {
       if (p.re.test(line)) hits.push(`${f}:${i + 1}: ${line.trim().slice(0, 200)}`);
@@ -180,28 +163,25 @@ write('env-summary.txt', envReport || '(no .env files found)');
 console.log('  ->', join(OUT_DIR, 'env-summary.txt'));
 
 // ---------------------------------------------------------------------------
-// 6. next.config headers check
+// 6. SQL guard integrity
 // ---------------------------------------------------------------------------
-hr('6. next.config headers check');
-const CONFIGS = ['next.config.js', 'next.config.mjs', 'next.config.ts'];
-const HEADERS = [
-  'Strict-Transport-Security',
-  'X-Content-Type-Options',
-  'X-Frame-Options',
-  'Referrer-Policy',
-  'Content-Security-Policy',
-  'Permissions-Policy',
-];
-let hdrReport = '';
-for (const cfg of CONFIGS) {
-  if (existsSync(cfg)) {
-    const body = readFileSync(cfg, 'utf8');
-    hdrReport += `--- ${cfg} ---\n`;
-    for (const h of HEADERS) hdrReport += body.includes(h) ? `  PRESENT: ${h}\n` : `  MISSING: ${h}\n`;
-  }
+hr('6. SQL guard integrity check');
+let sqlReport = '';
+if (existsSync('src/utils/sql.ts')) {
+  const body = readFileSync('src/utils/sql.ts', 'utf8');
+  const hasGuards = /export function sqlStr/.test(body)
+    && /export function sqlLike/.test(body)
+    && /export function sqlIdent/.test(body);
+  const identIntact = /\[a-zA-Z_\]\[a-zA-Z0-9_\]\*/.test(body) || /\[A-Za-z_\]\[A-Za-z0-9_\]\*/.test(body);
+  sqlReport += `sqlStr/sqlLike/sqlIdent present: ${hasGuards}\n`;
+  sqlReport += identIntact
+    ? 'sqlIdent regex looks intact ([A-Za-z_][A-Za-z0-9_]*)\n'
+    : 'WARNING: confirm sqlIdent regex still rejects anything outside [A-Za-z_][A-Za-z0-9_]*\n';
+} else {
+  sqlReport = 'src/utils/sql.ts not found - confirm escaping layer location\n';
 }
-write('next-config-headers.txt', hdrReport || '(no next.config.* found)');
-console.log('  ->', join(OUT_DIR, 'next-config-headers.txt'));
+write('sql-guards.txt', sqlReport);
+console.log('  ->', join(OUT_DIR, 'sql-guards.txt'));
 
-hr(`scan.ts complete — outputs in ${OUT_DIR}/`);
+hr(`scan.ts complete - outputs in ${OUT_DIR}/`);
 process.exit(0);

@@ -1,90 +1,61 @@
-# SBOM Workflow (Syft + CycloneDX + Sigstore)
+# SBOM Workflow (Syft + CycloneDX + Sigstore) for the published package
 
 > **Research source:** `research/external/03-sbom-cyclonedx-spdx-2026.md` (CRITICAL)
 > **Template:** `templates/github-actions-sbom-workflow.yml`
 
-A Software Bill of Materials (SBOM) is a machine-readable inventory of every component in your software artifact. In 2026, SBOM generation is required or strongly recommended by: the EU Cyber Resilience Act (CRA), US Executive Order 14028, many enterprise procurement policies, and SLSA Level 2+.
+A Software Bill of Materials (SBOM) is a machine-readable inventory of every component in your published artifact. For `@deeplake/hivemind` the artifact is the npm tarball that the `files` allowlist ships. In 2026, an SBOM is required or strongly recommended by the EU Cyber Resilience Act (CRA), US Executive Order 14028, and many enterprise procurement checks.
 
 ---
 
-## Format selection: CycloneDX 1.6 vs SPDX 2.3
+## Format selection: CycloneDX 1.6 JSON
 
-Both formats are valid. Choose based on your consumer:
-
-| Use case | Recommended format |
-|---|---|
-| CI vulnerability scanning (Grype, Dependency-Track) | CycloneDX 1.6 JSON |
-| License compliance tooling (FOSSA, License Finder) | SPDX 2.3 JSON or RDF |
-| Government/regulatory submission | SPDX (common in US federal; CRA accepts both) |
-| General/default | CycloneDX 1.6 JSON |
-
-Generate CycloneDX as primary; add SPDX as secondary when compliance requires it.
+Generate **CycloneDX 1.6 JSON** as the primary format. It is the de facto standard for ENISA guidance and most vulnerability tooling (Grype, Dependency-Track), and carries richer provenance/VEX data than SPDX. Add an SPDX 2.3 variant only if a specific consumer or compliance program demands it.
 
 ---
 
-## Generator selection by ecosystem
+## Generator: Syft
 
-| Ecosystem | Recommended generator |
+| Artifact | Generator |
 |---|---|
-| Default / multi-language container image | `anchore/syft` (`anchore/sbom-action@v0.24.0+`) |
-| Python project (directory-level) | `cyclonedx-py` (`cyclonedx-bom` package) |
-| Rust crate | `cargo-cyclonedx` |
-| Node.js (single package) | `@cyclonedx/cyclonedx-npm` |
-| Java (Maven) | `cyclonedx-maven-plugin` |
+| The published npm tarball / built `bundle/` | `anchore/syft` (`anchore/sbom-action`) - native CycloneDX output, widest support |
+| Single npm package (alternative) | `@cyclonedx/cyclonedx-npm` |
 
-**Key rule:** Generate from the **built artifact** (Docker image, compiled binary, dist directory), not the source tree. Source-tree SBOMs miss transitive dependencies that get bundled during build. Source: `research/external/03-sbom-cyclonedx-spdx-2026.md`.
+**Key rule:** generate from the **packed tarball or built bundle**, not the raw source tree. The `files` allowlist (`bundle`, `harnesses/*/bundle`, `mcp/bundle`, `scripts`, etc.) decides what actually ships - a source-tree SBOM would list devDependencies and unbundled source that never reach consumers, overstating the surface. Run `npm pack` (or build the bundle) first, then point Syft at the result. Source: `research/external/03-sbom-cyclonedx-spdx-2026.md`.
 
 ---
 
 ## The 5-step production workflow
 
-1. **Build the artifact** (your existing build step)
-2. **Generate SBOM** from the built artifact using Syft or ecosystem-specific generator
-3. **Verify SBOM** — check component count against expectations; fail if < expected baseline
-4. **Attest with Sigstore** using `actions/attest-sbom@v2` (GitHub's OIDC-backed attestation)
-5. **Store in cold storage** — GitHub artifact retention is 90 days; CRA requires longer; mirror to S3 / GCS
+1. **Build / pack the artifact** - `npm ci && npm run build`, then `npm pack` to produce the tarball that matches the `files` allowlist
+2. **Generate the SBOM** from the packed tarball / `bundle/` using Syft (CycloneDX 1.6 JSON)
+3. **Verify the SBOM** - check the component count against expectations; fail if it is implausibly low (generation likely failed)
+4. **Attest with Sigstore** using `actions/attest-sbom@v2` (GitHub OIDC-backed, no long-lived keys)
+5. **Store** - keep the SBOM as a release asset; extend GitHub artifact retention if a compliance horizon requires it
 
-See `templates/github-actions-sbom-workflow.yml` for the ready-to-use GitHub Actions implementation.
+See `templates/github-actions-sbom-workflow.yml` for the ready-to-use implementation.
 
 ---
 
 ## Attestation: why and how
 
-An unattested SBOM is a document. An attested SBOM is a signed claim. Sigstore attestation provides:
+An unattested SBOM is a document; an attested SBOM is a signed claim. Sigstore attestation gives:
 
-- Cryptographic proof that the SBOM was generated from a specific artifact at a specific time
-- Immutable audit trail tied to the GitHub Actions OIDC token (no long-lived signing keys)
-- Verifiable by consumers using `gh attestation verify`
+- Cryptographic proof the SBOM was generated from a specific artifact at a specific time
+- An immutable audit trail tied to the GitHub Actions OIDC token (no signing keys to manage)
+- Consumer verification via `gh attestation verify`
 
 ```bash
-# Consumer verification
-gh attestation verify oci://my-registry/my-app:1.2.3 \
-  --owner my-org \
-  --predicate-type https://spdx.dev/Document
-
-# Or for generic SBOM
-gh attestation verify ./my-app-sbom.cdx.json --owner my-org
+# Consumer verification of the published tarball SBOM
+gh attestation verify ./deeplake-hivemind-sbom.cdx.json --owner activeloopai
 ```
-
----
-
-## CRA storage requirement
-
-GitHub artifact retention defaults to 90 days. The EU Cyber Resilience Act requires SBOMs to be available for the supported lifecycle of the product. Mirror SBOM artifacts to:
-
-- AWS S3 with Object Lock (WORM)
-- Google Cloud Storage with retention policy
-- An artifact repository (Artifactory, Nexus) with retention configured
-
-Include a storage step in the workflow after attestation. See `templates/github-actions-sbom-workflow.yml` Step 5.
 
 ---
 
 ## When to trigger SBOM generation
 
-- **Trigger on tag push** (`on: push: tags: ['v*']`), not on branch push. This generates one SBOM per release, not one per commit.
-- Also trigger on `release: published` if you use GitHub Releases.
-- Do NOT trigger on every PR — SBOM generation is slow (30-120 seconds) and the output is only meaningful for release artifacts.
+- **Trigger on tag push** (`on: push: tags: ['v*']`) or `release: published` - one SBOM per release, matching the npm version published.
+- Do NOT trigger on every PR; SBOM generation is slow and only meaningful for release artifacts.
+- This pairs naturally with the existing release flow that also runs `npm publish`.
 
 ---
 

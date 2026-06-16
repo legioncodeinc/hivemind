@@ -6,7 +6,7 @@ Badges are a professionalism signal, not a decoration surface. Three badges done
 
 ---
 
-## The hard limit: 3–5 badges in the header
+## The hard limit: 3-5 badges in the header
 
 Place badges immediately after the title/tagline, before any prose. Do not exceed 5. If you need to decide between two badges, always keep the one that is dynamic (live data) and drop the one that is static or vanity.
 
@@ -33,7 +33,7 @@ Use only what applies to the project. A library without a downloads metric shoul
 | "Made with ❤️" | Communicates nothing about the project's quality or fitness |
 | "PRs welcome" | Every open source project accepts PRs; this is noise |
 | "Awesome" | Self-nominated; dilutes the signal of every other badge |
-| Star count badge | Circular — it's already on the GitHub repo page |
+| Star count badge | Circular, it's already on the GitHub repo page |
 | Language percentage badge | GitHub shows this automatically; redundant |
 | "Maintained" (static) | A static "maintained" badge is the first sign a project is unmaintained |
 

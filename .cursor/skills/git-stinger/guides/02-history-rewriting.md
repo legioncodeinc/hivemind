@@ -1,4 +1,4 @@
-# History Rewriting — git-stinger
+# History Rewriting - git-stinger
 
 Removing files, secrets, or paths from Git history using `git filter-repo` and BFG Repo Cleaner.
 

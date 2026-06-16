@@ -16,22 +16,22 @@ accepting <downside / trade-off>.
 
 - As the **opening sentence** of a Nygard or MADR "Decision" section (summary before the full record).
 - As a **one-line entry** in an ADR log index (`adr-log.md`).
-- Do NOT use as the sole format for a consequential decision — Y-statements omit Alternatives Considered.
+- Do NOT use as the sole format for a consequential decision, Y-statements omit Alternatives Considered.
 
 ## Example
 
 ```
-In the context of a multi-tenant SaaS with relational data and a team with strong SQL experience,
-facing the need for ACID transactions and row-level security,
-we decided to use PostgreSQL via Supabase,
-to achieve data integrity and simplified multi-tenancy,
-accepting that horizontal write scaling will require migration if write throughput exceeds 10k/s.
+In the context of Hivemind retrieval over a Deep Lake dataset where embeddings are optional,
+facing offline and cold-start states with no vectors,
+we decided to fall back to a BM25 lexical ranker when embeddings are unavailable,
+to achieve usable results with zero model dependency,
+accepting that BM25 ranking is coarser than dense similarity for paraphrased queries.
 ```
 
 ## Anti-pattern (missing "accepting")
 
 ```
-In the context of building a web app, we decided to use React, to achieve a fast UI.
+In the context of the TypeScript monorepo, we decided to ship as an ESM-only npm package, to achieve a modern module layout.
 ```
 
 The "accepting" clause is missing. This is a marketing pitch, not an engineering record.

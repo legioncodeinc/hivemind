@@ -7,21 +7,21 @@ Every knowledge doc must follow this exact format. Consistency across all docs m
 ## Annotated Template
 
 ```markdown
-# Auth Architecture                                        ← Title Case, no "doc" or "overview" suffix
+# Device Flow Architecture                                 <- Title Case, no "doc" or "overview" suffix
 
-> Category: Auth | Version: 1.0 | Date: May 2026 | Status: Active
+> Category: Auth | Version: 1.0 | Date: June 2026 | Status: Active
 
-                                                           ← One sentence only. Who reads this + what it covers.
-Legion Code's authentication and authorization architecture — provider, session model, and enforcement layers.
+                                                           <- One sentence only. Who reads this + what it covers.
+How the Hivemind CLI authenticates against the Deep Lake API using the browser device flow, and how credentials persist.
 
-**Related:**                                               ← 3-8 links. Sibling docs first, then ADRs.
-- [`session-model.md`](session-model.md)
-- [`rbac.md`](rbac.md)
-- [`../architecture/ADR-005-auth-github-oauth-mandatory.md`](../architecture/ADR-005-auth-github-oauth-mandatory.md)
+**Related:**                                               <- 3-8 links. Sibling docs first, then ADRs.
+- [`credential-lifecycle.md`](credential-lifecycle.md)
+- [`org-workspace-binding.md`](org-workspace-binding.md)
+- [`../architecture/ADR-00N-device-flow.md`](../architecture/ADR-00N-device-flow.md)
 
 ---
 
-## Provider: Clerk                                         ← H2 for major sections, H3 for subsections
+## Why the device flow                                     <- H2 for major sections, H3 for subsections
 
 [Narrative prose. Open with WHY, then WHAT, then HOW.]
 [First paragraph: the most important thing to know.]
@@ -29,44 +29,44 @@ Legion Code's authentication and authorization architecture — provider, sessio
 
 ---
 
-## Auth flow (GitHub OAuth → Clerk → Legion)              ← Sequence diagrams get their own section
+## Login flow (CLI -> browser -> Deep Lake API)            <- Sequence diagrams get their own section
 
 ```mermaid
 sequenceDiagram
-    participant B as Browser
-    participant SK as SvelteKit
-    participant Clerk as Clerk
-    participant GitHub as GitHub OAuth
+    participant CLI as Hivemind CLI
+    participant API as Deep Lake API
+    participant Browser as Browser
 
-    B->>SK: GET /sign-in
-    SK-->>B: Render <SignIn /> component
-    B->>Clerk: Click "Sign in with GitHub"
-    Clerk->>GitHub: OAuth redirect
-    ...
+    CLI->>API: request device code
+    API-->>CLI: device_code + user_code + verification_uri
+    CLI->>Browser: open verification_uri_complete
+    Browser->>API: approve
+    loop poll
+        CLI->>API: pollForToken(device_code)
+    end
+    API-->>CLI: token
 ```
 
 ---
 
-## JWT format                                              ← Use H2 for each major concept
+## Polling key                                             <- Use H2 for each major concept
 
 ```
-Claims:
-- sub: Clerk user ID
-- exp: expiry (60s)
-- iss: Clerk instance URL
+Poll key is derived from a machine-stable install ID
+(see src/commands/install-id.ts), not the per-attempt
+device_code, so a retry never breaks the flow.
 ```
 
 ---
 
-## Two enforcement layers
+## Credential persistence
 
-**Layer 1 — SvelteKit middleware:**
-- Verifies JWT on every request
-- Redirects unauthenticated requests to /sign-in
+**On success:**
+- Exchange the device grant for a long-lived API token
+- saveCredentials writes the token and the apiUrl (default https://api.deeplake.ai)
 
-**Layer 2 — Go API middleware:**
-- Independently verifies JWT
-- Sets app.current_org_id for RLS
+**On every later command:**
+- loadCredentials reads the token; org/workspace binding persists with it
 
 [End with a summary statement linking to peer docs.]
 ```
@@ -90,7 +90,7 @@ Claims:
 - **Order:** sibling docs in the same domain first, then cross-domain docs, then ADRs last
 - Use relative paths: `[title](relative-path.md)`
 - ADR links: `[ADR-NNN title](../architecture/ADR-NNN-slug.md)`
-- PRD links: `[prd-NNN](../../../requirements/backlog/prd-NNN-slug/prd-NNN-slug-index.md)` (use sparingly — knowledge docs reference ADRs, not PRDs)
+- PRD links: `[prd-NNN](../../../requirements/backlog/prd-NNN-slug/prd-NNN-slug-index.md)` (use sparingly - knowledge docs reference ADRs, not PRDs)
 
 ---
 
@@ -100,10 +100,10 @@ Claims:
 One H2 per major concept or component. Each H2 should be independently readable.
 
 ### H3 for subsections within a concept
-Use H3 when an H2 section has multiple distinct sub-topics. Avoid H4+ — if you need H4, split into a separate doc.
+Use H3 when an H2 section has multiple distinct sub-topics. Avoid H4+ - if you need H4, split into a separate doc.
 
 ### Progressive disclosure
-- H2 section 1: "Why this exists" — the motivation
+- H2 section 1: "Why this exists" - the motivation
 - H2 sections 2-N: technical details, schemas, flows, code samples
 - Last section (optional): "Alternatives considered" or "Known limitations"
 
@@ -111,26 +111,29 @@ Use H3 when an H2 section has multiple distinct sub-topics. Avoid H4+ — if you
 
 ## Code Block Standards
 
-**SQL DDL:** Include all columns with types, constraints, and indexes. No `...` truncation — this is the canonical reference.
+**SQL DDL:** Include all columns with types, constraints, and indexes. No `...` truncation - this is the canonical reference. For Deep Lake tables, mirror the `{ name, sql }` column lists from `src/deeplake-schema.ts`.
 
 ```sql
-CREATE TABLE users (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  clerk_user_id TEXT NOT NULL UNIQUE,
-  email         TEXT NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE memory (
+  id                TEXT NOT NULL DEFAULT '',
+  path              TEXT NOT NULL DEFAULT '',
+  filename          TEXT NOT NULL DEFAULT '',
+  summary           TEXT NOT NULL DEFAULT '',
+  summary_embedding FLOAT4[],
+  author            TEXT NOT NULL DEFAULT '',
+  creation_date     TEXT NOT NULL DEFAULT '',
+  last_update_date  TEXT NOT NULL DEFAULT ''
 );
-CREATE INDEX ON users (clerk_user_id);
 ```
 
 **TypeScript:** Real code with types. Show actual function signatures, not pseudocode.
 
 ```typescript
-async function getOrProvisionVirtualKey(projectId: string): Promise<string> {
-  const cached = await valkey.get(`portkey:vkey:${projectId}`);
-  if (cached) return cached;
-  // ...
+export interface ColumnDef {
+  /** Bare column identifier, e.g. `contributors`. */
+  name: string;
+  /** Column SQL minus the name, e.g. `TEXT NOT NULL DEFAULT '[]'`. */
+  sql: string;
 }
 ```
 
@@ -146,11 +149,9 @@ async function getOrProvisionVirtualKey(projectId: string): Promise<string> {
 **Shell commands:** Show actual commands users would run.
 
 ```bash
-docker run \
-  --memory=1g \
-  --cpus=1 \
-  --net=legion-egress \
-  legion-code/base:v1
+npm run build          # tsc + esbuild, emits per-harness bundles
+hivemind login         # device-flow login
+hivemind whoami        # show current user / org / workspace
 ```
 
 ---
@@ -160,7 +161,7 @@ docker run \
 **Do:**
 - Open each section with the most important sentence (inverted pyramid)
 - Use direct, active voice
-- Name specific things: "Fastify's `preHandler` chain" not "the middleware"
+- Name specific things: "`searchDeeplakeTables`'s `UNION ALL` query" not "the recall code"
 - Cite specific table/column names, file paths, function names
 - Explain trade-offs when they matter ("Why X instead of Y: ...")
 
@@ -181,16 +182,4 @@ docker run \
 | Architecture narrative | 150-300 lines |
 | Schema doc (full DDL) | 200-500 lines |
 | Domain narrative | 100-300 lines |
-| Standards doc | 100-200 lines |
-
-If a doc exceeds ~400 lines, split it. Use progressive disclosure: put the overview in the main doc and link to a detail doc.
-
----
-
-## Filename Conventions
-
-- Lowercase kebab-case: `auth-architecture.md`, `postgres-schema.md`
-- No version suffix in the filename (version is in the header)
-- No `doc-` or `guide-` prefix
-- Descriptive and specific: `token-metering-wallet.md` not `billing-details.md`
-- Acronyms: lowercase in filename (`rag-pipeline.md`, `pty-bridge.md`)
+| Standards doc | 100-20

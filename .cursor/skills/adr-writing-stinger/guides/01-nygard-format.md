@@ -18,19 +18,19 @@ Date: YYYY-MM-DD
 ## Context
 
 <The forces at play: technical constraints, team size, time pressure, adjacent systems, 
-regulatory requirements. Write this as "here is the situation we were in" — not as 
+regulatory requirements. Write this as "here is the situation we were in", not as 
 justification for the decision. A reader who disagrees with the decision should still 
 recognize this as an accurate description of the context.>
 
 ## Decision
 
-<The concrete choice made. Active voice, past tense. "We decided to use PostgreSQL as 
-the primary data store." Not "PostgreSQL should be used." Not "we plan to use." 
+<The concrete choice made. Active voice, past tense. "We decided to fall back to BM25 
+when embeddings are disabled." Not "BM25 should be used." Not "we plan to use." 
 The decision is closed.>
 
 ## Consequences
 
-<The trade-offs accepted — positive, negative, and neutral. Be honest about the negatives; 
+<The trade-offs accepted, positive, negative, and neutral. Be honest about the negatives; 
 they are the most valuable part of this section. A future engineer considering a change 
 needs to know what was given up, not just what was gained.>
 
@@ -46,10 +46,10 @@ rejected. This section prevents "why didn't we just use X?" conversations six mo
 
 ---
 
-## Worked example: choosing a database
+## Worked example: retrieval fallback strategy
 
 ```markdown
-# 0012. Use PostgreSQL for the primary data store
+# 0012. Fall back to BM25 when embeddings are disabled
 
 Date: 2025-11-03
 
@@ -59,58 +59,54 @@ Accepted
 
 ## Context
 
-We are building a multi-tenant SaaS application with a relational data model (users, 
-organizations, subscriptions, audit events). The team has strong SQL experience. We 
-evaluated the data access patterns and found that ~90% are simple CRUD with JOIN, and 
-~10% require full-text search. We need ACID transactions for subscription billing operations. 
-The expected dataset size is <100 GB for the first two years.
+Hivemind retrieval normally ranks library entries by embedding similarity against the
+Deep Lake dataset. But embeddings are optional: a user can run with the embeddings daemon
+off (no API key, offline, or cost-conscious), and a cold repo has no vectors yet. We need
+retrieval to still return useful results in those states rather than returning nothing.
+The library corpus is markdown, so a lexical ranker is viable without any model.
 
 ## Decision
 
-We decided to use PostgreSQL (via Supabase) as the primary data store for all relational 
-data. Full-text search will use PostgreSQL's built-in `tsvector` / `tsquery` for the 
-initial release, with Typesense as a future option if search requirements grow.
+We decided that `retrieval-worker-bee` falls back to a BM25 lexical ranker over the library
+corpus whenever embeddings are unavailable (daemon off, missing vectors, or an embeddings
+error). When embeddings are present, dense similarity is primary and BM25 is a secondary
+re-rank signal. The fallback is automatic and logged, not a user-facing mode switch.
 
 ## Consequences
 
 **Positive:**
-- Strong ACID guarantees for billing and audit operations.
-- The team's existing SQL expertise reduces onboarding time.
-- `pg_vector` extension available if we add vector search later.
-- Row-level security via Supabase RLS simplifies multi-tenancy.
+- Retrieval works offline and with zero API cost; the daemon is a performance upgrade, not a hard dependency.
+- A cold repo returns sensible results on day one before the embeddings backfill runs.
+- BM25 needs no model, no GPU, and no network; it is trivial to test in Vitest.
 
 **Negative:**
-- Horizontal write scaling requires Citus or a migration to a distributed database if 
-  write throughput exceeds ~10k writes/s (unlikely for Y1).
-- Full-text search is functional but less featureful than Typesense or Algolia for 
-  faceted search.
+- BM25 quality is lower than dense retrieval for paraphrased queries; users on the fallback path get coarser ranking.
+- Two ranking code paths must both be maintained and kept consistent in their result shape.
 
 **Neutral:**
-- Supabase manages the Postgres instance; we accept managed service trade-offs 
-  (limited Postgres extension selection, managed backup schedule).
+- The Deep Lake dataset schema is unchanged; BM25 reads the same markdown the embedder consumes.
 
 ## Alternatives Considered
 
-### Alternative: MongoDB
+### Alternative: hard-require embeddings
 
-Offers a flexible document model that would simplify schema evolution. Rejected because 
-our data is fundamentally relational (users → orgs → subscriptions), and the team has 
-limited MongoDB experience. The schema flexibility benefit does not outweigh the JOIN 
-ergonomics loss.
+Refusing to return results when embeddings are off is simpler (one code path). Rejected
+because it makes the embeddings daemon a hard dependency and breaks the offline and
+cold-start cases, which are common in local Cursor usage.
 
-### Alternative: PlanetScale (MySQL)
+### Alternative: cache the last dense results and serve stale
 
-Branching-based schema changes are operationally appealing. Rejected because PlanetScale 
-does not support foreign key constraints, which we rely on for referential integrity in 
-billing data.
+Serving the last successful dense ranking when the daemon is down avoids a second ranker.
+Rejected because a cold repo has no cache, and stale rankings silently misrepresent a
+corpus that has since changed.
 ```
 
 ---
 
 ## Filing conventions
 
-- **Filename:** `NNNN-<kebab-case-title>.md` — always zero-padded to 4 digits.
-  - Example: `0012-use-postgresql-primary-data-store.md`
+- **Filename:** `NNNN-<kebab-case-title>.md`, always zero-padded to 4 digits.
+  - Example: `0012-bm25-fallback-when-embeddings-off.md`
 - **Directory:** `docs/decisions/` or `docs/adr/` (respect existing project convention).
 - **Numbering:** scan the directory, take `max(existing numbers) + 1`. Never gap-fill.
 
@@ -123,5 +119,5 @@ billing data.
 | Decision written in future tense ("we will use...") | Write past tense; the decision is closed |
 | Missing Alternatives Considered | Always include; future engineers will rediscover the same options |
 | Consequences section lists only positives | Include the negatives honestly; this is where ADRs earn their keep |
-| Generic title ("Database decision") | Specific title ("Use PostgreSQL for the primary data store") |
+| Generic title ("Retrieval decision") | Specific title ("Fall back to BM25 when embeddings are disabled") |
 | Status left blank | Always set one of the five statuses |

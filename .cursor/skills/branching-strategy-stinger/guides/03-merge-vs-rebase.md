@@ -2,7 +2,7 @@
 
 **Research sources:** `research/external/2026-02-17-release-branch-pattern-azure-devops.md` (merge method types, Azure official docs), `research/external/2026-03-31-tbd-vs-gitflow-comparison-novvista.md` (squash-merge as the modern default).
 
-> TODO: open question — merge-vs-rebase guide sourcing. The current research corpus covers merge method types tangentially. A targeted search for "git squash merge vs rebase bisect impact 2026" would strengthen this guide's factual basis. (`research/research-summary.md` open question 3)
+> TODO: open question - merge-vs-rebase guide sourcing. The current research corpus covers merge method types tangentially. A targeted search for "git squash merge vs rebase bisect impact 2026" would strengthen this guide's factual basis. (`research/research-summary.md` open question 3)
 
 ---
 
@@ -31,7 +31,7 @@
 **What it does:** Creates a merge commit on the target branch that joins both histories. All source commits remain visible and individually navigable.
 
 **When to use:**
-- Merging a `release/X.Y.Z` branch back to `main` or `develop` — the merge commit marks the exact point the release entered the integration branch, and the full branch history is auditable.
+- Merging a `release/X.Y.Z` branch back to `main` or `develop` - the merge commit marks the exact point the release entered the integration branch, and the full branch history is auditable.
 - When the team or auditors need to trace individual commits within a feature for compliance or post-incident analysis.
 - When the feature contains independent sub-changes that individually need to be `git revert`-able.
 
@@ -46,7 +46,7 @@
 **What it does:** Rewrites the feature branch's commits so they appear to start from the current tip of the target branch, rather than from the branch point. Each commit gets a new SHA.
 
 **When to use:**
-- Within a local feature branch before opening a PR — to incorporate changes from main without a merge commit.
+- Within a local feature branch before opening a PR - to incorporate changes from main without a merge commit.
 - To clean up a branch's local commit history before review (interactive rebase: `git rebase -i`).
 
 **When NOT to use:**
@@ -77,4 +77,4 @@ When authoring the branching policy document, specify ONE merge method per targe
 - **Branching model** = how you structure branches, who works where, when branches are created and deleted (GitHub Flow, GitFlow, TBD).
 - **Merge strategy** = how commits move from a source branch to a target branch (squash, merge commit, rebase-then-merge).
 
-A team can use GitHub Flow (branching model) with squash merges, merge commits, OR rebase — these are independent choices. Configure the merge strategy in GitHub's repository settings ("Allow squash merging", "Allow merge commits", "Allow rebase merging") and disable the options you don't want to permit.
+A team can use GitHub Flow (branching model) with squash merges, merge commits, OR rebase - these are independent choices. Configure the merge strategy in GitHub's repository settings ("Allow squash merging", "Allow merge commits", "Allow rebase merging") and disable the options you don't want to permit.

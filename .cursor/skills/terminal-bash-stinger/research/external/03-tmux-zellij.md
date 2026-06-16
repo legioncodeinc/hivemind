@@ -1,4 +1,4 @@
-# Tmux and Zellij — Research Note
+# Tmux and Zellij - Research Note
 
 **Source type:** community synthesis
 **Authority:** high

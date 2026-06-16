@@ -5,7 +5,7 @@ source_type: blog
 authority: high
 relevance: high
 topic: feature-flag-vs-branch
-summary: "February 2026 definitive guide distinguishing feature branches (code management tool) from feature flags (release management tool). Key insight: they are complementary, not competing. Feature branches manage code integration; feature flags manage feature release. Long-lived branch problems: divergence, delayed feedback, all-or-nothing releases, merge hell. Feature flags enable trunk-based development. Cites Google, Netflix, Meta, Spotify as practitioners. Answers the FAQ: 'Feature flags do not replace branches — they replace long-lived branches.' Short branches (hours to days) + feature flags for release control is the canonical recommended pattern."
+summary: "February 2026 definitive guide distinguishing feature branches (code management tool) from feature flags (release management tool). Key insight: they are complementary, not competing. Feature branches manage code integration; feature flags manage feature release. Long-lived branch problems: divergence, delayed feedback, all-or-nothing releases, merge hell. Feature flags enable trunk-based development. Cites Google, Netflix, Meta, Spotify as practitioners. Answers the FAQ: 'Feature flags do not replace branches - they replace long-lived branches.' Short branches (hours to days) + feature flags for release control is the canonical recommended pattern."
 ---
 
 # Feature Flags vs Feature Branches: When to Use Each
@@ -16,10 +16,10 @@ February 2026 authoritative guide that frames the feature flags vs branches ques
 ## Key quotations / statistics
 
 - "Feature branches manage code integration. Feature flags manage feature release. Understanding this distinction is key to a healthy deployment workflow."
-- "Feature flags do not replace branches — they replace long-lived branches. You still need branches for code review, CI checks, and collaboration. What feature flags eliminate is the need to keep a branch open for weeks until a feature is 'ready to release.'"
+- "Feature flags do not replace branches - they replace long-lived branches. You still need branches for code review, CI checks, and collaboration. What feature flags eliminate is the need to keep a branch open for weeks until a feature is 'ready to release.'"
 - "The right question isn't 'which should I use?' but 'how do I use them together?'"
 - "Short branches avoid merge conflicts and integration pain. Feature flags give you release control without deployment pressure."
-- "The teams at Google, Netflix, and Spotify didn't adopt this pattern because it was trendy — they adopted it because it works."
+- "The teams at Google, Netflix, and Spotify didn't adopt this pattern because it was trendy - they adopted it because it works."
 
 ## When to use feature BRANCHES (not flags)
 - Short-lived work (1-3 days): bug fixes, small features, refactors that can be reviewed and merged quickly
