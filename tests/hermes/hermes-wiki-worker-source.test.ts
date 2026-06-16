@@ -66,6 +66,15 @@ describe("hermes spawn-wiki-worker source", () => {
     expect(SPAWN_SRC).toContain("export function spawnHermesWikiWorker");
     expect(SPAWN_SRC).not.toContain("export function spawnCodexWikiWorker");
   });
+
+  it("writes the token config 0o600 inside a 0o700 tmp dir (C3 credential-exposure fix; fork must not drift)", () => {
+    // The config.json carries the Activeloop token in cleartext in the shared,
+    // predictable tmpdir. The base spawnWikiWorker is behaviorally verified in
+    // tests/claude-code/spawn-wiki-worker.test.ts; this source lock-in guards
+    // the hermes fork from silently dropping the mode bits on a future refactor.
+    expect(SPAWN_SRC).toMatch(/mkdirSync\(tmpDir,\s*\{\s*recursive:\s*true,\s*mode:\s*0o700\s*\}\)/);
+    expect(SPAWN_SRC).toMatch(/\}\),\s*\{\s*mode:\s*0o600\s*\}\)/);
+  });
 });
 
 describe("hermes session-start source", () => {
