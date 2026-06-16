@@ -19,7 +19,7 @@ import { spawnSync } from "node:child_process";
 import { readStdin } from "../../utils/stdin.js";
 import { loadConfig } from "../../config.js";
 import { DeeplakeApi } from "../../deeplake-api.js";
-import { sqlLike } from "../../utils/sql.js";
+import { sqlIdent, sqlLike } from "../../utils/sql.js";
 import { parseBashGrep, handleGrepDirect } from "../grep-direct.js";
 import { tryGraphRead } from "../../graph/graph-command.js";
 import { executeCompiledBashCommand } from "../bash-command-compiler.js";
@@ -249,7 +249,7 @@ export async function processCodexPreToolUse(
         }
         if (content === null && virtualPath === "/index.md") {
           const idxRows = await api.query(
-            `SELECT path, project, description, creation_date FROM "${table}" WHERE path LIKE '/summaries/%' ORDER BY creation_date DESC`
+            `SELECT path, project, description, creation_date FROM "${sqlIdent(table)}" WHERE path LIKE '/summaries/%' ORDER BY creation_date DESC`
           );
           content = buildIndexContent(idxRows);
         }

@@ -90,7 +90,9 @@ export function spawnCursorWikiWorker(opts: SpawnOptions): void {
   const projectName = projectNameFromCwd(cwd);
 
   const tmpDir = join(tmpdir(), `deeplake-wiki-${sessionId}-${Date.now()}`);
-  mkdirSync(tmpDir, { recursive: true });
+  // 0o700: the config file below carries the Activeloop token, so its parent
+  // dir must not be world-/group-readable in the shared, predictable tmpdir.
+  mkdirSync(tmpDir, { recursive: true, mode: 0o700 });
 
   const pluginVersion = getInstalledVersion(bundleDir, ".claude-plugin") ?? "";
 
@@ -112,7 +114,7 @@ export function spawnCursorWikiWorker(opts: SpawnOptions): void {
     wikiLog: WIKI_LOG,
     hooksDir: join(HOME, ".cursor", "hooks"),
     promptTemplate: WIKI_PROMPT_TEMPLATE,
-  }));
+  }), { mode: 0o600 });
 
   wikiLog(`${reason}: spawning summary worker for ${sessionId}`);
 

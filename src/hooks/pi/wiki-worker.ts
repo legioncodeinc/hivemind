@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { finalizeSummary, releaseLock } from "../summary-state.js";
 import { uploadSummary } from "../upload-summary.js";
 import { log as _log } from "../../utils/debug.js";
+import { sqlIdent } from "../../utils/sql.js";
 import { EmbedClient } from "../../embeddings/client.js";
 import { embeddingsDisabled } from "../../embeddings/disable.js";
 import { deeplakeClientHeader } from "../../utils/client-header.js";
@@ -120,8 +121,12 @@ async function main(): Promise<void> {
   try {
     // 1. Fetch session events from sessions table
     wlog("fetching session events");
+    // Config-driven identifiers are interpolated raw into the Deeplake SQL
+    // API (no parameterized queries) — validate them as SQL identifiers.
+    const sessionsTable = sqlIdent(cfg.sessionsTable);
+    const memoryTable = sqlIdent(cfg.memoryTable);
     const rows = await query(
-      `SELECT message, creation_date FROM "${cfg.sessionsTable}" ` +
+      `SELECT message, creation_date FROM "${sessionsTable}" ` +
       `WHERE path LIKE E'${esc(`/sessions/%${cfg.sessionId}%`)}' ORDER BY creation_date ASC`
     );
 
@@ -136,7 +141,7 @@ async function main(): Promise<void> {
     const jsonlLines = rows.length;
 
     const pathRows = await query(
-      `SELECT DISTINCT path FROM "${cfg.sessionsTable}" ` +
+      `SELECT DISTINCT path FROM "${sessionsTable}" ` +
       `WHERE path LIKE '${esc(`/sessions/%${cfg.sessionId}%`)}' LIMIT 1`
     );
     const jsonlServerPath = pathRows.length > 0
@@ -150,7 +155,7 @@ async function main(): Promise<void> {
     let prevOffset = 0;
     try {
       const sumRows = await query(
-        `SELECT summary FROM "${cfg.memoryTable}" ` +
+        `SELECT summary FROM "${memoryTable}" ` +
         `WHERE path = '${esc(`/summaries/${cfg.userName}/${cfg.sessionId}.md`)}' LIMIT 1`
       );
       if (sumRows.length > 0 && sumRows[0]["summary"]) {
