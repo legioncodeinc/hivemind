@@ -30,7 +30,11 @@ function sanitizeApiUrl(raw) {
   try {
     const url = new URL(raw);
     if (url.protocol !== "https:") return DEFAULT_API_URL;
-    if (ALLOWED_API_ORIGINS.some((o) => raw.startsWith(o))) return raw.replace(/\/+$/, "");
+    // Match on the parsed origin, never a string prefix. A startsWith check
+    // accepts hostile values like "https://api.deeplake.ai@evil.com" or
+    // "https://api.deeplake.ai.evil.com", which would redirect the bearer
+    // token to an attacker-controlled host.
+    if (ALLOWED_API_ORIGINS.includes(url.origin)) return url.origin;
   } catch {
     // malformed URL
   }
