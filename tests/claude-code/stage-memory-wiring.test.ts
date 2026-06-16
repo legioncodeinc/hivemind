@@ -52,7 +52,7 @@ describe("stage default wiring", () => {
       },
     );
     expect(r.embedded).toBe(true);
-    expect(JSON.parse(readFileSync(join(stagingDir, "s1.embedding.json"), "utf-8"))).toEqual([1, 2, 3]);
+    expect(JSON.parse(readFileSync(join(stagingDir, "claude_code-s1.embedding.json"), "utf-8"))).toEqual([1, 2, 3]);
   });
 
   it("real runClaude resolves false when the binary does not exist (spawn 'error')", async () => {
@@ -65,6 +65,6 @@ describe("stage default wiring", () => {
       },
     );
     expect(r).toMatchObject({ ok: false, reason: "claude-failed" });
-    expect(existsSync(join(stagingDir, "s1.md"))).toBe(false);
+    expect(existsSync(join(stagingDir, "claude_code-s1.md"))).toBe(false);
   });
 });

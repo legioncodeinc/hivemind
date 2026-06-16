@@ -20,6 +20,8 @@ vi.mock("../../src/skillify/local-source.js", () => ({
 }));
 vi.mock("../../src/skillify/stage-memory.js", () => ({
   resolveClaudeBin: () => "/fake/claude",
+  // planBackfill dedups via backfillSessionKey, so the mock must export it.
+  backfillSessionKey: (agent: string, sessionId: string) => `${agent}-${sessionId}`,
   stageSession: async (input: { sessionId: string }) => {
     staged.push(input.sessionId);
     return { sessionId: input.sessionId, ok: true, embedded: false };

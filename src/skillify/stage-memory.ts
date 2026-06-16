@@ -18,8 +18,7 @@
 
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import { WIKI_PROMPT_TEMPLATE } from "../hooks/spawn-wiki-worker.js";
 import { findAgentBin } from "./gate-runner.js";
@@ -111,28 +110,38 @@ function runClaude(claudeBin: string, prompt: string, timeoutMs: number): Promis
  * Falls back through EmbedClient's shared-daemon path + autoSpawn when this
  * isn't present (e.g. running from source).
  */
-function defaultDaemonEntry(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), "embeddings", "embed-daemon.js");
-}
-
 /** Best-effort local embed; null when globally disabled or daemon unreachable. */
 async function defaultEmbed(text: string): Promise<number[] | null> {
   if (embeddingsDisabled()) return null;
-  return new EmbedClient({ daemonEntry: defaultDaemonEntry(), autoSpawn: true }).embed(text, "document");
+  // No daemonEntry: EmbedClient falls back to the canonical shared daemon
+  // (~/.hivemind/embed-deps/embed-daemon.js) + autospawn.
+  return new EmbedClient({ autoSpawn: true }).embed(text, "document");
+}
+
+/**
+ * Globally-unique staging key for a session. The bare session-id (filename
+ * stem) is NOT unique across agents/dirs now that discovery is recursive — a
+ * Claude `<uuid>` and a Codex `rollout-…` could in principle collide and
+ * overwrite each other's staged summary/embedding. Prefixing the agent makes
+ * the key unique and stable; planBackfill dedups on the same key.
+ */
+export function backfillSessionKey(agent: string, sessionId: string): string {
+  return `${agent}-${sessionId}`;
 }
 
 export async function stageSession(input: StageSessionInput, opts: StageOptions): Promise<StageResult> {
   const stagingDir = opts.stagingDir ?? PENDING_MEMORY_DIR;
-  const summaryPath = join(stagingDir, `${input.sessionId}.md`);
-  const embeddingPath = join(stagingDir, `${input.sessionId}.embedding.json`);
+  const key = backfillSessionKey(input.agent, input.sessionId);
+  const summaryPath = join(stagingDir, `${key}.md`);
+  const embeddingPath = join(stagingDir, `${key}.embedding.json`);
 
   if (!existsSync(input.jsonlPath)) {
-    return { sessionId: input.sessionId, ok: false, embedded: false, reason: "jsonl-missing" };
+    return { sessionId: key, ok: false, embedded: false, reason: "jsonl-missing" };
   }
   try {
     mkdirSync(stagingDir, { recursive: true });
   } catch {
-    return { sessionId: input.sessionId, ok: false, embedded: false, reason: "mkdir-failed" };
+    return { sessionId: key, ok: false, embedded: false, reason: "mkdir-failed" };
   }
 
   const jsonlLines = countLines(input.jsonlPath);
@@ -159,11 +168,11 @@ export async function stageSession(input: StageSessionInput, opts: StageOptions)
   const runAgent = opts.runAgent ?? runClaude;
   const ran = await runAgent(opts.claudeBin, prompt, opts.timeoutMs);
   if (!existsSync(summaryPath)) {
-    return { sessionId: input.sessionId, ok: false, embedded: false, reason: ran ? "no-summary" : "claude-failed" };
+    return { sessionId: key, ok: false, embedded: false, reason: ran ? "no-summary" : "claude-failed" };
   }
   const text = readFileSync(summaryPath, "utf-8");
   if (!text.trim()) {
-    return { sessionId: input.sessionId, ok: false, embedded: false, reason: "empty-summary" };
+    return { sessionId: key, ok: false, embedded: false, reason: "empty-summary" };
   }
 
   let embedded = false;
@@ -181,7 +190,7 @@ export async function stageSession(input: StageSessionInput, opts: StageOptions)
   }
 
   const entry: PendingMemoryEntry = {
-    session_id: input.sessionId,
+    session_id: key,
     source_agent: input.agent,
     project: input.project,
     source_session_path: input.jsonlPath,
@@ -193,7 +202,7 @@ export async function stageSession(input: StageSessionInput, opts: StageOptions)
   };
   upsertPendingMemoryEntry(entry, entry.extracted_at, opts.manifestPath ?? PENDING_MEMORY_MANIFEST_PATH);
 
-  return { sessionId: input.sessionId, ok: true, embedded };
+  return { sessionId: key, ok: true, embedded };
 }
 
 /** Resolve the claude binary for the extraction gate. */

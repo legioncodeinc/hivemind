@@ -63,12 +63,18 @@ describe("flush default wiring", () => {
     const r = await runFlushMemory({ ...defaultDeps("9.9.9"), loadConfig: () => cfg, manifestPath });
 
     expect(r).toMatchObject({ pending: 1, uploaded: 1, failed: 0 });
-    // makeQuery actually constructed + called DeeplakeApi.query: real
-    // uploadSummary issues a SELECT (existence check) then an INSERT.
-    expect(queryCalls.some((s) => /select/i.test(s))).toBe(true);
-    expect(queryCalls.some((s) => /insert/i.test(s))).toBe(true);
+    // makeQuery constructed + called DeeplakeApi.query: real uploadSummary
+    // issues an existence SELECT then an INSERT, both against the configured
+    // memory table and the exact summary vpath.
+    const vpath = "/summaries/u/a.md";
+    const sel = queryCalls.find((s) => /^select/i.test(s.trim()));
+    const ins = queryCalls.find((s) => /^insert/i.test(s.trim()));
+    expect(sel).toContain('"mem"');
+    expect(sel).toContain(vpath);
+    expect(ins).toContain('"mem"');
+    expect(ins).toContain(vpath);
     // defaultEmbed (mocked EmbedClient → [0.9,0.8]) flowed into the INSERT.
-    expect(queryCalls.some((s) => s.includes("0.9"))).toBe(true);
+    expect(ins).toContain("0.9");
     expect(readPendingMemoryManifest(manifestPath)!.entries[0].uploaded).toBe(true);
   });
 });

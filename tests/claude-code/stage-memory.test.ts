@@ -51,16 +51,16 @@ describe("stageSession", () => {
   it("stages summary + manifest row on success", async () => {
     const r = await stageSession(input(), opts());
     expect(r).toMatchObject({ ok: true, embedded: false });
-    expect(existsSync(join(stagingDir, "s1.md"))).toBe(true);
+    expect(existsSync(join(stagingDir, "claude_code-s1.md"))).toBe(true);
     const m = readPendingMemoryManifest(manifestPath)!;
     expect(m.entries).toHaveLength(1);
-    expect(m.entries[0]).toMatchObject({ session_id: "s1", uploaded: false, embedded: false, source_agent: "claude_code" });
+    expect(m.entries[0]).toMatchObject({ session_id: "claude_code-s1", uploaded: false, embedded: false, source_agent: "claude_code" });
   });
 
   it("writes an embedding file and sets embedded when embed returns a vector", async () => {
     const r = await stageSession(input(), opts({ embed: async () => [0.1, 0.2, 0.3] }));
     expect(r.embedded).toBe(true);
-    const embPath = join(stagingDir, "s1.embedding.json");
+    const embPath = join(stagingDir, "claude_code-s1.embedding.json");
     expect(JSON.parse(readFileSync(embPath, "utf-8"))).toEqual([0.1, 0.2, 0.3]);
     const m = readPendingMemoryManifest(manifestPath)!;
     expect(m.entries[0].embedded).toBe(true);
@@ -75,12 +75,12 @@ describe("stageSession", () => {
 
   it("does not count a pre-existing stale summary as success when the agent writes nothing", async () => {
     mkdirSync(stagingDir, { recursive: true });
-    writeFileSync(join(stagingDir, "s1.md"), "# stale\n## What Happened\nold run\n");
+    writeFileSync(join(stagingDir, "claude_code-s1.md"), "# stale\n## What Happened\nold run\n");
     // runAgent writes nothing → the stale file must be deleted first, so the
     // result is no-summary rather than a false success on stale content.
     const r = await stageSession(input(), opts({ runAgent: async () => true }));
     expect(r).toMatchObject({ ok: false, reason: "no-summary" });
-    expect(existsSync(join(stagingDir, "s1.md"))).toBe(false);
+    expect(existsSync(join(stagingDir, "claude_code-s1.md"))).toBe(false);
   });
 
   it("reports claude-failed when the agent run returns false and writes nothing", async () => {
@@ -137,7 +137,7 @@ describe("stageSession", () => {
   it("skipEmbed leaves embedded false even if embed would return a vector", async () => {
     const r = await stageSession(input(), opts({ skipEmbed: true, embed: async () => [1, 2] }));
     expect(r.embedded).toBe(false);
-    expect(existsSync(join(stagingDir, "s1.embedding.json"))).toBe(false);
+    expect(existsSync(join(stagingDir, "claude_code-s1.embedding.json"))).toBe(false);
   });
 
   it("resolveClaudeBin returns a non-empty path", () => {
@@ -168,7 +168,7 @@ process.exit(0);
       now: () => "2026-06-16T00:00:00.000Z", stagingDir, manifestPath,
     });
     expect(r.ok).toBe(true);
-    expect(readFileSync(join(stagingDir, "s1.md"), "utf-8")).toBe("# Session s1\n## What Happened\nfrom fake bin\n");
+    expect(readFileSync(join(stagingDir, "claude_code-s1.md"), "utf-8")).toBe("# Session s1\n## What Happened\nfrom fake bin\n");
   });
 
   it("default runClaude reports failure when the bin exits non-zero", async () => {

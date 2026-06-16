@@ -39,7 +39,7 @@ import {
 } from "../skillify/local-source.js";
 import { projectNameFromCwd } from "../utils/project-name.js";
 import { stagedSessionIds, PENDING_MEMORY_LOCK_PATH } from "../skillify/pending-memory-manifest.js";
-import { stageSession, resolveClaudeBin } from "../skillify/stage-memory.js";
+import { stageSession, resolveClaudeBin, backfillSessionKey } from "../skillify/stage-memory.js";
 import { existsSync, unlinkSync } from "node:fs";
 
 /** Default look-back window: 6 weeks. Matches the cold-start retromine bound. */
@@ -161,7 +161,9 @@ export function planFromSessions(
   const alreadyStaged: SessionFile[] = [];
   const eligible: SessionFile[] = [];
   for (const s of inWindow) {
-    if (staged.has(s.sessionId)) alreadyStaged.push(s);
+    // Dedup on the same composite key the stager writes to the manifest, so
+    // identical filename stems across agents don't false-match.
+    if (staged.has(backfillSessionKey(s.agent, s.sessionId))) alreadyStaged.push(s);
     else eligible.push(s);
   }
 

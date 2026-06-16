@@ -81,16 +81,26 @@ describe("planFromSessions", () => {
     expect(plan.skippedByCap).toBe(1);
   });
 
-  it("dedups against already-staged ids", () => {
+  it("dedups against already-staged ids (composite agent-id keys)", () => {
     const all = [sess("a", 1 * DAY), sess("b", 2 * DAY)];
-    const plan = planFromSessions(all, new Set(["a"]), baseOpts, NOW);
+    // Staged set holds the composite key the stager writes (agent-sessionId).
+    const plan = planFromSessions(all, new Set(["claude_code-a"]), baseOpts, NOW);
     expect(plan.alreadyStaged.map((s) => s.sessionId)).toEqual(["a"]);
     expect(plan.toExtract.map((s) => s.sessionId)).toEqual(["b"]);
   });
 
+  it("does not dedup when only the bare stem matches a different agent", () => {
+    // Same stem "x" under two agents must NOT collide: codex-x staged should
+    // not suppress claude_code-x.
+    const all = [sess("x", 1 * DAY, { agent: "claude_code" })];
+    const plan = planFromSessions(all, new Set(["codex-x"]), baseOpts, NOW);
+    expect(plan.toExtract.map((s) => s.sessionId)).toEqual(["x"]);
+    expect(plan.alreadyStaged).toHaveLength(0);
+  });
+
   it("--force ignores the staged set", () => {
     const all = [sess("a", 1 * DAY)];
-    const plan = planFromSessions(all, new Set(["a"]), { ...baseOpts, force: true }, NOW);
+    const plan = planFromSessions(all, new Set(["claude_code-a"]), { ...baseOpts, force: true }, NOW);
     expect(plan.toExtract.map((s) => s.sessionId)).toEqual(["a"]);
     expect(plan.alreadyStaged).toHaveLength(0);
   });

@@ -18,8 +18,6 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { loadConfig, type Config } from "../config.js";
 import { DeeplakeApi } from "../deeplake-api.js";
@@ -55,10 +53,6 @@ export interface FlushDeps {
   manifestPath?: string;
 }
 
-function defaultDaemonEntry(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), "embeddings", "embed-daemon.js");
-}
-
 function loadEmbedding(entry: PendingMemoryEntry): number[] | null {
   if (!entry.embedded || !entry.embedding_path) return null;
   try {
@@ -73,7 +67,10 @@ function loadEmbedding(entry: PendingMemoryEntry): number[] | null {
 async function defaultEmbed(text: string): Promise<number[] | null> {
   if (embeddingsDisabled()) return null;
   try {
-    return await new EmbedClient({ daemonEntry: defaultDaemonEntry(), autoSpawn: true }).embed(text, "document");
+    // No daemonEntry: EmbedClient falls back to the canonical shared daemon
+    // (~/.hivemind/embed-deps/embed-daemon.js) + autospawn, which is correct
+    // regardless of how this command is bundled.
+    return await new EmbedClient({ autoSpawn: true }).embed(text, "document");
   } catch {
     return null;
   }
