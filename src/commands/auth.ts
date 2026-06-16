@@ -3,7 +3,7 @@
  * and org/workspace management.
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { deeplakeClientHeader } from "../utils/client-header.js";
 import { hivemindInstallIDHeader } from "./install-id.js";
 import {
@@ -126,10 +126,18 @@ export async function pollForToken(deviceCode: string, apiUrl = DEFAULT_API_URL)
 
 function openBrowser(url: string): boolean {
   try {
-    const cmd = process.platform === "darwin" ? `open "${url}"`
-      : process.platform === "win32" ? `start "${url}"`
-      : `xdg-open "${url}" 2>/dev/null`;
-    execSync(cmd, { stdio: "ignore", timeout: 5000 });
+    // Fixed-argv spawn (no shell) so a crafted OAuth verification URL can't
+    // smuggle shell metacharacters into the command line. `stdio: "ignore"`
+    // subsumes the old `2>/dev/null` stderr suppression on every platform.
+    if (process.platform === "darwin") {
+      execFileSync("open", [url], { stdio: "ignore", timeout: 5000 });
+    } else if (process.platform === "win32") {
+      // `start` is a cmd builtin; the empty "" is the required window-title
+      // arg so a quoted URL isn't misread as the title.
+      execFileSync("cmd", ["/c", "start", "", url], { stdio: "ignore", timeout: 5000 });
+    } else {
+      execFileSync("xdg-open", [url], { stdio: "ignore", timeout: 5000 });
+    }
     return true;
   } catch {
     return false;
