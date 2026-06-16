@@ -5,7 +5,7 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdtempSync, chmodSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import type { Config } from "../config.js";
 import { makeWikiLogger } from "../utils/wiki-log.js";
@@ -92,10 +92,8 @@ export function spawnWikiWorker(opts: SpawnOptions): void {
   const { config, sessionId, cwd, bundleDir, reason } = opts;
   const projectName = projectNameFromCwd(cwd);
 
-  const tmpDir = join(tmpdir(), `deeplake-wiki-${sessionId}-${Date.now()}`);
-  // 0o700: the config file below carries the Activeloop token, so its parent
-  // dir must not be world-/group-readable in the shared, predictable tmpdir.
-  mkdirSync(tmpDir, { recursive: true, mode: 0o700 });
+  const tmpDir = mkdtempSync(join(tmpdir(), "deeplake-wiki-"));
+  chmodSync(tmpDir, 0o700);
 
   const pluginVersion = getInstalledVersion(bundleDir, ".claude-plugin") ?? "";
 

@@ -203,8 +203,10 @@ function resolveSnapshot(repoDir) {
   if (existsSync(pointer)) {
     try {
       const sha = readFileSync(pointer, "utf-8").trim();
-      const candidate = join(snapshotsDir, `${sha}.json`);
-      if (sha && existsSync(candidate)) snapshotPath = candidate;
+      if (/^[a-f0-9]{7,64}$/i.test(sha)) {
+        const candidate = join(snapshotsDir, `${sha}.json`);
+        if (existsSync(candidate)) snapshotPath = candidate;
+      }
     } catch {
       /* fall through to newest-file scan */
     }

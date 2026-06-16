@@ -60,6 +60,7 @@ Install the generated `.vsix` via **Extensions: Install from VSIX…**.
 | `hivemind.logout` | Hivemind: Log Out |
 | `hivemind.showStatus` | Hivemind: Show Status |
 | `hivemind.wireHooks` | Hivemind: Wire / Refresh Hooks |
+| `hivemind.unwireHooks` | Hivemind: Unwire Hooks |
 | `hivemind.openLogs` | Hivemind: Open Logs |
 | `hivemind.openDashboard` | Hivemind: Open Dashboard |
 

@@ -8,7 +8,8 @@
 import { loadCreds, query, sqlIdent, tableNames, isMissingTableError } from "./lib/deeplake.mjs";
 
 const status = process.argv[2] || "active";
-const limit = parseInt(process.argv[3] || "10", 10);
+const parsedLimit = Number.parseInt(process.argv[3] ?? "10", 10);
+const limit = Number.isFinite(parsedLimit) ? Math.min(100, Math.max(1, parsedLimit)) : 10;
 
 function emit(obj) {
   process.stdout.write(JSON.stringify(obj));

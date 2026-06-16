@@ -360,18 +360,11 @@ export async function processCodexPreToolUse(
   // We run it synchronously here (spawnSync) so the output is available before
   // returning the decision.
   //
-  // Action choice:
-  //   "guide" (exit 0) — Codex treats the command as successful and also runs
-  //     the original on the host. Safe ONLY for write-redirect patterns
-  //     (echo/printf/tee … > /file) where the side-effect on the real
-  //     ~/.deeplake/memory/ disk dir is harmless — VFS reads always query SQL.
-  //   "block" (exit 2) — Codex treats the command as rejected. Used for
-  //     everything else (pipes, finds, reads) to prevent host execution.
-  // Safe to return "guide" (Codex also runs original on host) ONLY for pure
-  // output commands: echo/printf/tee writing to a VFS path. A generic ">>"
-  // check would match mixed commands like `sort /etc/passwd > /vfs/out` which
-  // would then execute on the host and read real files.
-  const isWriteRedirect = /^\s*(echo|printf|tee)\b/.test(rewritten) && /\s>>?\s/.test(rewritten);
+  // Always return "block" (exit 2) after the VFS shell executes the command.
+  // Returning "guide" (exit 0) would cause Codex to also run the original on
+  // the real host shell, violating VFS isolation - memory-touching commands
+  // must never reach the host shell regardless of whether they are write
+  // redirects or reads.
   const shellBundle = join(__bundleDir, "shell", "deeplake-shell.js");
   logFn(`unroutable memory command, falling back to VFS shell: ${rewritten}`);
   try {
@@ -381,9 +374,7 @@ export async function processCodexPreToolUse(
     });
     if (proc.status === 0 || (proc.stdout && proc.stdout.trim())) {
       const output = (proc.stdout?.trim() ?? "") || "(done)";
-      // Write redirects: use "guide" so Codex reports success (not "blocked").
-      // Other commands: keep "block" so the host shell never runs them.
-      return { action: isWriteRedirect ? "guide" : "block", output, rewrittenCommand: rewritten };
+      return { action: "block", output, rewrittenCommand: rewritten };
     }
     // Shell exited non-zero (bundle missing or command failed) — fall back to guidance.
     return { action: "block", output: buildUnsupportedGuidance(), rewrittenCommand: rewritten };
