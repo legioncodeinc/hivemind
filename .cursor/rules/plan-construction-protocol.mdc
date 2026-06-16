@@ -37,11 +37,11 @@ Spawn watchdog timers to monitor agent progress. If an agent is stalled for a re
 
 ## Second-to-last step (always): security
 
-Run `/security-guardian`, then remediate every flagged issue of medium severity or higher. Do not advance until all medium+ findings are fixed.
+Run `/security-worker-bee`, then remediate every flagged issue of medium severity or higher. Do not advance until all medium+ findings are fixed.
 
 ## Last step (always): quality gate
 
-Run `/quality-guardian` in a loop, fixing any outstanding issues of medium importance or higher, until the QA report passes cleanly to that standard. Only when it passes cleanly may you declare the branch shippable.
+Run `/quality-worker-bee` in a loop, fixing any outstanding issues of medium importance or higher, until the QA report passes cleanly to that standard. Only when it passes cleanly may you declare the branch shippable.
 
 ## Ship: commit, push, PR, notify
 

@@ -459,6 +459,67 @@ npm run shell
   </a>
 </p>
 
+## Cursor & Claude Bee Army
+
+This fork ships a ready-to-use AI orchestration layer for Cursor IDE and Claude Code, built on top of Hivemind's memory and skillify infrastructure. It is maintained by [Legion Code Inc.](https://github.com/legioncodeinc)
+
+<p align="center">
+  <a href="https://github.com/legioncodeinc">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/legioncodeinc/brands/main/legion-code-inc/logos/legion-logo-light.svg">
+      <img src="https://raw.githubusercontent.com/legioncodeinc/brands/main/legion-code-inc/logos/legion-logo-dark.svg" alt="Legion Code Inc." height="48">
+    </picture>
+  </a>
+</p>
+
+The agents and skills were designed and built by [Mario Aldayuz](https://www.linkedin.com/in/marioaldayuz/), founder of Legion Code Inc.
+
+### What's included
+
+- **37 worker-bee sub-agents** under `.cursor/agents/` - each owns one specialist domain (Python, React, DB, security, DevOps, ADRs, and more).
+- **37 paired stinger skills** under `.cursor/skills/` - the procedural arsenal each bee reads before starting work.
+- **`beekeeper-suit`** - the routing roster that maps any task to the right bee. Defines the canonical arming contract so every dispatch is consistent.
+- **`/the-beekeeper`** - lightweight Cursor command: route a task, spawn the right bee(s) armed with their stinger, run the security + quality close-out.
+- **`/the-smoker`** - heavy-duty Cursor command: drive a full set of PRDs to 100% completion in waves, with an AC ledger, stall watchdog, and a commit + PR + CI pipeline at the end.
+
+### Using `/the-beekeeper` in Cursor
+
+1. Open any project in Cursor that has this repo's `.cursor/` folder in scope (add it as a workspace folder if needed).
+2. In the chat bar, type `/the-beekeeper` followed by your task:
+   ```
+   /the-beekeeper audit our dependencies and set up Renovate
+   ```
+3. The agent reads the `beekeeper-suit` roster, picks the right worker-bee (`dependency-audit-worker-bee` in this case), and spawns it armed with its paired stinger skill. You get a scoped specialist that follows a research-backed playbook rather than a general-purpose response.
+4. Multi-step work (e.g. "design the schema then implement the API") is dispatched as a sequenced wave automatically.
+
+### Using `/the-smoker` in Cursor
+
+1. Place your PRD files anywhere in the repo (the command reads them by path).
+2. Type `/the-smoker` in the Cursor chat:
+   ```
+   /the-smoker run the PRDs in library/requirements/features/
+   ```
+3. The agent builds an AC Ledger (`EXECUTION_LEDGER.md` at the repo root), produces a wave plan, and dispatches armed worker-bees until every acceptance criterion reaches VERIFIED status. It then runs `security-worker-bee` and `quality-worker-bee` as a close-out and opens a PR with the full ledger attached.
+
+### Using the bees in Claude Code
+
+The same agents work in Claude Code. Each `.cursor/agents/<bee-name>.md` file is a plain markdown sub-agent spec. Reference them directly:
+
+```bash
+# Invoke a specific bee manually
+claude --agent .cursor/agents/python-worker-bee.md "review the ORM patterns in src/"
+```
+
+Or load the beekeeper-suit routing skill at session start and let it pick the bee:
+
+```bash
+claude --skill .cursor/skills/beekeeper-suit/SKILL.md "set up Renovate for this repo"
+```
+
+The arming contract (load the paired stinger before doing any work) is defined in `.cursor/skills/beekeeper-suit/SKILL.md` under "Dispatching a Bee". Claude Code respects the same `name:` frontmatter that Cursor uses, so routing by bee name works identically.
+
+---
+
 ## License
 
 Apache License 2.0, © Activeloop, Inc. See [LICENSE](LICENSE) for details.
