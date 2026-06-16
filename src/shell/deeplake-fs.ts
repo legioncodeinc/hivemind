@@ -820,6 +820,14 @@ export class DeeplakeFs implements IFileSystem {
     // Session files are read-only (multi-row in sessions table, not memory table)
     if (this.sessionPaths.has(p)) throw fsErr("EPERM", "session files are read-only", p);
 
+    // A buffered (unflushed) prior write must land in the DB before the
+    // SQL-level concat below. The UPDATE appends onto the persisted row, so
+    // if the prior write is still pending the row does not exist yet, the
+    // UPDATE matches zero rows, and the appended content is silently dropped
+    // (the common `echo a > f && echo b >> f` idiom would lose "b"). Flushing
+    // the pending write first guarantees the concat lands on a real row.
+    if (this.pending.has(p)) await this.flush();
+
     // Fast path: SQL-level concat — no read-back, O(1) per append
     if (this.files.has(p) || await this.exists(p).catch(() => false)) {
       const ts = new Date().toISOString();

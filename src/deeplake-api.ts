@@ -391,12 +391,13 @@ export class DeeplakeApi {
     try {
       await this.query(`CREATE INDEX IF NOT EXISTS "${indexName}" ON "${table}" ${columnsSql}`);
       markers.writeIndexMarker(markerPath);
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (isDuplicateIndexError(e)) {
         markers.writeIndexMarker(markerPath);
         return;
       }
-      log(`index "${indexName}" skipped: ${e.message}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      log(`index "${indexName}" skipped: ${msg}`);
     }
   }
 
