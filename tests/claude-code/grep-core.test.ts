@@ -628,8 +628,8 @@ describe("searchDeeplakeTables", () => {
     });
     expect(api.query).toHaveBeenCalledTimes(1);
     const sql = api.query.mock.calls[0][0] as string;
-    expect(sql).toContain('FROM memory');
-    expect(sql).toContain('FROM sessions');
+    expect(sql).toContain('FROM "memory"');
+    expect(sql).toContain('FROM "sessions"');
     expect(sql).toContain("summary::text ILIKE '%foo%'");
     expect(sql).toContain("message::text ILIKE '%foo%'");
     expect(sql).toContain("LIMIT 50");
@@ -859,8 +859,8 @@ describe("grepBothTables", () => {
     await grepBothTables(api, "memory", "sessions", baseParams, "/summaries");
     expect(api.query).toHaveBeenCalledTimes(1);
     const sql = api.query.mock.calls[0][0] as string;
-    expect(sql).toContain('FROM memory');
-    expect(sql).toContain('FROM sessions');
+    expect(sql).toContain('FROM "memory"');
+    expect(sql).toContain('FROM "sessions"');
     expect(sql).toContain("UNION ALL");
   });
 
@@ -1269,7 +1269,7 @@ describe("searchDeeplakeTables: hybrid semantic + lexical branch", () => {
       });
       const sql = query.mock.calls[0][0] as string;
       // Semantic LIMIT is 7; lexical still 20 (default).
-      expect(sql).toMatch(/summary_embedding <#> [^)]+\) AS score FROM m WHERE ARRAY_LENGTH\(summary_embedding, 1\) > 0 ORDER BY score DESC LIMIT 7/);
+      expect(sql).toMatch(/summary_embedding <#> [^)]+\) AS score FROM "m" WHERE ARRAY_LENGTH\(summary_embedding, 1\) > 0 ORDER BY score DESC LIMIT 7/);
     } finally {
       if (prev === undefined) delete process.env.HIVEMIND_SEMANTIC_LIMIT;
       else process.env.HIVEMIND_SEMANTIC_LIMIT = prev;

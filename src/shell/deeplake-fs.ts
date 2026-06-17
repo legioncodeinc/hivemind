@@ -450,7 +450,7 @@ export class DeeplakeFs implements IFileSystem {
       if (r.project !== undefined) setClauses += `, project = '${esc(r.project)}'`;
       if (r.description !== undefined) setClauses += `, description = '${esc(r.description)}'`;
       await this.client.query(
-        `UPDATE ${sqlIdent(this.table)} SET ${setClauses} WHERE path = '${p}'`
+        `UPDATE "${sqlIdent(this.table)}" SET ${setClauses} WHERE path = '${p}'`
       );
     } else {
       const id = randomUUID();
@@ -461,7 +461,7 @@ export class DeeplakeFs implements IFileSystem {
         (r.project !== undefined ? `, '${esc(r.project)}'` : "") +
         (r.description !== undefined ? `, '${esc(r.description)}'` : "");
       await this.client.query(
-        `INSERT INTO ${sqlIdent(this.table)} (${cols}) VALUES (${vals})`
+        `INSERT INTO "${sqlIdent(this.table)}" (${cols}) VALUES (${vals})`
       );
       this.flushed.add(r.path);
     }
@@ -579,7 +579,7 @@ export class DeeplakeFs implements IFileSystem {
     // most-recent of many" notice.
     const fetchLimit = INDEX_LIMIT_PER_SECTION + 1;
     const summaryRows = await this.client.query(
-      `SELECT path, project, description, creation_date, last_update_date FROM ${sqlIdent(this.table)} ` +
+      `SELECT path, project, description, creation_date, last_update_date FROM "${sqlIdent(this.table)}" ` +
       `WHERE path LIKE '${esc("/summaries/")}%' ORDER BY last_update_date DESC LIMIT ${fetchLimit}`
     );
 
@@ -592,7 +592,7 @@ export class DeeplakeFs implements IFileSystem {
       try {
         sessionRows = await this.client.query(
           `SELECT path, MAX(description) AS description, MIN(creation_date) AS creation_date, MAX(last_update_date) AS last_update_date ` +
-          `FROM ${sqlIdent(this.sessionsTable)} WHERE path LIKE '${esc("/sessions/")}%' ` +
+          `FROM "${sqlIdent(this.sessionsTable)}" WHERE path LIKE '${esc("/sessions/")}%' ` +
           `GROUP BY path ORDER BY MAX(last_update_date) DESC LIMIT ${fetchLimit}`
         );
       } catch {

@@ -105,7 +105,7 @@ describe("handleGraphVfs", () => {
     }, wt);
     const r = handleGraphVfs("index.md", cwd);
     expect(r.kind).toBe("no-graph");
-    if (r.kind === "no-graph") expect(r.message).toContain("parse");
+    if (r.kind === "no-graph") expect(r.message).toContain("Failed to parse snapshot");
   });
 
   // ── index.md ─────────────────────────────────────────────────────────
