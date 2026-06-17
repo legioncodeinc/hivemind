@@ -12,6 +12,10 @@ const FORBIDDEN = [
   /(^|\/)secrets?(\/|$)/,
   /(^|\/)\.github(\/|$)/,
   /(^|\/)\.git(\/|$)/,
+  // Private-key / credential material: never belongs in a published tarball.
+  /(^|\/)(id_rsa|id_dsa|id_ecdsa|id_ed25519)$/,
+  /\.(pem|key|p12|pfx)$/,
+  /(^|\/)credentials\.json$/,
 ];
 
 const raw = execFileSync('npm', ['pack', '--dry-run', '--json'], {

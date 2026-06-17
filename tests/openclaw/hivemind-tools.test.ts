@@ -211,8 +211,8 @@ describe("hivemind_search", () => {
 
     expect(queryMock).toHaveBeenCalled();
     const sql = queryMock.mock.calls[0][0];
-    expect(sql).toContain('FROM "memory"');
-    expect(sql).toContain('FROM "sessions"');
+    expect(sql).toContain('FROM memory');
+    expect(sql).toContain('FROM sessions');
     expect(sql).toContain("UNION ALL");
 
     const text = result.content[0].text;

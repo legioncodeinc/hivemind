@@ -47,6 +47,8 @@ const CLAUDE_FLAGS = [
   "haiku",
   "--permission-mode",
   "bypassPermissions",
+  "--allowedTools",
+  "Read Write",
 ];
 
 describe("resolveCliBin — Windows", () => {

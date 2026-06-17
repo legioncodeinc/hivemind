@@ -1,13 +1,24 @@
 import type { ExecFileSyncOptions } from "node:child_process";
 import { binNeedsShell } from "../utils/resolve-cli-bin.js";
 
-/** Fixed flags for the summary-generation `claude -p` call (no user input). */
+/** Fixed flags for the summary-generation `claude -p` call (no user input).
+ *
+ * `--allowedTools Read Write` constrains the headless agent to reads and
+ * file writes only, preventing a prompt-injection payload embedded in
+ * captured session content from invoking Bash or any other tool. The
+ * summarizer needs Read to load the JSONL + existing summary, and Write to
+ * persist the output. bypassPermissions is still required for headless
+ * operation (no TTY to present approval prompts). A follow-up (pr/06) will
+ * pivot to stdout so bypassPermissions can be removed entirely.
+ */
 const CLAUDE_FLAGS = [
   "--no-session-persistence",
   "--model",
   "haiku",
   "--permission-mode",
   "bypassPermissions",
+  "--allowedTools",
+  "Read Write",
 ] as const;
 
 export interface ClaudeInvocation {

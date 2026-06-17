@@ -102,8 +102,8 @@ describe("grep interceptor", () => {
     const result = await cmd.execute(["hello", "/memory"], makeCtx(fs) as never);
 
     const sqls = client.query.mock.calls.map((c: unknown[]) => c[0] as string);
-    expect(sqls.some(s => /FROM "test"/.test(s) && /ILIKE|LIKE/.test(s))).toBe(true);
-    expect(sqls.some(s => /FROM "sessions"/.test(s) && /ILIKE|LIKE/.test(s))).toBe(true);
+    expect(sqls.some(s => /FROM test/.test(s) && /ILIKE|LIKE/.test(s))).toBe(true);
+    expect(sqls.some(s => /FROM sessions/.test(s) && /ILIKE|LIKE/.test(s))).toBe(true);
     // No BM25 in the new path
     expect(sqls.some(s => s.includes("<#>"))).toBe(false);
     expect(result.stdout).toContain("hello world");
@@ -121,8 +121,8 @@ describe("grep interceptor", () => {
 
     expect(client.query).toHaveBeenCalledTimes(1);
     const sql = client.query.mock.calls[0][0] as string;
-    expect(sql).toContain('FROM "test"');
-    expect(sql).toContain('FROM "sessions"');
+    expect(sql).toContain('FROM test');
+    expect(sql).toContain('FROM sessions');
     expect(sql).toContain("path = '/memory/a'");
     expect(sql).toContain("path = '/memory/b'");
     expect(result.exitCode).toBe(0);
