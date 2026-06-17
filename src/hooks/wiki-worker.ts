@@ -42,8 +42,22 @@ interface WorkerConfig {
 
 const cfg: WorkerConfig = JSON.parse(readFileSync(process.argv[2], "utf-8"));
 const tmpDir = cfg.tmpDir;
-const tmpJsonl = join(tmpDir, "session.jsonl");
 const tmpSummary = join(tmpDir, "summary.md");
+
+/** Hard cap on the model-emitted summary we will persist. The prompt targets
+ * <4000 chars; this generous ceiling bounds a prompt-injected runaway output
+ * before it reaches the memory table. */
+const MAX_SUMMARY_CHARS = 100_000;
+
+/** Sanitize the summary the agent emitted on stdout before we trust it:
+ * strip NUL + non-printable control chars (keep tab/newline/CR) and cap the
+ * length. The session content driving the summary is attacker-influenceable,
+ * and the agent has no tools, so the only residual risk is malformed/oversized
+ * text — this neutralizes it. */
+function sanitizeSummary(raw: string): string {
+  const cleaned = raw.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+  return cleaned.length > MAX_SUMMARY_CHARS ? cleaned.slice(0, MAX_SUMMARY_CHARS) : cleaned;
+}
 
 function wlog(msg: string): void {
   try {
@@ -183,11 +197,11 @@ async function main(): Promise<void> {
       ? pathRows[0].path as string
       : `/sessions/unknown/${cfg.sessionId}.jsonl`;
 
-    writeFileSync(tmpJsonl, jsonlContent);
     wlog(`found ${jsonlLines} events at ${jsonlServerPath}`);
 
     // 2. Check for existing summary in memory table (resumed session)
     let prevOffset = 0;
+    let existingSummary = "";
     try {
       const sumRows = await query(
         `SELECT summary FROM "${memoryTable}" ` +
@@ -197,31 +211,44 @@ async function main(): Promise<void> {
         const existing = sumRows[0]["summary"] as string;
         const match = existing.match(/\*\*JSONL offset\*\*:\s*(\d+)/);
         if (match) prevOffset = parseInt(match[1], 10);
+        existingSummary = existing;
+        // Pre-seed tmpSummary so a failed claude -p that produces no new
+        // output leaves the existing summary in place (the skip-upload guard
+        // below compares against this baseline).
         writeFileSync(tmpSummary, existing);
         wlog(`existing summary found, offset=${prevOffset}`);
       }
     } catch { /* no existing summary */ }
 
-    // 3. Build prompt and run claude -p
+    // 3. Build prompt and run claude -p. Scalars are substituted first; the
+    // large, attacker-influenceable blobs (transcript, existing summary) are
+    // injected LAST via function replacements so their literal `$`/placeholder
+    // bytes can't be reinterpreted by a later replace pass.
     const prompt = cfg.promptTemplate
-      .replace(/__JSONL__/g, tmpJsonl)
-      .replace(/__SUMMARY__/g, tmpSummary)
       .replace(/__SESSION_ID__/g, cfg.sessionId)
       .replace(/__PROJECT__/g, cfg.project)
       .replace(/__PREV_OFFSET__/g, String(prevOffset))
       .replace(/__JSONL_LINES__/g, String(jsonlLines))
-      .replace(/__JSONL_SERVER_PATH__/g, jsonlServerPath);
+      .replace(/__JSONL_SERVER_PATH__/g, jsonlServerPath)
+      .replace(/__EXISTING_SUMMARY__/g, () => existingSummary || "(none — generate from scratch)")
+      .replace(/__JSONL_CONTENT__/g, () => jsonlContent);
 
     wlog("running claude -p");
     let execSucceeded = false;
     const summaryBeforeExec = existsSync(tmpSummary) ? readFileSync(tmpSummary, "utf-8") : null;
     try {
       const inv = buildClaudeInvocation(cfg.claudeBin, prompt);
-      execFileSync(inv.file, inv.args, {
+      // The agent emits the summary on stdout (it has no Write tool); capture
+      // it, sanitize it, and persist it ourselves rather than trusting the
+      // agent to write a file.
+      const stdout = execFileSync(inv.file, inv.args, {
         ...inv.options,
         timeout: 120_000,
+        maxBuffer: 16 * 1024 * 1024,
         env: { ...process.env, HIVEMIND_WIKI_WORKER: "1", HIVEMIND_CAPTURE: "false" },
       });
+      const summaryText = sanitizeSummary((stdout ?? "").toString());
+      if (summaryText.trim()) writeFileSync(tmpSummary, summaryText);
       execSucceeded = true;
       wlog("claude -p exited (code 0)");
     } catch (e: any) {
