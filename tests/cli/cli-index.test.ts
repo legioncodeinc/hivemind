@@ -517,13 +517,13 @@ describe("hivemind memory", () => {
   it("flush warns + exits 1 when not logged in", async () => {
     runFlushMemoryMock.mockResolvedValue({ pending: 0, uploaded: 0, failed: 0, reason: "not-logged-in" });
     await runCli(["memory", "flush"]);
-    expect(stderrText()).toContain("Not logged in");
+    expect(stderrText()).toContain("Not logged in — run `hivemind login` before flushing staged memory.");
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it("unknown memory subcommand prints usage and exits 1", async () => {
     await runCli(["memory", "wat"]);
-    expect(stderrText()).toContain("Usage: hivemind memory");
+    expect(stderrText()).toContain("Usage: hivemind memory backfill [--dry-run] [--force] [--n <num|all>] [--window-days N] [--project-only] | flush");
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });
@@ -535,6 +535,6 @@ describe("install fires the background memory backfill", () => {
     maybeAutoBackfillMemoryMock.mockReturnValue({ triggered: true });
     await runCli(["install"]);
     expect(maybeAutoBackfillMemoryMock).toHaveBeenCalledTimes(1);
-    expect(stdoutText()).toContain("Mining your past sessions");
+    expect(stdoutText()).toContain("Mining your past sessions for team memory in the background — sign in, then run `hivemind memory flush` to push.");
   });
 });
