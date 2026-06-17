@@ -7,7 +7,7 @@
  * Invoked by session-end.ts as: node wiki-worker.js <config.json>
  */
 
-import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync, rmSync } from "node:fs";
+import { readFileSync, appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { buildClaudeInvocation } from "./wiki-worker-spawn.js";
 import { dirname, join } from "node:path";
@@ -42,7 +42,6 @@ interface WorkerConfig {
 
 const cfg: WorkerConfig = JSON.parse(readFileSync(process.argv[2], "utf-8"));
 const tmpDir = cfg.tmpDir;
-const tmpSummary = join(tmpDir, "summary.md");
 
 /** Hard cap on the model-emitted summary we will persist. The prompt targets
  * <4000 chars; this generous ceiling bounds a prompt-injected runaway output
@@ -211,11 +210,9 @@ async function main(): Promise<void> {
         const existing = sumRows[0]["summary"] as string;
         const match = existing.match(/\*\*JSONL offset\*\*:\s*(\d+)/);
         if (match) prevOffset = parseInt(match[1], 10);
+        // Held in memory as the baseline for the skip-on-no-change guard and
+        // inlined into the prompt for the agent to merge onto.
         existingSummary = existing;
-        // Pre-seed tmpSummary so a failed claude -p that produces no new
-        // output leaves the existing summary in place (the skip-upload guard
-        // below compares against this baseline).
-        writeFileSync(tmpSummary, existing);
         wlog(`existing summary found, offset=${prevOffset}`);
       }
     } catch { /* no existing summary */ }
@@ -235,12 +232,12 @@ async function main(): Promise<void> {
 
     wlog("running claude -p");
     let execSucceeded = false;
-    const summaryBeforeExec = existsSync(tmpSummary) ? readFileSync(tmpSummary, "utf-8") : null;
+    // The summary lives entirely in memory: the agent emits it on stdout (it
+    // has no Write tool), we sanitize it, and we own the upload. No tmp file is
+    // written or read back, which also removes any check-then-use race.
+    let producedSummary: string | null = null;
     try {
       const inv = buildClaudeInvocation(cfg.claudeBin, prompt);
-      // The agent emits the summary on stdout (it has no Write tool); capture
-      // it, sanitize it, and persist it ourselves rather than trusting the
-      // agent to write a file.
       const stdout = execFileSync(inv.file, inv.args, {
         ...inv.options,
         timeout: 120_000,
@@ -248,26 +245,28 @@ async function main(): Promise<void> {
         env: { ...process.env, HIVEMIND_WIKI_WORKER: "1", HIVEMIND_CAPTURE: "false" },
       });
       const summaryText = sanitizeSummary((stdout ?? "").toString());
-      if (summaryText.trim()) writeFileSync(tmpSummary, summaryText);
+      if (summaryText.trim()) producedSummary = summaryText;
       execSucceeded = true;
       wlog("claude -p exited (code 0)");
     } catch (e: any) {
       wlog(`claude -p failed: ${e.status ?? e.message}`);
     }
 
-    // 4. Upload summary to memory table
-    if (existsSync(tmpSummary)) {
-      const text = readFileSync(tmpSummary, "utf-8");
-      // A resumed session pre-seeds tmpSummary with the existing summary
-      // (step 2). If claude -p failed without rewriting it, re-uploading the
-      // unchanged summary and calling finalizeSummary advances the JSONL
-      // offset, marking new events as summarized when they never were. Skip
-      // the upload in that case; SessionEnd's later run reconstructs the
-      // delta from the offset embedded in the summary body. Matches the
-      // guard in src/hooks/codex/wiki-worker.ts.
-      const summaryChanged = summaryBeforeExec === null
+    // 4. Upload summary to memory table. Prefer the freshly produced summary;
+    // fall back to the existing one (resumed session) only to drive the
+    // skip-on-no-change guard below.
+    const baseline = existingSummary || null;
+    const text = producedSummary ?? baseline;
+    if (text) {
+      // If claude -p failed without producing a new summary on a resumed
+      // session, re-uploading the unchanged existing summary and calling
+      // finalizeSummary would advance the JSONL offset, marking new events as
+      // summarized when they never were. Skip the upload in that case;
+      // SessionEnd's later run reconstructs the delta from the offset embedded
+      // in the summary body. Matches the guard in src/hooks/codex/wiki-worker.ts.
+      const summaryChanged = baseline === null
         ? text.trim().length > 0
-        : text !== summaryBeforeExec;
+        : text !== baseline;
       if (!execSucceeded && !summaryChanged) {
         wlog("claude -p failed without producing a new summary; skipping upload");
         return;
