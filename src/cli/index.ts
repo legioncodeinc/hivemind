@@ -19,6 +19,9 @@ import { runSkillifyCommand } from "../commands/skillify.js";
 import { runRulesCommand } from "../commands/rules.js";
 import { runGoalCommand, runKpiCommand } from "../commands/goal.js";
 import { runContextCommand } from "../commands/context.js";
+import { runBackfillMemory } from "../commands/backfill-memory.js";
+import { runFlushMemory } from "../commands/flush-memory.js";
+import { maybeAutoBackfillMemory } from "../skillify/spawn-backfill-memory-worker.js";
 import { confirm, detectPlatforms, allPlatformIds, log, promptLine, warn, type PlatformId } from "./util.js";
 import { getVersion } from "./version.js";
 import { runUpdate } from "./update.js";
@@ -366,6 +369,17 @@ async function runInstallAll(args: string[]): Promise<void> {
 
   await maybeShowOrgChoice();
 
+  // Kick off the one-shot memory backfill in the background: stage knowledge
+  // from the user's past local agent sessions (claude/codex/…) without
+  // blocking install. Auth-free (it stages to disk); a later
+  // `hivemind memory flush` uploads it once signed in. Detached + sentinel-
+  // guarded, so this is a no-op on subsequent installs.
+  const backfill = maybeAutoBackfillMemory();
+  if (backfill.triggered) {
+    log("");
+    log("Mining your past sessions for team memory in the background — sign in, then run `hivemind memory flush` to push.");
+  }
+
   log("");
   log("Done. Restart each assistant to activate hooks.");
 }
@@ -480,6 +494,26 @@ async function main(): Promise<void> {
     }
     if (sub === "status") { statusEmbeddings(); return; }
     warn("Usage: hivemind embeddings install | enable | disable | uninstall [--prune] | status");
+    process.exit(1);
+  }
+
+  if (cmd === "memory") {
+    const sub = args[1];
+    if (sub === "backfill") {
+      const code = await runBackfillMemory(args.slice(2));
+      process.exit(code);
+    }
+    if (sub === "flush") {
+      const r = await runFlushMemory();
+      if (r.reason === "not-logged-in") {
+        warn("Not logged in — run `hivemind login` before flushing staged memory.");
+        process.exit(1);
+      }
+      log(`memory flush: uploaded ${r.uploaded}/${r.pending} staged summary(ies)` +
+        `${r.failed ? `, ${r.failed} failed` : ""}.`);
+      return;
+    }
+    warn("Usage: hivemind memory backfill [--dry-run] [--force] [--n <num|all>] [--window-days N] [--project-only] | flush");
     process.exit(1);
   }
 

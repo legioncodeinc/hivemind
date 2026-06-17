@@ -399,6 +399,27 @@ export default defineConfig({
         "src/skillify/spawn-mine-local-worker.ts":    { statements: 90, branches: 90, functions: 90, lines: 90 },
         "src/commands/mine-local.ts":                 { statements: 90, branches: 90, functions: 90, lines: 90 },
         "src/notifications/rules/local-mined.ts":     { statements: 90, branches: 90, functions: 90, lines: 90 },
+        // feat/memory-backfill — install-time retro-mine of past local agent
+        // sessions (claude/codex/…) into team memory, two-phase
+        // extract(no-auth)/flush(post-login). Pure logic + real I/O wiring are
+        // both covered: the heavy constructors (DeeplakeApi, EmbedClient,
+        // child_process.spawn) are vi.mock'd in *-wiring.test.ts so the real
+        // default-dependency factories execute, and the runClaude spawn path is
+        // exercised via a fake claude executable. statements/functions/lines are
+        // ≥90 on every file (two at 100); branches sit at 88 on three files —
+        // the residual gaps are defensive `??`/`Array.isArray` fallbacks and a
+        // budget-message ternary, the same branch calibration used across this
+        // config (e.g. gate-runner 60, build-lock 55, skills-table 70).
+        "src/skillify/pending-memory-manifest.ts":    { statements: 90, branches: 85, functions: 90, lines: 90 },
+        "src/skillify/backfill-guards.ts":            { statements: 90, branches: 90, functions: 90, lines: 90 },
+        "src/skillify/stage-memory.ts":               { statements: 90, branches: 85, functions: 90, lines: 90 },
+        "src/skillify/spawn-backfill-memory-worker.ts": { statements: 90, branches: 90, functions: 90, lines: 90 },
+        "src/commands/backfill-memory.ts":            { statements: 90, branches: 85, functions: 90, lines: 90 },
+        // branches at 85 (not 90): the residual gaps are defensive catch/??
+        // fallbacks, and v8 branch counting drifts a couple points across Node
+        // versions (CI measured 88 where local measured 92), so the floor is
+        // set with margin to stay deterministic.
+        "src/commands/flush-memory.ts":               { statements: 90, branches: 85, functions: 90, lines: 90 },
         // feat/rules-and-tasks-kpis — cross-agent rules + tasks + KPI
         // events (T1-T9). Per-file thresholds for the new modules.
         // Branches calibrated to actual coverage: rules/tasks list-*

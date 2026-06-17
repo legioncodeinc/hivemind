@@ -51,7 +51,7 @@ const LOCK_STALE_MS = 15 * 60 * 1000;
  *     Fallback for installs where the bundled cli.js is missing (e.g. a
  *     legacy install layout or a user who hand-trimmed the plugin tree).
  */
-type HivemindLauncher =
+export type HivemindLauncher =
   | { kind: "node-script"; path: string }
   | { kind: "bin"; path: string };
 
@@ -74,7 +74,7 @@ function findBundledCliPath(): string | null {
   }
 }
 
-function findHivemindLauncher(): HivemindLauncher | null {
+export function findHivemindLauncher(): HivemindLauncher | null {
   const bundled = findBundledCliPath();
   if (bundled) return { kind: "node-script", path: bundled };
   try {
